@@ -1,1 +1,59 @@
 
+= Solution Design: Pennie the Prepper
+
+
+== Overview
+Pennie is a Microsoft Teams-friendly AI agent that joins meetings and converts conversation into structured Azure DevOps backlog items. She is built with Azure AI Foundry, deploys via GitHub Actions, and is fully defined as code.
+
+
+== Architecture
+
+
+[mermaid]
+----
+flowchart TD
+Teams(Meeting Transcript) -->|Real-time Context| FoundryAgent["Pennie (Azure AI Foundry Agent)"]
+FoundryAgent -->|Clarifying Questions| TeamsChat(Teams Chat)
+FoundryAgent -->|API Call| DevOpsTools(Azure Functions for DevOps)
+DevOpsTools -->|Create/Update| AzureDevOps["Azure DevOps (Boards)"]
+FoundryAgent --> Storage(Azure Storage - optional logs)
+----
+
+
+== System Prompt
+Pennie’s prompt is defined in `agents/penn.ie.yml` and instructs her to:
+- Act like a business analyst
+- Remain silent in meetings
+- Post clarifying questions in Teams chat when needed
+- Structure backlog in Epic > Feature > User Story > Acceptance Criteria format
+
+
+== Tooling
+Pennie is connected to:
+- Azure DevOps via Azure Functions (`GetWorkItems`, `CreateWorkItem`)
+- Azure Storage for logging (optional)
+
+
+== DevOps Integration
+Functions use PAT token or managed identity to:
+- Create and update Epics, Features, Stories, and Questions
+- Follow naming convention + metadata from T-Minus-15
+
+
+== Deployment
+* Infrastructure as Code via Bicep
+* GitHub Action `deploy.yml` runs:
+** Azure login
+** Bicep deploy (Foundry project + storage + functions)
+** Deploy agent config from `pennie.yml`
+
+
+== Security
+- All components deployed in tenant
+- No external services required
+- Secrets managed via GitHub Secrets and Azure Key Vault
+
+
+== Future Enhancements
+- Ingest existing DevOps backlog for grounding/fine-tuning
+- Use RAG approach or Azure Search index of historical work items
