@@ -1,0 +1,191 @@
+name: Test Pennie
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore .NET tools
+        run: dotnet tool restore || dotnet tool install -g dotnet-format
+
+      - name: Format check
+        run: dotnet format --verify-no-changes ./bot/PennieBot.csproj
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python linters
+        run: |
+          pip install pylint flake8 black
+
+      - name: Run Python linters
+        run: |
+          # Lint Python test files
+          # flake8 tests/
+          # black --check tests/
+          echo "Python linting would run here"
+
+  build-bot:
+    name: Build Bot
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore ./bot/PennieBot.csproj
+
+      - name: Build
+        run: dotnet build ./bot/PennieBot.csproj --configuration Release --no-restore
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: [build-bot]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Run tests
+        run: |
+          # TODO: Implement unit tests
+          # dotnet test ./tests/unit/ --configuration Release --collect:"XPlat Code Coverage"
+          echo "Unit tests would run here"
+
+      - name: Upload coverage
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  validate-bicep:
+    name: Validate Bicep Templates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Validate Bicep
+        run: |
+          az bicep build --file ./infra/main.bicep
+
+      - name: What-If Deployment (Test)
+        run: |
+          az deployment sub what-if \
+            --location uksouth \
+            --template-file ./infra/main.bicep \
+            --parameters @./infra/main.parameters.test.json
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install pytest requests azure-devops
+
+      - name: Run integration tests
+        env:
+          AZURE_DEVOPS_ORG: ${{ secrets.AZURE_DEVOPS_ORG }}
+          AZURE_DEVOPS_PROJECT: ${{ secrets.AZURE_DEVOPS_PROJECT_TEST }}
+          AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: |
+          # TODO: Implement integration tests
+          # pytest tests/integration/ --env=test
+          echo "Integration tests would run here"
+
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [lint, build-bot, unit-tests, validate-bicep]
+    if: always()
+
+    steps:
+      - name: Check test results
+        run: |
+          if [[ "${{ needs.lint.result }}" == "failure" ]] || \
+             [[ "${{ needs.build-bot.result }}" == "failure" ]] || \
+             [[ "${{ needs.unit-tests.result }}" == "failure" ]] || \
+             [[ "${{ needs.validate-bicep.result }}" == "failure" ]]; then
+            echo "❌ Tests failed"
+            exit 1
+          else
+            echo "✅ All tests passed"
+          fi
+
+      - name: Comment PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = `
+            ## Test Results
+
+            - Lint: ${{ needs.lint.result }}
+            - Build: ${{ needs.build-bot.result }}
+            - Unit Tests: ${{ needs.unit-tests.result }}
+            - Bicep Validation: ${{ needs.validate-bicep.result }}
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            })

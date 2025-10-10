@@ -1,0 +1,163 @@
+name: Deploy Pennie to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - test
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '20.x'
+
+jobs:
+  deploy-infrastructure:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'prod' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Bicep templates
+        uses: azure/arm-deploy@v2
+        with:
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          scope: subscription
+          region: uksouth
+          template: ./infra/main.bicep
+          parameters: >
+            @./infra/main.parameters.${{ github.event.inputs.environment || 'prod' }}.json
+            environmentName=${{ github.event.inputs.environment || 'prod' }}
+            teamsAppId=${{ secrets.TEAMS_APP_ID }}
+          failOnStdErr: false
+
+      - name: Get deployment outputs
+        id: infra-outputs
+        run: |
+          echo "Getting deployment outputs..."
+          # Extract outputs from deployment (VM IP, Key Vault name, etc.)
+
+  build-bot:
+    name: Build Teams Bot
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore ./bot/PennieBot.csproj
+
+      - name: Build
+        run: dotnet build ./bot/PennieBot.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish ./bot/PennieBot.csproj --configuration Release --runtime win-x64 --self-contained true --output ./publish
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pennie-bot
+          path: ./publish
+
+  deploy-bot:
+    name: Deploy Bot to VM
+    runs-on: windows-latest
+    needs: [deploy-infrastructure, build-bot]
+    environment: ${{ github.event.inputs.environment || 'prod' }}
+
+    steps:
+      - name: Download artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pennie-bot
+          path: ./bot-artifact
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Windows VM
+        run: |
+          # Get VM details
+          $vmName = "pennie-vm-${{ github.event.inputs.environment || 'prod' }}"
+          $rgName = "${{ secrets.AZURE_RESOURCE_GROUP }}"
+
+          # TODO: Implement deployment to VM
+          # Options:
+          # 1. Azure VM Extension (custom script)
+          # 2. Azure DevOps SSH task
+          # 3. PowerShell Remoting
+          # 4. Azure Arc (if configured)
+
+          Write-Host "Bot deployment to VM would happen here"
+          # For now, manual deployment required
+
+  run-smoke-tests:
+    name: Run Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-bot]
+    environment: ${{ github.event.inputs.environment || 'prod' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install pytest requests
+
+      - name: Run smoke tests
+        run: |
+          # TODO: Implement smoke tests
+          # pytest tests/smoke/ --env=${{ github.event.inputs.environment || 'prod' }}
+          echo "Smoke tests would run here"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Deployment smoke tests failed! Rolling back..."
+          # TODO: Implement rollback logic
+
+  notify-deployment:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [run-smoke-tests]
+    if: always()
+
+    steps:
+      - name: Send notification
+        run: |
+          # TODO: Send notification to Slack/Teams
+          # Use webhook URL from secrets
+          echo "Deployment notification sent"

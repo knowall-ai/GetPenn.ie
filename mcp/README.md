@@ -124,24 +124,21 @@ Azure AI Foundry Agent automatically discovers and uses the available tools thro
 
 ## Troubleshooting
 
-### Authentication Issues
+See [docs/TROUBLESHOOTING.adoc](../docs/TROUBLESHOOTING.adoc) for comprehensive troubleshooting guide.
+
+**Quick fixes**:
+
 ```powershell
-# Clear cached credentials
+# Clear cached credentials and re-authenticate
 Remove-Item -Path "$env:USERPROFILE\.azure-devops-mcp" -Recurse -Force
-
-# Re-authenticate
 npx @azure-devops/mcp ${AZURE_DEVOPS_ORG}
+
+# Test connection
+npx @azure-devops/mcp ${AZURE_DEVOPS_ORG} --test
+
+# Update to latest version
+npm update -g @azure-devops/mcp
 ```
-
-### Connection Errors
-- Verify Azure DevOps organization name is correct
-- Ensure network connectivity to `dev.azure.com`
-- Check firewall rules allow outbound HTTPS (443)
-
-### Missing Tools
-- Ensure `work-items` domain is specified in configuration
-- Verify MCP server version: `npx @azure-devops/mcp --version`
-- Update to latest: `npm update -g @azure-devops/mcp`
 
 ## Resources
 

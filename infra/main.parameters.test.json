@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "test"
+    },
+    "location": {
+      "value": "uksouth"
+    },
+    "resourceGroupName": {
+      "value": "TMinus15Agents-Test"
+    },
+    "aiHubName": {
+      "value": "knowall-ai-foundry-test"
+    },
+    "aiProjectName": {
+      "value": "T-Minus-15 Agents Test"
+    },
+    "devOpsOrg": {
+      "value": "YourDevOpsOrg"
+    },
+    "devOpsProject": {
+      "value": "YourDevOpsProject-Test"
+    },
+    "teamsAppId": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/{subscription-id}/resourceGroups/{rg-name}/providers/Microsoft.KeyVault/vaults/{vault-name}"
+        },
+        "secretName": "teams-app-id-test"
+      }
+    }
+  }
+}

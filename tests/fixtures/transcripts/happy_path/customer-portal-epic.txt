@@ -1,0 +1,9 @@
+Speaker: Ben Weeks | Timestamp: 00:01:23 | Text: Alright team, let's get started. We need to create an epic for the new customer portal with SSO integration.
+Speaker: Sarah Johnson | Timestamp: 00:01:45 | Text: Good idea. Should we support both OAuth 2.0 and SAML?
+Speaker: Ben Weeks | Timestamp: 00:02:10 | Text: Yes, let's support both OAuth and SAML. That gives customers flexibility.
+Speaker: John Smith | Timestamp: 00:02:35 | Text: For OAuth, are we supporting the authorization code flow or implicit flow?
+Speaker: Sarah Johnson | Timestamp: 00:02:50 | Text: Authorization code flow with PKCE for security. The implicit flow is being deprecated.
+Speaker: Ben Weeks | Timestamp: 00:03:15 | Text: Agreed. Can you capture that as acceptance criteria, Pennie?
+Speaker: John Smith | Timestamp: 00:03:40 | Text: We should also add a feature for password reset functionality.
+Speaker: Sarah Johnson | Timestamp: 00:04:05 | Text: Yes, with email verification. Users should receive a link that expires after 24 hours.
+Speaker: Ben Weeks | Timestamp: 00:04:30 | Text: Perfect. Let's make sure all authentication events are logged for audit purposes.

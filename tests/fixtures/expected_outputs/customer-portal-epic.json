@@ -1,0 +1,54 @@
+{
+  "workItems": [
+    {
+      "type": "Epic",
+      "title": "Customer Portal with SSO Integration",
+      "fields": {
+        "ValueStatement": "FOR customers WHO need secure access to their accounts SO THAT they can manage their services with enterprise-grade authentication",
+        "Speaker": "Ben Weeks",
+        "Timestamp": "00:01:23",
+        "MeetingID": "test-meeting-001"
+      },
+      "children": [
+        {
+          "type": "Feature",
+          "title": "OAuth 2.0 Authentication",
+          "fields": {
+            "Description": "Implement OAuth 2.0 authentication with authorization code flow and PKCE",
+            "Speaker": "Sarah Johnson",
+            "Timestamp": "00:02:50",
+            "AcceptanceCriteria": "GIVEN a user wants to login WHEN they click login button THEN they are redirected to OAuth 2.0 authorization server with PKCE challenge"
+          }
+        },
+        {
+          "type": "Feature",
+          "title": "SAML Authentication",
+          "fields": {
+            "Description": "Implement SAML 2.0 authentication for enterprise customers",
+            "Speaker": "Ben Weeks",
+            "Timestamp": "00:02:10"
+          }
+        },
+        {
+          "type": "Feature",
+          "title": "Password Reset Functionality",
+          "fields": {
+            "Description": "Email-based password reset with time-limited verification links",
+            "Speaker": "John Smith",
+            "Timestamp": "00:03:40",
+            "AcceptanceCriteria": "GIVEN a user requests password reset WHEN they click the link in email THEN they can set a new password if link is less than 24 hours old"
+          }
+        },
+        {
+          "type": "Feature",
+          "title": "Authentication Audit Logging",
+          "fields": {
+            "Description": "Log all authentication events for security audit purposes",
+            "Speaker": "Ben Weeks",
+            "Timestamp": "00:04:30"
+          }
+        }
+      ]
+    }
+  ]
+}
