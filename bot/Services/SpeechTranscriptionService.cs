@@ -69,7 +69,7 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
                 {
                     var result = new TranscriptionResult
                     {
-                        Speaker = e.Result.UserId ?? "Unknown",  // Changed from SpeakerId to UserId
+                        Speaker = "Speaker",  // TODO: Implement speaker diarization when available
                         Timestamp = DateTime.UtcNow,
                         Text = e.Result.Text,
                         Confidence = 1.0, // TODO: Extract from detailed results
