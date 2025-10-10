@@ -1,7 +1,8 @@
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Schema;
-using Microsoft.Graph.Communications.Calls;
-using Microsoft.Graph.Communications.Calls.Media;
+// Graph Communications SDK namespaces - commented out until full implementation
+// using Microsoft.Graph.Communications.Calls;
+// using Microsoft.Graph.Communications.Calls.Media;
 using PennieBot.Services;
 
 namespace PennieBot.Bots;
