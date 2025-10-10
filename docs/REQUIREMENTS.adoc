@@ -48,35 +48,38 @@ OUR SOLUTION automates requirements capture within the organization’s secure A
 | 
 |===
 
+== FEATURES
 
-=== FEATURE: Capture Epics, Features, User Stories from Meetings
+
+=== FEATURE: Capture Epics, Features, and User Stories from Meetings
 [cols="1,3a"]
 |===
-|*ID*          |FEAT-001
-|*Title*       |Extract backlog items in real time from meeting transcripts
-|*Description* |During a live Teams meeting, Pennie listens to discussion and generates Azure DevOps entries in the T-Minus-15 hierarchy (Epic > Feature > User Story). Items include required metadata and links.
-|*Notes*       |Epics do not have acceptance criteria. Features include a `.Description`. User Stories use “As a … I want … so that …” and include `.Description` plus Gherkin acceptance criteria.
+|*ID* |FEAT-001
+|*Title* |Extract backlog items in real time from meeting transcripts
+|*Description* |During live Teams meetings, Pennie listens to the conversation and generates Azure DevOps entries following the T-Minus-15 hierarchy (Epic > Feature > User Story). She uses contextual cues and speaker intent to populate structured metadata.
 |*User Stories*|
-* *As a product owner, I want to capture high-level goals as epics so that they can be tracked across features.*
+* *As a project sponsor, I want to receive a summary of captured requirements after each meeting so that I can validate completeness and confirm alignment.*
+**Description**:: After each meeting, Pennie posts a summary of new and updated backlog items to the Teams chat, with links and flags for any ambiguous items.
 **Acceptance Criteria**::
 +
 ----
-SCENARIO: Capturing a goal during project kickoff
-GIVEN a Teams meeting is in progress
-WHEN a participant states a high-level goal
-THEN Pennie creates a new Epic in DevOps with title and description
-AND the Epic includes lean business case fields (Who/Why/Scope/Outcome/Value/Impact/Investment)
+SCENARIO: Meeting completion summary
+GIVEN a Teams meeting ends
+WHEN Pennie finalizes transcript processing
+THEN she posts a summary of backlog items and questions to the meeting chat
+AND includes links to the corresponding DevOps items
 ----
 
-* *As a business analyst, I want to generate user stories from spoken discussion so that I can refine them later.*
+* *As a business analyst, I want Pennie to associate conversational context (who said what) with backlog items so that traceability is preserved.*
+**Description**:: Pennie tags each created or updated item with speaker name and timestamp from the Teams transcript.
 **Acceptance Criteria**::
 +
 ----
-SCENARIO: Detailing requirements mid-meeting
-GIVEN participants describe steps in a workflow
-WHEN Pennie identifies discrete user needs
-THEN Pennie creates corresponding User Stories with description
-AND adds Given/When/Then acceptance criteria
+SCENARIO: Context tagging for stories
+GIVEN a requirement is voiced during the meeting
+WHEN Pennie generates a story or feature
+THEN she includes the originating speaker and time
+AND saves that metadata to the work item
 ----
 |===
 
@@ -84,20 +87,32 @@ AND adds Given/When/Then acceptance criteria
 === FEATURE: Ask Clarifying Questions in Chat
 [cols="1,3a"]
 |===
-|*ID*          |FEAT-002
-|*Title*       |Ask structured questions in Teams chat when data is missing
-|*Description* |When information is ambiguous or incomplete, Pennie posts a concise question in Teams chat and logs a DevOps work item of type `Question`, linked to the relevant parent item.
-|*Notes*       |Questions remain open until answered; answers are appended and the item is resolved.
+|*ID* |FEAT-002
+|*Title* |Ask structured questions in Teams chat when data is missing
+|*Description* |When information is ambiguous or incomplete, Pennie posts polite, concise clarifying questions in Teams chat and logs a linked `Question` work item in Azure DevOps.
 |*User Stories*|
-* *As a virtual business analyst, I want to prompt users for missing context so that backlog items are complete and actionable.*
+* *As a team member, I want Pennie to ask follow-up questions when domain constraints are unclear so that the backlog is less ambiguous.*
+**Description**:: Pennie identifies vague or subjective requirements (e.g. “fast”, “user-friendly”) and prompts users for measurable details.
 **Acceptance Criteria**::
 +
 ----
-SCENARIO: A vague requirement is discussed
-GIVEN a participant says "it needs to be faster"
-WHEN Pennie detects ambiguity (missing KPI or baseline)
-THEN Pennie posts a clarifying question in Teams chat
-AND creates a linked `Question` work item capturing the question text
+SCENARIO: Ambiguous performance requirement
+GIVEN a participant says “It needs to be faster”
+WHEN Pennie detects missing quantitative detail
+THEN she asks a clarifying question such as “What is the current response time target?”
+AND logs a linked Question work item in DevOps
+----
+
+* *As a UX designer, I want Pennie to ask for example user flows when steps are missing so that stories include usage context.*
+**Description**:: Pennie detects workflow-related stories missing step-by-step context and requests a sample flow.
+**Acceptance Criteria**::
++
+----
+SCENARIO: Missing user flow
+GIVEN a new story lacks step sequence
+WHEN Pennie detects the gap
+THEN she asks the speaker to describe a typical user journey
+AND attaches that summary to the story item
 ----
 |===
 
@@ -105,19 +120,31 @@ AND creates a linked `Question` work item capturing the question text
 === FEATURE: Post Real-Time Change Log to Teams Chat
 [cols="1,3a"]
 |===
-|*ID*          |FEAT-003
-|*Title*       |Announce backlog changes with links in chat
-|*Description* |Every time Pennie creates or updates a DevOps work item, she posts a short message in chat with a link and summary of the change for transparent collaboration.
+|*ID* |FEAT-003
+|*Title* |Announce backlog changes with links in chat
+|*Description* |Every time Pennie creates or updates an Azure DevOps item, she posts a concise message in Teams chat with the title, link, and a one-line summary of the change.
 |*User Stories*|
-* *As a meeting participant, I want to see links to items Pennie creates or edits so that I can review and correct in real time.*
+* *As a stakeholder, I want to see change notifications with clear links so that I can review updates immediately.*
+**Description**:: Pennie posts short, readable notifications for each change.
 **Acceptance Criteria**::
 +
 ----
-SCENARIO: Change log visibility
-GIVEN Pennie creates or updates a work item
-WHEN the action completes
-THEN a chat message is posted containing action, title, and link
-AND the message includes a one-sentence summary of what changed
+SCENARIO: Posting individual change updates
+GIVEN a work item is created or edited
+WHEN the update is saved
+THEN Pennie sends a Teams chat message summarizing the change
+AND includes a direct link to the DevOps item
+----
+
+* *As a developer, I want Pennie to group multiple quick changes into one summary so chat noise is reduced.*
+**Description**:: Pennie batches several related changes into a single notification if they occur within one minute.
+**Acceptance Criteria**::
++
+----
+SCENARIO: Batched change updates
+GIVEN three backlog edits occur within thirty seconds
+WHEN Pennie detects multiple quick updates
+THEN she posts one combined summary message listing all affected items
 ----
 |===
 
@@ -125,19 +152,30 @@ AND the message includes a one-sentence summary of what changed
 === FEATURE: Revise and Improve Existing Backlog Items
 [cols="1,3a"]
 |===
-|*ID*          |FEAT-004
-|*Title*       |Pennie improves and restructures backlog items
-|*Description* |Pennie can review existing items to suggest clearer titles, add missing descriptions or acceptance criteria, reclassify items, and add linked questions where detail is insufficient.
+|*ID* |FEAT-004
+|*Title* |Review and refine existing backlog items for clarity
+|*Description* |Pennie can review existing backlog items and suggest improvements — such as clearer names, more specific acceptance criteria, or corrected classification — during backlog grooming sessions.
 |*User Stories*|
-* *As a delivery lead, I want Pennie to suggest improvements to existing user stories so that backlog quality improves over time.*
+* *As a Scrum Master, I want Pennie to propose detailed acceptance criteria for incomplete stories so that each item is testable.*
+**Description**:: Pennie detects stories missing Gherkin acceptance criteria and proposes drafts for review.
 **Acceptance Criteria**::
 +
 ----
-SCENARIO: A poorly written user story exists in DevOps
-GIVEN a story lacks acceptance criteria and has an unclear title
-WHEN Pennie reviews the story during grooming
-THEN Pennie proposes improved title and adds suggested acceptance criteria
-AND posts a chat summary with a link to the updated item
+SCENARIO: Suggesting missing acceptance criteria
+GIVEN a story lacks any Given/When/Then definitions
+WHEN Pennie reviews it during grooming
+THEN she proposes new acceptance criteria and logs them as a linked improvement
+----
+
+* *As a product owner, I want Pennie to detect misclassified items (task vs story) so that the backlog hierarchy remains consistent.*
+**Description**:: Pennie uses linguistic patterns and metadata to identify work items misaligned with their expected type and suggests reclassification.
+**Acceptance Criteria**::
++
+----
+SCENARIO: Detecting misclassified work items
+GIVEN a task labeled “Enhance user login flow”
+WHEN Pennie analyzes backlog language
+THEN she suggests converting it into a User Story or Feature as appropriate
 ----
 |===
 
@@ -145,38 +183,29 @@ AND posts a chat summary with a link to the updated item
 === FEATURE: Azure DevOps CRUD & Hierarchy Linking
 [cols="1,3a"]
 |===
-|*ID*          |FEAT-005
-|*Title*       |Create, read, update, and link DevOps work items with correct hierarchy
-|*Description* |Pennie performs CRUD operations for Epics, Features, User Stories, and Questions; maintains parent/child links; preserves IDs and URLs for posting back to chat.
+|*ID* |FEAT-005
+|*Title* |Create, read, update, and link DevOps work items with correct hierarchy
+|*Description* |Pennie performs all CRUD operations for Epics, Features, User Stories, and Questions, maintaining proper parent-child relationships and traceability between related items.
 |*User Stories*|
-* *As a product owner, I want new requirements linked correctly so that the backlog retains accurate hierarchy and traceability.*
+* *As a system integrator, I want Pennie to validate hierarchy links when moving items so parent-child relationships remain correct.*
+**Description**:: Pennie checks all relationships when updating or migrating items between features.
 **Acceptance Criteria**::
 +
 ----
-SCENARIO: Creating a new user story under a feature
-GIVEN an existing Feature is referenced
-WHEN Pennie creates a new User Story
-THEN the story is linked as a child of the Feature
-AND the story URL is posted to chat
+SCENARIO: Verifying parent-child links
+GIVEN a story is reassigned to another feature
+WHEN Pennie performs the update
+THEN she validates that the new parent exists and removes obsolete links
 ----
-|===
 
-
-=== FEATURE: Compliance and Tenant-Scoped Operation
-[cols="1,3a"]
-|===
-|*ID*          |FEAT-006
-|*Title*       |Keep all processing within the organization’s Azure tenant
-|*Description* |Pennie runs on Azure AI Foundry with Azure-hosted models; integration uses Functions/Logic Apps; no third-party AI services are called.
-|*User Stories*|
-* *As a security lead, I want Pennie to operate entirely within our tenant so that sensitive data never leaves our control boundary.*
+* *As a QA lead, I want Pennie to retrieve item change history so I can audit backlog evolution.*
+**Description**:: Pennie fetches the change log for a specific work item and summarizes it in chat.
 **Acceptance Criteria**::
 +
 ----
-SCENARIO: Data residency and egress control
-GIVEN Pennie processes meeting context and backlog data
-WHEN invoking any tools or models
-THEN only Azure tenant resources are used (no external endpoints)
-AND secrets/credentials are managed via Key Vault / GitHub Encrypted Secrets
+SCENARIO: Auditing item change history
+GIVEN a user asks “Show me history of story #123”
+WHEN Pennie calls the GetWorkItems tool
+THEN she displays a chronological summary of all changes with timestamps and authors
 ----
 |===
