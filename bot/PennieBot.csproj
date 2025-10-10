@@ -15,9 +15,11 @@
     <PackageReference Include="Microsoft.Bot.Builder.Integration.AspNet.Core" Version="4.21.2" />
 
     <!-- Graph Communications SDK -->
-    <PackageReference Include="Microsoft.Graph.Communications.Calls" Version="1.4.0" />
-    <PackageReference Include="Microsoft.Graph.Communications.Calls.Media" Version="1.4.0" />
-    <PackageReference Include="Microsoft.Graph.Communications.Common" Version="1.4.0" />
+    <!-- Note: Latest available version is 1.2.0.15382 as of Oct 2025 -->
+    <!-- Commented out until needed for full implementation -->
+    <!-- <PackageReference Include="Microsoft.Graph.Communications.Calls" Version="1.2.0.15382" /> -->
+    <!-- <PackageReference Include="Microsoft.Graph.Communications.Calls.Media" Version="1.2.0.15382" /> -->
+    <!-- <PackageReference Include="Microsoft.Graph.Communications.Common" Version="1.2.0.15382" /> -->
 
     <!-- Azure SDKs -->
     <PackageReference Include="Azure.AI.OpenAI" Version="1.0.0-beta.17" />
@@ -33,7 +35,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
 
     <!-- JSON -->
-    <PackageReference Include="System.Text.Json" Version="8.0.4" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 
 </Project>
