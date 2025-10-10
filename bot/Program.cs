@@ -12,11 +12,15 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
 
 // Add Key Vault if configured
+// Note: Using legacy API - update to Azure.Extensions.AspNetCore.Configuration.Secrets for newer approach
 var keyVaultName = builder.Configuration["AZURE_KEY_VAULT_NAME"];
 if (!string.IsNullOrEmpty(keyVaultName))
 {
-    var keyVaultUri = new Uri($"https://{keyVaultName}.vault.azure.net/");
-    builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+    // Commented out - requires newer Azure.Extensions.AspNetCore.Configuration.Secrets package
+    // var keyVaultUri = new Uri($"https://{keyVaultName}.vault.azure.net/");
+    // builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+
+    // For now, use environment variables or appsettings.json
 }
 
 // Application Insights

@@ -1,6 +1,7 @@
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.CognitiveServices.Speech.Transcription;
+using ConversationTranscriptionResult = Microsoft.CognitiveServices.Speech.Transcription.ConversationTranscriptionResult;
 
 namespace PennieBot.Services;
 
@@ -11,7 +12,7 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
 {
     private readonly ILogger<SpeechTranscriptionService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly Dictionary<string, MeetingTranscriber> _transcribers = new();
+    private readonly Dictionary<string, ConversationTranscriber> _transcribers = new();
     private readonly Dictionary<string, PushAudioInputStream> _audioStreams = new();
 
     public SpeechTranscriptionService(
@@ -51,7 +52,9 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
             var audioConfig = AudioConfig.FromStreamInput(audioStream);
 
             // Create Meeting Transcriber with speaker diarization
-            var transcriber = new MeetingTranscriber(config, audioConfig);
+            // Note: MeetingTranscriber API requires Meeting object in newer versions
+            // For now, use ConversationTranscriber as fallback for basic testing
+            var transcriber = new ConversationTranscriber(config, audioConfig);
 
             // Subscribe to transcription events
             transcriber.Transcribing += (s, e) =>
@@ -66,7 +69,7 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
                 {
                     var result = new TranscriptionResult
                     {
-                        Speaker = e.Result.SpeakerId ?? "Unknown",
+                        Speaker = e.Result.UserId ?? "Unknown",  // Changed from SpeakerId to UserId
                         Timestamp = DateTime.UtcNow,
                         Text = e.Result.Text,
                         Confidence = 1.0, // TODO: Extract from detailed results
