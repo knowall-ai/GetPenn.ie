@@ -4,6 +4,8 @@ Pennie is a conversational AI assistant designed to help teams prepare better ba
 
 Pennie is built using [Azure AI Foundry](https://learn.microsoft.com/en-us/azure/ai-services/ai-foundry/overview) and is deployed via GitHub Actions. The agent and its supporting tools are fully defined as code, enabling secure, reproducible, and tenant-agnostic deployments.
 
+![Pennie Social Preview](https://github.com/user-attachments/assets/fbaed48a-a129-4d28-a565-66b91b27f5f6)
+
 ## Features
 - ✅ Works silently in Microsoft Teams meetings
 - 🧠 Uses conversational context to capture business needs
@@ -34,10 +36,12 @@ infra/
 3. **Run GitHub Action** to provision resources and deploy Pennie
 
 ## Usage
+
 Invite Pennie to your Teams meeting. She’ll listen quietly and:
 - Ask clarification questions in chat
 - Create DevOps work items in real time
 - Post links to backlog entries she’s created
 
 ## License
+
 MIT — open-source and free to adapt. Built by [KnowAll AI](https://www.knowall.ai)
