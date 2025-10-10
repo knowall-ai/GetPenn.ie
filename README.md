@@ -1,4 +1,4 @@
-# Penn.ie the Prepper
+# Pennie the Prepper
 
 Pennie is a conversational AI assistant designed to help teams prepare better backlogs. She joins Microsoft Teams meetings and works silently in the background — listening, asking clarification questions in the chat, and creating high-quality Epics, Features, and User Stories in Azure DevOps, all using the T-Minus-15 methodology.
 
