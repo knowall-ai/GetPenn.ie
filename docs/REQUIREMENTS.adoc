@@ -1,83 +1,182 @@
 = Requirements: Pennie the Prepper
 
-== EPIC: Conversational DevOps Assistant for Teams
+== EPIC: Pennie the Prepper for Teams (MVP)
 
 [cols="1,3"]
 |===
-|*Title* |Teams-based AI assistant to capture backlog items
-|*ID* |EPIC-001
-|*Mission* |Support effective backlog preparation during meetings by listening, prompting for clarification, and creating/updating DevOps entries.
-|*Who* |Product Owners, BAs, Delivery Leads
-|*Why* |To automate the conversion of verbal meeting input into structured DevOps requirements.
-|*Scope* |Within Teams meetings where business needs are discussed.
-|*Outcome* |A high-quality, well-structured backlog generated and refined in real-time.
-|*Value* |Reduced manual documentation, increased backlog accuracy, improved time-to-delivery.
-|*Impact* |Teams spend less time transcribing meetings and more time refining and delivering value.
-|*Investment* |Setup and configure Pennie in a Teams-integrated Azure AI Foundry workspace.
+2+| *General*
+|*Title* |Pennie the Prepper for Teams (MVP)
+|*State* |New
+|*Epic Type* |Project
+|*Owner* |Ben Weeks
+|*Area* |KnowAll AI > Internal
+|*Start Date* |October 2025
+|*Target Date* |October 2025
+|*Background* |KnowAll AI is an AI-focused company delivering agents for clients. This epic will build Pennie as an internal AI agent and open-source project to document client requirements accurately.
+|*Objective* |To ensure that client requirements are clearly captured and refined throughout the delivery lifecycle, ensuring a robust backlog and alignment with client needs.
+2+| *Epic hypothesis*
+|*Value statement* |
+FOR delivery teams, business analysts, and product owners
+WHO struggle to capture and maintain high-quality requirements during fast-paced project meetings
+THE Pennie the Prepper for Teams (MVP)
+IS A conversational AI assistant integrated with Microsoft Teams and Azure DevOps
+THAT listens silently to meetings, asks intelligent clarifying questions, and generates structured backlog items in real time using the T-Minus-15 framework
+UNLIKE traditional note-taking or manual backlog entry processes that are inconsistent and error-prone
+OUR SOLUTION automates requirements capture within the organization’s secure Azure tenant, improving clarity, reducing rework, and allowing teams to stay focused on meaningful client conversations while Pennie builds a consistent, high-quality backlog behind the scenes.
+|*Business Outcome Hypothesis* |We believe that better documented and detailed requirements will improve design, engineering, and testing, enabling us to leverage AI more effectively and deliver solutions that closely match client expectations.
+|*Leading Indicators* |A leading indicator is that we can invite Pennie to meetings and see her actively capturing requirements and creating backlog items.
+|*Non-Functional Requirements (NFRs)* |All data must reside within the organization’s Azure tenant and be secure, reliable, and easy to use.
+2+| *Analysis*
+|*Impacted Products/Services* |Microsoft Teams (Pennie operates within Teams meetings), Azure DevOps.
+|*Impacted Users/Markets* |Internally, this impacts our solution delivery team, making their workflow more efficient.
+|*Return* |More efficient delivery of client solutions, reduced rework costs, and alignment of delivered solutions with client needs.
+|*Anticipated Business Impact* |Showcasing Pennie’s capabilities will impress clients, leading to more projects as they see our innovative use of AI. It will also help us generate proposals faster and increase our win rate.
+2+| *Delivery Strategy*
+|*Funnel entry date* | October 2025
+|*In/out-house* | In-house
+|*Innovation Start-up* | Hypothesis: We believe that delivery teams and product owners will achieve faster, more accurate backlog creation by using Pennie’s AI-driven real-time requirement capture during Microsoft Teams meetings, which will be proven by a 50% reduction in time spent transcribing and structuring meeting notes into Azure DevOps work items, alongside measurable improvements in backlog completeness and stakeholder satisfaction during sprint reviews.
+|*Incremental implementation strategy* |We will implement incrementally, delivering feature by feature, starting with capturing Epics, Features, and User Stories first.
+|*Sequence and dependencies* |Capturing requirements is the first priority; clarifying questions and refinements come after initial backlog creation.
+|*Milestones/Checkpoints* |Demo within two weeks; production deployment two weeks later. Aiming to use Pennie in an upcoming healthcare provider project meeting.
+2+| *Approval*
+|*Approval/Sponsor* |Sponsor: Ben Weeks. Approval: (leave blank for now)
+| *Go or no-go*
+| TBC
+| *Approved by*
+| 
+| *Approved date*
+| 
 |===
+
 
 === FEATURE: Capture Epics, Features, User Stories from Meetings
-[feature]
-[cols="1,3"]
+[cols="1,3a"]
 |===
-|*ID* |FEAT-001
-|*Title* |Extract backlog items in real time from meeting transcripts
-|*Description* |During a live Teams meeting, Pennie listens to the discussion and generates DevOps entries in structured format.
-|*Notes* |Items are created in Epic > Feature > User Story hierarchy using metadata format from T-Minus-15.
-|*User Stories*|+
+|*ID*          |FEAT-001
+|*Title*       |Extract backlog items in real time from meeting transcripts
+|*Description* |During a live Teams meeting, Pennie listens to discussion and generates Azure DevOps entries in the T-Minus-15 hierarchy (Epic > Feature > User Story). Items include required metadata and links.
+|*Notes*       |Epics do not have acceptance criteria. Features include a `.Description`. User Stories use “As a … I want … so that …” and include `.Description` plus Gherkin acceptance criteria.
+|*User Stories*|
 * *As a product owner, I want to capture high-level goals as epics so that they can be tracked across features.*
-** Description: High-level goals expressed verbally in a Teams meeting should be captured and represented as Epics in DevOps.
-** Acceptance Criteria:
-*** SCENARIO: Capturing a goal during project kickoff
-**** GIVEN a Teams meeting is in progress
-**** WHEN a participant discusses high-level project goals
-**** THEN Pennie identifies and creates a new Epic in DevOps with appropriate title and description
-
+**Acceptance Criteria**::
++
+----
+SCENARIO: Capturing a goal during project kickoff
+GIVEN a Teams meeting is in progress
+WHEN a participant states a high-level goal
+THEN Pennie creates a new Epic in DevOps with title and description
+AND the Epic includes lean business case fields (Who/Why/Scope/Outcome/Value/Impact/Investment)
+----
 
 * *As a business analyst, I want to generate user stories from spoken discussion so that I can refine them later.*
-** Description: Spoken statements about functionality should result in user stories that follow the Given/When/Then format.
-** Acceptance Criteria:
-*** SCENARIO: Detailing requirements mid-meeting
-**** GIVEN that users are describing steps in a workflow
-**** WHEN Pennie identifies discrete actions or needs
-**** THEN she creates corresponding User Stories with full acceptance criteria
+**Acceptance Criteria**::
++
+----
+SCENARIO: Detailing requirements mid-meeting
+GIVEN participants describe steps in a workflow
+WHEN Pennie identifies discrete user needs
+THEN Pennie creates corresponding User Stories with description
+AND adds Given/When/Then acceptance criteria
+----
 |===
+
 
 === FEATURE: Ask Clarifying Questions in Chat
-[feature]
-[cols="1,3"]
+[cols="1,3a"]
 |===
-|*ID* |FEAT-002
-|*Title* |Ask structured questions in Teams chat when data is missing
-|*Description* |When data is ambiguous or missing, Pennie should post a clarification question in chat and create a `Question` work item in DevOps.
-|*Notes* |Question items are tagged and linked to the original story or feature.
+|*ID*          |FEAT-002
+|*Title*       |Ask structured questions in Teams chat when data is missing
+|*Description* |When information is ambiguous or incomplete, Pennie posts a concise question in Teams chat and logs a DevOps work item of type `Question`, linked to the relevant parent item.
+|*Notes*       |Questions remain open until answered; answers are appended and the item is resolved.
 |*User Stories*|
-* **As a virtual business analyst, I want to prompt users for missing context so that backlog items are complete and actionable.**
-*Description:* If Pennie detects ambiguity, she should post a chat message and log the question in DevOps.
-*Acceptance Criteria:*
-- SCENARIO: A vague requirement is discussed
-- GIVEN that a vague user need is expressed (e.g., "it needs to be faster")
-- WHEN Pennie detects ambiguity
-- THEN she posts a clarifying question in Teams chat and records it as a `Question` in DevOps
+* *As a virtual business analyst, I want to prompt users for missing context so that backlog items are complete and actionable.*
+**Acceptance Criteria**::
++
+----
+SCENARIO: A vague requirement is discussed
+GIVEN a participant says "it needs to be faster"
+WHEN Pennie detects ambiguity (missing KPI or baseline)
+THEN Pennie posts a clarifying question in Teams chat
+AND creates a linked `Question` work item capturing the question text
+----
 |===
 
-=== FEATURE: Revise and Improve Existing Work Items
-[feature]
-[cols="1,3"]
+
+=== FEATURE: Post Real-Time Change Log to Teams Chat
+[cols="1,3a"]
 |===
-|*ID* |FEAT-003
-|*Title* |Pennie improves and restructures backlog items
-|*Description* |In addition to creating new items, Pennie can review existing DevOps work items to:
-- Suggest more precise names
-- Add missing acceptance criteria
-- Reclassify items (e.g., convert tasks to stories)
-- Add clarifying questions where detail is insufficient
+|*ID*          |FEAT-003
+|*Title*       |Announce backlog changes with links in chat
+|*Description* |Every time Pennie creates or updates a DevOps work item, she posts a short message in chat with a link and summary of the change for transparent collaboration.
 |*User Stories*|
-* **As a delivery lead, I want Pennie to suggest improvements to existing user stories so that backlog quality improves over time.**
-*Description:* Pennie reviews story titles, descriptions, and acceptance criteria and proposes improvements in chat and/or DevOps.
-*Acceptance Criteria:*
-- SCENARIO: A poorly written user story exists in DevOps
-- GIVEN a story lacks acceptance criteria
-- WHEN Pennie reviews it as part of backlog grooming
-- THEN she creates a new linked item suggesting improvements, and optionally posts a comment or chat message summarizing them
+* *As a meeting participant, I want to see links to items Pennie creates or edits so that I can review and correct in real time.*
+**Acceptance Criteria**::
++
+----
+SCENARIO: Change log visibility
+GIVEN Pennie creates or updates a work item
+WHEN the action completes
+THEN a chat message is posted containing action, title, and link
+AND the message includes a one-sentence summary of what changed
+----
+|===
+
+
+=== FEATURE: Revise and Improve Existing Backlog Items
+[cols="1,3a"]
+|===
+|*ID*          |FEAT-004
+|*Title*       |Pennie improves and restructures backlog items
+|*Description* |Pennie can review existing items to suggest clearer titles, add missing descriptions or acceptance criteria, reclassify items, and add linked questions where detail is insufficient.
+|*User Stories*|
+* *As a delivery lead, I want Pennie to suggest improvements to existing user stories so that backlog quality improves over time.*
+**Acceptance Criteria**::
++
+----
+SCENARIO: A poorly written user story exists in DevOps
+GIVEN a story lacks acceptance criteria and has an unclear title
+WHEN Pennie reviews the story during grooming
+THEN Pennie proposes improved title and adds suggested acceptance criteria
+AND posts a chat summary with a link to the updated item
+----
+|===
+
+
+=== FEATURE: Azure DevOps CRUD & Hierarchy Linking
+[cols="1,3a"]
+|===
+|*ID*          |FEAT-005
+|*Title*       |Create, read, update, and link DevOps work items with correct hierarchy
+|*Description* |Pennie performs CRUD operations for Epics, Features, User Stories, and Questions; maintains parent/child links; preserves IDs and URLs for posting back to chat.
+|*User Stories*|
+* *As a product owner, I want new requirements linked correctly so that the backlog retains accurate hierarchy and traceability.*
+**Acceptance Criteria**::
++
+----
+SCENARIO: Creating a new user story under a feature
+GIVEN an existing Feature is referenced
+WHEN Pennie creates a new User Story
+THEN the story is linked as a child of the Feature
+AND the story URL is posted to chat
+----
+|===
+
+
+=== FEATURE: Compliance and Tenant-Scoped Operation
+[cols="1,3a"]
+|===
+|*ID*          |FEAT-006
+|*Title*       |Keep all processing within the organization’s Azure tenant
+|*Description* |Pennie runs on Azure AI Foundry with Azure-hosted models; integration uses Functions/Logic Apps; no third-party AI services are called.
+|*User Stories*|
+* *As a security lead, I want Pennie to operate entirely within our tenant so that sensitive data never leaves our control boundary.*
+**Acceptance Criteria**::
++
+----
+SCENARIO: Data residency and egress control
+GIVEN Pennie processes meeting context and backlog data
+WHEN invoking any tools or models
+THEN only Azure tenant resources are used (no external endpoints)
+AND secrets/credentials are managed via Key Vault / GitHub Encrypted Secrets
+----
 |===
