@@ -1,1 +1,83 @@
+= Requirements: Pennie the Prepper
 
+== EPIC: Conversational DevOps Assistant for Teams
+
+[cols="1,3"]
+|===
+|*Title* |Teams-based AI assistant to capture backlog items
+|*ID* |EPIC-001
+|*Mission* |Support effective backlog preparation during meetings by listening, prompting for clarification, and creating/updating DevOps entries.
+|*Who* |Product Owners, BAs, Delivery Leads
+|*Why* |To automate the conversion of verbal meeting input into structured DevOps requirements.
+|*Scope* |Within Teams meetings where business needs are discussed.
+|*Outcome* |A high-quality, well-structured backlog generated and refined in real-time.
+|*Value* |Reduced manual documentation, increased backlog accuracy, improved time-to-delivery.
+|*Impact* |Teams spend less time transcribing meetings and more time refining and delivering value.
+|*Investment* |Setup and configure Pennie in a Teams-integrated Azure AI Foundry workspace.
+|===
+
+=== FEATURE: Capture Epics, Features, User Stories from Meetings
+[feature]
+[cols="1,3"]
+|===
+|*ID* |FEAT-001
+|*Title* |Extract backlog items in real time from meeting transcripts
+|*Description* |During a live Teams meeting, Pennie listens to the discussion and generates DevOps entries in structured format.
+|*Notes* |Items are created in Epic > Feature > User Story hierarchy using metadata format from T-Minus-15.
+|*User Stories*|+
+* *As a product owner, I want to capture high-level goals as epics so that they can be tracked across features.*
+** Description: High-level goals expressed verbally in a Teams meeting should be captured and represented as Epics in DevOps.
+** Acceptance Criteria:
+*** SCENARIO: Capturing a goal during project kickoff
+**** GIVEN a Teams meeting is in progress
+**** WHEN a participant discusses high-level project goals
+**** THEN Pennie identifies and creates a new Epic in DevOps with appropriate title and description
+
+
+* *As a business analyst, I want to generate user stories from spoken discussion so that I can refine them later.*
+** Description: Spoken statements about functionality should result in user stories that follow the Given/When/Then format.
+** Acceptance Criteria:
+*** SCENARIO: Detailing requirements mid-meeting
+**** GIVEN that users are describing steps in a workflow
+**** WHEN Pennie identifies discrete actions or needs
+**** THEN she creates corresponding User Stories with full acceptance criteria
+|===
+
+=== FEATURE: Ask Clarifying Questions in Chat
+[feature]
+[cols="1,3"]
+|===
+|*ID* |FEAT-002
+|*Title* |Ask structured questions in Teams chat when data is missing
+|*Description* |When data is ambiguous or missing, Pennie should post a clarification question in chat and create a `Question` work item in DevOps.
+|*Notes* |Question items are tagged and linked to the original story or feature.
+|*User Stories*|
+* **As a virtual business analyst, I want to prompt users for missing context so that backlog items are complete and actionable.**
+*Description:* If Pennie detects ambiguity, she should post a chat message and log the question in DevOps.
+*Acceptance Criteria:*
+- SCENARIO: A vague requirement is discussed
+- GIVEN that a vague user need is expressed (e.g., "it needs to be faster")
+- WHEN Pennie detects ambiguity
+- THEN she posts a clarifying question in Teams chat and records it as a `Question` in DevOps
+|===
+
+=== FEATURE: Revise and Improve Existing Work Items
+[feature]
+[cols="1,3"]
+|===
+|*ID* |FEAT-003
+|*Title* |Pennie improves and restructures backlog items
+|*Description* |In addition to creating new items, Pennie can review existing DevOps work items to:
+- Suggest more precise names
+- Add missing acceptance criteria
+- Reclassify items (e.g., convert tasks to stories)
+- Add clarifying questions where detail is insufficient
+|*User Stories*|
+* **As a delivery lead, I want Pennie to suggest improvements to existing user stories so that backlog quality improves over time.**
+*Description:* Pennie reviews story titles, descriptions, and acceptance criteria and proposes improvements in chat and/or DevOps.
+*Acceptance Criteria:*
+- SCENARIO: A poorly written user story exists in DevOps
+- GIVEN a story lacks acceptance criteria
+- WHEN Pennie reviews it as part of backlog grooming
+- THEN she creates a new linked item suggesting improvements, and optionally posts a comment or chat message summarizing them
+|===
