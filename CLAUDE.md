@@ -87,7 +87,7 @@ Pennie uses Microsoft's official Azure DevOps MCP Server for work item operation
 ### Target Environment (KnowAll Ltd - Internal Deployment)
 - **Resource Group**: `TMinus15Agents` (existing in KnowAll Ltd tenant)
 - **Location**: `uksouth` (single-region deployment for UK data residency)
-- **Subscription**: Pay-As-You-Go (SUBSCRIPTION_ID_REDACTED)
+- **Subscription**: See `.env` file (not committed to Git)
 - **AI Hub**: `knowall-ai-foundry` (existing, UK South)
 - **AI Project**: `T-Minus-15 Agents` (existing)
 - **OpenAI Model**: GPT-4o (2024-08-06) - verified available in UK South
