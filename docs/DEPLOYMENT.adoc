@@ -319,10 +319,12 @@ feature/ABC-123 (DEV)
 === Local Development Tools
 
 * Azure CLI (`az` command) - version 2.50+
-* Node.js 20+ (for MCP server)
+* `jq` - JSON processor (for deploy-agent.sh script)
+* `curl` - HTTP client (usually pre-installed)
+* Node.js 20+ (for MCP server, VM deployment only)
 * .NET 8.0 SDK (for Teams Bot development)
-* Visual Studio 2022 or VS Code with C# extension
-* Python 3.10+ (for testing scripts)
+* Visual Studio 2022 or VS Code with C# extension (optional, for bot development)
+* Python 3.10+ (for testing scripts, optional)
 * Git
 * PowerShell 7+ (for Windows VM management)
 
@@ -557,35 +559,101 @@ nssm start PennieMCP
 
 === 6. Deploy AI Foundry Agent
 
-**Using Azure AI Foundry Portal**:
+**Option A: Automated Deployment Script** (Recommended)
+
+Deploy Pennie agent using the Azure AI Foundry Assistants API:
+
+```bash
+# Ensure Azure CLI is logged in
+az login
+az account set --subscription $AZURE_SUBSCRIPTION_ID
+
+# Run deployment script
+./scripts/deploy-agent.sh
+```
+
+**What the script does**:
+1. Loads configuration from `.env` and `agent-config.json`
+2. Retrieves Azure AI Foundry endpoint and access token
+3. Creates agent using Assistants API with:
+   - GPT-4o model with JSON schema strict mode
+   - System instructions from `agent-config.json`
+   - Function calling tools for Azure DevOps (wit_create_work_item, wit_add_child_work_items)
+4. Tests agent with sample transcript
+5. Saves Assistant ID to `.env` as `AZURE_AI_ASSISTANT_ID`
+
+**Expected output**:
+```
+🚀 Deploying Pennie the Prepper to Azure AI Foundry
+✅ Agent: Pennie the Prepper v1.0.0
+✅ Model: gpt-4o
+✅ Agent deployed successfully!
+   Assistant ID: asst_abc123xyz
+✅ Assistant ID saved to .env
+🧪 Testing agent with sample message...
+✅ Test thread created: thread_def456uvw
+✅ Test run started: run_ghi789rst
+✨ Deployment complete!
+```
+
+**Option B: Azure AI Foundry Portal** (Manual)
 
 1. Navigate to Azure Portal → AI Foundry → Your Hub → Projects
 2. Create project: "T-Minus-15 Agents" (or use existing)
-3. Deploy agent from configuration:
-   - Upload `agent-config.json`
-   - Configure MCP connection:
-     * Protocol: `stdio` over HTTPS
-     * Endpoint: `https://<VM-IP>:8080/mcp` (or internal endpoint if in VNet)
-     * Authentication: Managed Identity or API key
-4. Deploy model:
-   - Model: `gpt-4o`
-   - Version: `2024-08-06`
-   - Deployment name: `gpt-4o`
-5. Test agent:
+3. Go to **Assistants** → **Create Assistant**
+4. Configure agent:
+   - **Name**: Pennie the Prepper
+   - **Model**: gpt-4o (deployment: gpt-4o)
+   - **Instructions**: Copy from `agent-config.json` → `instructions` field
+   - **Temperature**: 0.2
+   - **Top P**: 0.95
+   - **Max Tokens**: 4096
+   - **Response Format**: JSON Schema Strict (copy from agent-config.json)
+5. Add **Functions**:
+   - `wit_create_work_item` - Create Azure DevOps work items
+   - `wit_add_child_work_items` - Link parent-child work items
+   - Copy function schemas from `agent-config.json` → `tools` array
+6. **Deploy** and save Assistant ID
+7. Test agent:
    - Use AI Foundry Playground
-   - Send sample transcript
-   - Verify agent responds correctly
+   - Send sample transcript: "We need to add dark mode feature"
+   - Verify agent responds with structured work items JSON
 
-**Using Azure CLI** (alternative):
+**Option C: Direct REST API Call**
+
+For advanced users or CI/CD integration:
 
 ```bash
-# Deploy agent via CLI (requires AI Foundry SDK)
-az ml online-deployment create \
-  --name pennie-v1 \
-  --endpoint pennie \
-  --file agent-config.json \
-  --resource-group TMinus15Agents \
-  --workspace-name knowall-ai-foundry
+# Get access token
+ACCESS_TOKEN=$(az account get-access-token \
+  --resource https://cognitiveservices.azure.com \
+  --query accessToken --output tsv)
+
+# Get AI Foundry endpoint (or use Azure OpenAI endpoint)
+AI_ENDPOINT=$(az cognitiveservices account show \
+  --resource-group $AZURE_RESOURCE_GROUP \
+  --name $AZURE_AI_HUB_NAME \
+  --query properties.endpoint --output tsv)
+
+# Create assistant
+curl -X POST "$AI_ENDPOINT/openai/assistants?api-version=2024-12-01-preview" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @/tmp/pennie-agent-payload.json
+
+# Response contains assistant_id - save to .env
+```
+
+**Verifying Deployment**:
+
+```bash
+# Check assistant exists
+az cognitiveservices account show \
+  --resource-group $AZURE_RESOURCE_GROUP \
+  --name $AZURE_AI_HUB_NAME
+
+# Test with sample message (requires assistant_id from deployment)
+python3 scripts/test-agent.py --assistant-id $AZURE_AI_ASSISTANT_ID
 ```
 
 === 7. Configure Monitoring
