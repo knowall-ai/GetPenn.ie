@@ -1,0 +1,1034 @@
+= Deployment Guide: Pennie the Prepper
+
+== Overview
+
+This document provides comprehensive deployment instructions for Pennie the Prepper, including environment setup, deployment automation, and operational procedures for DEV / TEST / PROD lifecycle management.
+
+== Architecture Summary
+
+Pennie deploys as a single-region solution with the following components:
+
+* **Windows Server VM**: Hosts Teams Media Bot (C#) + Azure DevOps MCP Server (Node.js)
+* **Azure AI Foundry**: Hosts Pennie agent with GPT-4o model
+* **Azure Speech Services**: Real-time transcription with speaker diarization
+* **Azure DevOps**: Work item management (Epics, Features, Stories, Questions)
+* **Application Insights**: Monitoring and diagnostics
+* **Azure Storage**: Logs and operational data
+* **Key Vault**: Secrets management
+
+**Deployment Target**: All components in single Azure region (e.g., UK South for data residency)
+
+== Environment Strategy
+
+=== Overview
+
+Pennie supports three deployment environments aligned with software development lifecycle best practices:
+
+|===
+|Environment |Purpose |Azure Resources |Teams Integration |DevOps Project
+
+|**DEV** |Development and feature testing |Shared Dev subscription or resource group |Test Teams tenant or isolated test meetings |DevOps **Test** project
+|**TEST/Staging** |Pre-production validation and UAT |Staging resource group in production subscription |Test Teams tenant or isolated test meetings |DevOps **Staging** project
+|**PROD** |Live production usage |Production resource group (`TMinus15Agents`) |Production Teams tenant (KnowAll AI) |DevOps **Production** project
+|===
+
+=== DEV Environment
+
+**Purpose**: Rapid development iteration and unit/component testing
+
+**Deployment**:
+* Lightweight deployment (can use local Bot Framework Emulator instead of full VM)
+* Shared Azure subscription with resource group per developer (optional)
+* Mock Teams meetings using Bot Framework Emulator
+* Real Azure Speech Services (dev instance) for transcription testing
+* Real Azure DevOps Test project for work item validation
+
+**Configuration**:
+* `.env.dev` - Development-specific environment variables
+* `agent-config.dev.json` - Lower cost model (GPT-4o-mini for testing)
+* Logging: `DEBUG` level for verbose output
+
+**Access**:
+* Developer workstations (local development)
+* No public internet access required (uses emulator)
+
+**Cost**: Minimal (~$10-30/month) - primarily Speech Services usage
+
+**Testing Approach**:
+* Unit tests with mocked dependencies
+* Component tests with real Speech/DevOps APIs
+* Simulated Teams meetings (Bot Framework Emulator)
+* No live meeting testing in DEV
+
+=== TEST Environment (Staging)
+
+**Purpose**: Pre-production validation, integration testing, UAT
+
+**Deployment**:
+* Full infrastructure deployed via Bicep (identical to PROD)
+* Separate Windows VM in staging resource group
+* Isolated Azure AI Foundry project for staging
+* Real Azure Speech Services (staging instance)
+* Azure DevOps **Staging** project (separate from production)
+
+**Configuration**:
+* `.env.test` - Test-specific environment variables
+* `agent-config.test.json` - Same model as PROD (GPT-4o)
+* Logging: `INFO` level
+
+**Access**:
+* Test Teams tenant (if available) or production tenant with test meetings
+* QA team has access
+* Developers can deploy to TEST for validation
+
+**Cost**: Moderate (~$100-250/month) - full infrastructure but lower usage
+
+**Testing Approach**:
+* Full integration test suite
+* End-to-end live meeting tests with test participants
+* User acceptance testing (UAT) with stakeholders
+* Performance and load testing
+
+**Promotion Gate**:
+* All integration tests passing
+* UAT sign-off from product owner
+* No critical bugs outstanding
+* Security review completed
+
+=== PROD Environment
+
+**Purpose**: Live production usage for KnowAll AI internal meetings
+
+**Deployment**:
+* Full infrastructure deployed via Bicep (production-grade)
+* Production Windows VM in `TMinus15Agents` resource group
+* Azure AI Foundry Hub: `knowall-ai-foundry` (existing)
+* Azure Speech Services (production instance)
+* Azure DevOps **Production** project
+
+**Configuration**:
+* `.env.prod` (stored in Azure Key Vault, not Git)
+* `agent-config.json` - Production model (GPT-4o)
+* Logging: `INFO` level (WARNING for sensitive components)
+
+**Access**:
+* Production Teams tenant (KnowAll AI)
+* Real client and internal meetings
+* Restricted access (only deployment pipeline can deploy)
+* Operations team has read-only access for monitoring
+
+**Cost**: Full (~$110-270/month) based on meeting frequency
+
+**Monitoring**:
+* Application Insights with alerting
+* Daily log review for errors
+* Weekly work item quality metrics review
+
+**Disaster Recovery**:
+* Daily automated backups of agent configuration
+* Infrastructure as Code (Bicep) for rapid rebuild
+* Work items stored in Azure DevOps (Microsoft-managed backup)
+
+== Deployment Lifecycle
+
+=== Branching Strategy
+
+[source]
+----
+main (PROD)
+  ↑
+  merge via PR
+  |
+develop (TEST)
+  ↑
+  merge via PR
+  |
+feature/ABC-123 (DEV)
+----
+
+**Branches**:
+* `main` - Production-ready code, deploys to PROD
+* `develop` - Integration branch, deploys to TEST
+* `feature/*` - Feature branches for development (local DEV testing)
+
+**Pull Request Requirements**:
+* All unit tests passing
+* Code review from 1+ team member
+* No linting errors
+* Coverage ≥80% for new code
+
+=== Deployment Pipeline
+
+==== Local DEV Deployment
+
+**Trigger**: Manual, developer workstation
+
+**Steps**:
+1. Developer writes code on `feature/ABC-123` branch
+2. Run unit tests locally: `pytest tests/unit/`
+3. Run component tests: `pytest tests/component/`
+4. Test with Bot Framework Emulator (simulated meetings)
+5. Validate work items created in DevOps Test project
+6. Commit and push to feature branch
+
+**No automated deployment to cloud for DEV**
+
+==== TEST Environment Deployment
+
+**Trigger**: Push to `develop` branch or manual dispatch
+
+**Workflow**: `.github/workflows/deploy-test.yml`
+
+**Steps**:
+
+1. **Pre-Deployment Validation**
+   - Checkout `develop` branch
+   - Run unit tests (`pytest tests/unit/`)
+   - Run component tests (`pytest tests/component/`)
+   - Fail deployment if tests fail
+
+2. **Infrastructure Deployment**
+   - Azure login (Service Principal for TEST)
+   - Deploy Bicep templates to TEST resource group
+   ```bash
+   az deployment sub create \
+     --location uksouth \
+     --template-file infra/main.bicep \
+     --parameters @infra/main.parameters.test.json
+   ```
+   - Provision: VM, AI Foundry, Speech Services, Storage, Key Vault
+
+3. **Application Deployment**
+   - **Windows VM Setup**:
+     - Install Node.js 20+ (for MCP server)
+     - Install Azure DevOps MCP Server: `npm install -g @azure-devops/mcp`
+     - Deploy Teams Media Bot (C# application)
+     - Configure MCP server with TEST DevOps credentials
+   - **AI Foundry Agent**:
+     - Deploy agent from `agent-config.test.json`
+     - Configure MCP connection to Windows VM
+     - Validate agent can reach MCP server
+
+4. **Post-Deployment Validation**
+   - Run smoke tests (`tests/smoke/`)
+   - Bot health check endpoint
+   - MCP server connectivity test
+   - Sample transcript processing test
+   - Notify team on Slack/Teams if deployment succeeds
+
+5. **Integration Testing**
+   - Automatically run integration test suite
+   - Create test work items in DevOps Staging project
+   - Cleanup test data after run
+
+**Deployment Duration**: 15-25 minutes
+
+**Rollback**: Redeploy previous successful commit from `develop`
+
+==== PROD Environment Deployment
+
+**Trigger**: Push to `main` branch (after PR merge from `develop`)
+
+**Approval Gate**: Manual approval required before deployment
+
+**Workflow**: `.github/workflows/deploy-prod.yml`
+
+**Steps**:
+
+1. **Pre-Deployment Checks**
+   - All tests passing on `develop`
+   - UAT sign-off present (GitHub issue linked)
+   - Security review completed (checklist in PR)
+   - Change notification sent to team (24 hours advance notice)
+
+2. **Manual Approval**
+   - GitHub Actions pauses for approval
+   - Product owner or tech lead approves deployment
+   - Deployment window: Working hours only (Mon-Fri 9am-5pm UK)
+
+3. **Infrastructure Deployment**
+   - Azure login (Service Principal for PROD)
+   - Deploy Bicep templates to PROD resource group
+   ```bash
+   az deployment sub create \
+     --location uksouth \
+     --template-file infra/main.bicep \
+     --parameters @infra/main.parameters.prod.json
+   ```
+   - Updates existing resources (no downtime for infrastructure)
+
+4. **Application Deployment**
+   - **Blue-Green Deployment** (if VM already exists):
+     - Deploy to new VM (green)
+     - Run smoke tests on green VM
+     - Switch DNS/routing to green VM
+     - Keep blue VM for rollback (24 hours)
+   - **First Deployment**:
+     - Deploy to single VM
+     - Configure all services
+     - Run smoke tests
+
+5. **Post-Deployment Validation**
+   - Run production smoke tests
+   - Verify bot can join test Teams meeting
+   - Check Application Insights for errors
+   - Monitor for 1 hour post-deployment
+
+6. **Communication**
+   - Notify team that deployment is complete
+   - Post release notes in Slack/Teams
+   - Update status page (if applicable)
+
+**Deployment Duration**: 25-35 minutes (including approval wait time)
+
+**Rollback Plan**:
+* If smoke tests fail: Automatically rollback to previous version
+* If issues found post-deployment: Manual rollback by redeploying previous commit
+* Rollback time: <10 minutes
+
+== Prerequisites
+
+=== Azure Resources
+
+**Required**:
+* Active Azure subscription (you control the tenant)
+* Resource group for deployment (e.g., `TMinus15Agents`)
+* Appropriate region selected (e.g., `uksouth` for UK data residency)
+
+**Optional (can be created by deployment)**:
+* Azure AI Foundry Hub
+* Azure Speech Services resource
+* Windows Server VM
+* Storage Account
+* Application Insights
+* Key Vault
+
+=== Permissions Required
+
+**Azure Subscription**:
+* `Contributor` role - Deploy infrastructure resources
+* `User Access Administrator` role - Assign managed identities
+
+**Microsoft Entra ID (Azure AD)**:
+* `Global Administrator` OR `Privileged Role Administrator` - Grant admin consent for Graph API permissions
+
+**Azure DevOps**:
+* `Project Contributor` access - MCP server needs to create work items
+* Ability to create Personal Access Token (PAT) with Work Items Read/Write scope
+
+=== Local Development Tools
+
+* Azure CLI (`az` command) - version 2.50+
+* Node.js 20+ (for MCP server)
+* .NET 8.0 SDK (for Teams Bot development)
+* Visual Studio 2022 or VS Code with C# extension
+* Python 3.10+ (for testing scripts)
+* Git
+* PowerShell 7+ (for Windows VM management)
+
+=== GitHub Configuration
+
+**Required Secrets** (for CI/CD):
+* `AZURE_CREDENTIALS` - Service principal JSON (for `az login`)
+* `AZURE_SUBSCRIPTION_ID` - Subscription ID
+* `AZURE_TENANT_ID` - Tenant ID
+* `AZURE_DEVOPS_PAT` - Personal access token for DevOps
+* `TEAMS_APP_ID` - Teams bot app ID (after app registration)
+* `TEAMS_APP_PASSWORD` - Teams bot app password
+
+**Optional Secrets**:
+* `SLACK_WEBHOOK_URL` - For deployment notifications
+* `EMAIL_RECIPIENTS` - For alert notifications
+
+== Step-by-Step Deployment
+
+=== 1. Clone Repository
+
+```bash
+git clone https://github.com/benweeks/GetPenn.ie.git
+cd GetPenn.ie
+```
+
+=== 2. Configure Environment
+
+```bash
+# Copy example environment file
+cp .env.example .env
+
+# Edit .env with your Azure details
+nano .env
+```
+
+**Required values**:
+* `AZURE_SUBSCRIPTION_ID` - Your subscription ID
+* `AZURE_TENANT_ID` - Your tenant ID
+* `AZURE_RESOURCE_GROUP` - Resource group name (e.g., `TMinus15Agents`)
+* `AZURE_LOCATION` - Region (e.g., `uksouth`, `eastus2`)
+* `AZURE_AI_HUB_NAME` - AI Foundry hub name (will be created if doesn't exist)
+* `AZURE_AI_PROJECT_NAME` - AI Foundry project name
+* `AZURE_DEVOPS_ORG` - Your DevOps organization name
+* `AZURE_DEVOPS_PROJECT` - Your DevOps project name
+
+=== 3. Create Azure AD App Registration (One-Time Setup)
+
+**Purpose**: Teams bot requires an app registration for authentication
+
+**Steps**:
+
+1. **Create App Registration**:
+   ```bash
+   az ad app create \
+     --display-name "Pennie the Prepper Bot" \
+     --sign-in-audience AzureADMyOrg
+   ```
+
+2. **Save App ID**:
+   ```bash
+   export TEAMS_APP_ID=$(az ad app list --display-name "Pennie the Prepper Bot" --query "[0].appId" -o tsv)
+   echo $TEAMS_APP_ID
+   ```
+
+3. **Create Client Secret**:
+   ```bash
+   az ad app credential reset --id $TEAMS_APP_ID --append
+   ```
+   - Save the `password` output as `TEAMS_APP_PASSWORD`
+
+4. **Configure API Permissions**:
+   - Navigate to Azure Portal → Entra ID → App Registrations → Pennie the Prepper Bot
+   - API Permissions → Add a permission → Microsoft Graph → Application permissions
+   - Add the following permissions:
+     * `Calls.AccessMedia.All` - Access media streams in calls
+     * `Calls.JoinGroupCall.All` - Join group calls and meetings
+     * `OnlineMeetings.ReadWrite.All` - Read and create online meetings
+
+5. **Grant Admin Consent**:
+   - Click "Grant admin consent for [Your Organization]"
+   - Confirm consent
+   - **Important**: This requires Global Administrator or Privileged Role Administrator role
+
+6. **Update `.env` file**:
+   ```bash
+   echo "TEAMS_APP_ID=$TEAMS_APP_ID" >> .env
+   echo "TEAMS_APP_PASSWORD=<password-from-step-3>" >> .env
+   ```
+
+=== 4. Deploy Infrastructure
+
+**Option A: GitHub Actions (Recommended)**
+
+1. **Configure GitHub Secrets**:
+   - Go to GitHub repository → Settings → Secrets and variables → Actions
+   - Add secrets: `AZURE_CREDENTIALS`, `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, etc.
+
+2. **Trigger Deployment**:
+   - Push to `develop` branch (deploys to TEST)
+   - Push to `main` branch (deploys to PROD with approval gate)
+   - Or manually trigger: Actions → Deploy → Run workflow
+
+**Option B: Manual Deployment**
+
+1. **Login to Azure**:
+   ```bash
+   az login
+   az account set --subscription $AZURE_SUBSCRIPTION_ID
+   ```
+
+2. **Deploy Bicep Infrastructure**:
+   ```bash
+   # Deploy to TEST
+   az deployment sub create \
+     --location uksouth \
+     --template-file infra/main.bicep \
+     --parameters @infra/main.parameters.test.json
+
+   # Deploy to PROD
+   az deployment sub create \
+     --location uksouth \
+     --template-file infra/main.bicep \
+     --parameters @infra/main.parameters.prod.json
+   ```
+
+3. **Capture Outputs**:
+   ```bash
+   az deployment sub show \
+     --name main \
+     --query properties.outputs
+   ```
+   - Save VM public IP, Key Vault name, AI Foundry endpoint
+
+=== 5. Configure Windows VM
+
+**Connect to VM**:
+```powershell
+# From local Windows machine or Azure Bastion
+mstsc /v:<VM-PUBLIC-IP>
+```
+
+**Install Dependencies**:
+```powershell
+# Install Chocolatey (package manager)
+Set-ExecutionPolicy Bypass -Scope Process -Force
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+# Install Node.js 20+
+choco install nodejs-lts -y
+
+# Verify installation
+node --version
+npm --version
+
+# Install Azure DevOps MCP Server globally
+npm install -g @azure-devops/mcp
+
+# Verify MCP installation
+npx @azure-devops/mcp --version
+```
+
+**Deploy Teams Media Bot**:
+```powershell
+# Create deployment directory
+mkdir C:\Pennie
+cd C:\Pennie
+
+# Download bot application (from GitHub release or build artifacts)
+# Example: Using Azure DevOps pipeline artifact
+az artifacts universal download \
+  --organization https://dev.azure.com/KnowAllAI \
+  --feed PennieFeed \
+  --name PennieBot \
+  --version 1.0.0 \
+  --path .
+
+# Install as Windows Service (using NSSM or sc.exe)
+nssm install PennieBot "C:\Pennie\PennieBot.exe"
+nssm set PennieBot AppDirectory "C:\Pennie"
+nssm set PennieBot DisplayName "Pennie the Prepper - Teams Bot"
+nssm set PennieBot Start SERVICE_AUTO_START
+
+# Start service
+nssm start PennieBot
+
+# Check status
+nssm status PennieBot
+```
+
+**Configure MCP Server**:
+```powershell
+# Create MCP configuration directory
+mkdir C:\Pennie\mcp
+cd C:\Pennie\mcp
+
+# Copy MCP configuration from repository
+# (mcp/mcp-config.json)
+
+# Set environment variables
+[System.Environment]::SetEnvironmentVariable("AZURE_DEVOPS_ORG", "YourOrg", "Machine")
+[System.Environment]::SetEnvironmentVariable("AZURE_DEVOPS_PROJECT", "YourProject", "Machine")
+
+# Authenticate MCP server (first time only)
+npx @azure-devops/mcp YourOrg
+# This will open browser for OAuth authentication
+# Login with account that has DevOps access
+
+# Test MCP server
+npx @azure-devops/mcp YourOrg --test
+```
+
+**Install MCP Server as Windows Service**:
+```powershell
+# Create startup script
+@"
+@echo off
+cd C:\Pennie\mcp
+npx @azure-devops/mcp %AZURE_DEVOPS_ORG%
+"@ | Out-File -FilePath C:\Pennie\mcp\start-mcp.cmd -Encoding ASCII
+
+# Install as service
+nssm install PennieMCP "C:\Pennie\mcp\start-mcp.cmd"
+nssm set PennieMCP AppDirectory "C:\Pennie\mcp"
+nssm set PennieMCP DisplayName "Pennie MCP Server"
+nssm set PennieMCP Start SERVICE_AUTO_START
+
+# Start service
+nssm start PennieMCP
+```
+
+=== 6. Deploy AI Foundry Agent
+
+**Using Azure AI Foundry Portal**:
+
+1. Navigate to Azure Portal → AI Foundry → Your Hub → Projects
+2. Create project: "T-Minus-15 Agents" (or use existing)
+3. Deploy agent from configuration:
+   - Upload `agent-config.json`
+   - Configure MCP connection:
+     * Protocol: `stdio` over HTTPS
+     * Endpoint: `https://<VM-IP>:8080/mcp` (or internal endpoint if in VNet)
+     * Authentication: Managed Identity or API key
+4. Deploy model:
+   - Model: `gpt-4o`
+   - Version: `2024-08-06`
+   - Deployment name: `gpt-4o`
+5. Test agent:
+   - Use AI Foundry Playground
+   - Send sample transcript
+   - Verify agent responds correctly
+
+**Using Azure CLI** (alternative):
+
+```bash
+# Deploy agent via CLI (requires AI Foundry SDK)
+az ml online-deployment create \
+  --name pennie-v1 \
+  --endpoint pennie \
+  --file agent-config.json \
+  --resource-group TMinus15Agents \
+  --workspace-name knowall-ai-foundry
+```
+
+=== 7. Configure Monitoring
+
+**Application Insights**:
+
+1. Navigate to Azure Portal → Application Insights → Your Instance
+2. Configure alerts:
+   - Bot service health check failure
+   - High error rate (>5% of requests)
+   - MCP server connection failures
+   - Work item creation failures
+3. Create dashboard:
+   - Bot uptime
+   - Meetings attended
+   - Work items created (by type)
+   - Average latency
+
+**Log Analytics**:
+
+```kusto
+// Sample query: Work items created in last 24 hours
+traces
+| where timestamp > ago(24h)
+| where message contains "Created work item"
+| summarize count() by tostring(customDimensions.WorkItemType)
+```
+
+=== 8. Register Bot in Teams
+
+1. **Create Bot Channel Registration** (Azure Portal):
+   - Resource: Bot Channels Registration
+   - Bot handle: `pennie-the-prepper`
+   - App ID: `$TEAMS_APP_ID` (from step 3)
+   - Messaging endpoint: `https://<VM-PUBLIC-IP>/api/messages`
+
+2. **Configure Teams Channel**:
+   - Bot Channels Registration → Channels → Microsoft Teams
+   - Enable calling: Yes
+   - Enable video: No (optional for avatar)
+   - Enable screen sharing: No
+
+3. **Create Teams App Manifest**:
+   ```json
+   {
+     "manifestVersion": "1.16",
+     "version": "1.0.0",
+     "id": "$TEAMS_APP_ID",
+     "packageName": "com.knowallai.pennie",
+     "developer": {
+       "name": "KnowAll AI",
+       "websiteUrl": "https://www.knowall.ai",
+       "privacyUrl": "https://www.knowall.ai/privacy",
+       "termsOfUseUrl": "https://www.knowall.ai/terms"
+     },
+     "name": {
+       "short": "Pennie",
+       "full": "Pennie the Prepper - AI Business Analyst"
+     },
+     "description": {
+       "short": "AI agent that captures requirements from Teams meetings",
+       "full": "Pennie joins meetings, listens to conversation, and creates structured Azure DevOps backlog items"
+     },
+     "icons": {
+       "outline": "pennie-outline-32x32.png",
+       "color": "pennie-color-192x192.png"
+     },
+     "bots": [
+       {
+         "botId": "$TEAMS_APP_ID",
+         "scopes": ["team", "groupchat"],
+         "supportsFiles": false,
+         "isNotificationOnly": false,
+         "supportsCalling": true,
+         "supportsVideo": false
+       }
+     ],
+     "permissions": ["identity", "messageTeamMembers"],
+     "validDomains": []
+   }
+   ```
+
+4. **Upload to Teams**:
+   - Teams Admin Center → Teams apps → Manage apps → Upload
+   - Upload ZIP file containing manifest.json and icons
+   - Approve app for organization
+
+=== 9. Test Deployment
+
+**Smoke Tests**:
+
+```bash
+# Run automated smoke tests
+pytest tests/smoke/ --env=test
+
+# Sample outputs:
+# ✓ Bot service health check passed
+# ✓ MCP server connectivity verified
+# ✓ Sample transcript processing successful
+# ✓ Test work item created in DevOps
+```
+
+**Manual Test**:
+
+1. Create a Teams meeting
+2. Add Pennie to the meeting (via meeting options)
+3. Join meeting and discuss a sample requirement:
+   - "We need an epic for customer portal with SSO"
+4. Check Teams chat for Pennie's notification
+5. Verify work item created in Azure DevOps with correct:
+   - Type (Epic)
+   - Title
+   - Speaker attribution
+   - Timestamp
+
+== Post-Deployment Operations
+
+=== Monitoring
+
+**Daily**:
+* Check Application Insights dashboard
+* Review error logs for failures
+* Verify bot is running (health check)
+
+**Weekly**:
+* Review work item quality metrics
+* Check meeting attendance count
+* Analyze user feedback
+
+**Monthly**:
+* Cost analysis and optimization
+* Performance tuning (if needed)
+* Capacity planning
+
+=== Maintenance
+
+**Routine**:
+* Windows VM updates (monthly, scheduled maintenance window)
+* MCP server updates: `npm update -g @azure-devops/mcp`
+* Bot application updates (via GitHub Actions deployment)
+* Certificate renewal (if using custom domain)
+
+**Agent Configuration Updates**:
+* Edit `agent-config.json` in repository
+* Commit and push to `develop` → TEST environment
+* After validation, merge to `main` → PROD deployment
+* No VM reboot required (agent reloads automatically)
+
+=== Backup and Recovery
+
+**Automated Backups**:
+* Agent configuration: Stored in Git (version controlled)
+* Infrastructure: Bicep templates in Git (can rebuild)
+* Work items: Azure DevOps managed backup (Microsoft responsibility)
+* Logs: Retained in Application Insights (90 days by default)
+
+**Disaster Recovery Procedure**:
+
+1. **VM Failure**:
+   - Redeploy infrastructure via Bicep: `az deployment sub create ...`
+   - Re-run VM configuration scripts
+   - Restore from latest deployment (typically <30 minutes)
+
+2. **Agent Failure**:
+   - Redeploy agent from `agent-config.json`
+   - No data loss (stateless agent)
+
+3. **MCP Server Failure**:
+   - Restart MCP service: `nssm restart PennieMCP`
+   - If persistent: Re-authenticate and reinstall
+
+4. **Azure DevOps API Issues**:
+   - MCP server automatically retries with exponential backoff
+   - Monitor Application Insights for sustained failures
+   - If needed: Escalate to Microsoft support
+
+== Troubleshooting
+
+=== Bot Doesn't Join Meeting
+
+**Symptoms**: Bot invited to meeting, but doesn't appear
+
+**Diagnosis**:
+```powershell
+# Check bot service status
+nssm status PennieBot
+
+# Check bot logs
+Get-Content C:\Pennie\logs\bot.log -Tail 50
+
+# Check Application Insights
+# Portal → AI → Logs → Query:
+# traces | where message contains "JoinMeeting"
+```
+
+**Common Causes**:
+* Graph API permissions not granted (admin consent required)
+* Bot app ID or password incorrect (check Key Vault)
+* Firewall blocking outbound connections from VM
+* Meeting invite not sent correctly (bot must be explicitly invited)
+
+**Resolution**:
+* Verify Graph API permissions in Azure AD
+* Check `.env` or Key Vault for correct credentials
+* Ensure VM NSG allows outbound HTTPS
+* Re-invite bot to meeting
+
+=== No Transcription / Work Items Created
+
+**Symptoms**: Bot joins meeting, but no work items created
+
+**Diagnosis**:
+```powershell
+# Check Speech Services connection
+curl https://<SPEECH-RESOURCE>.cognitiveservices.azure.com/
+
+# Check MCP server logs
+Get-Content C:\Pennie\mcp\logs\mcp.log -Tail 50
+
+# Check AI Foundry agent logs
+# Portal → AI Foundry → Deployments → Logs
+```
+
+**Common Causes**:
+* Azure Speech Services API key expired or incorrect
+* MCP server not running or unreachable
+* AI Foundry agent not connected to MCP server
+* Audio quality too poor for transcription
+
+**Resolution**:
+* Verify Speech Services key in Key Vault
+* Restart MCP service: `nssm restart PennieMCP`
+* Check MCP endpoint configuration in AI Foundry
+* Test with clearer audio (reduce background noise)
+
+=== Work Items Missing Speaker Attribution
+
+**Symptoms**: Work items created, but speaker name is blank
+
+**Diagnosis**:
+* Check Azure Speech Services diarization settings
+* Review transcript output format
+
+**Common Causes**:
+* Speaker diarization not enabled on Speech Services
+* Meeting participants not identified by name (showing as "Guest 1", "Guest 2")
+* Audio quality too poor for speaker identification
+
+**Resolution**:
+* Verify Speech Services has diarization enabled (`speakerDiarization: true`)
+* Ensure meeting participants join with authenticated accounts (not anonymous)
+* Improve meeting audio quality (use headsets, reduce echo)
+
+=== Duplicate Work Items Created
+
+**Symptoms**: Same requirement mentioned twice, creates two work items
+
+**Diagnosis**:
+* Review agent logs for duplicate detection logic
+* Check if `GetWorkItems` tool is being called before creation
+
+**Common Causes**:
+* Agent not querying existing work items before creating
+* Semantic similarity threshold too low
+* Multiple speakers mention same requirement with different wording
+
+**Resolution**:
+* Update agent instructions to always check existing items
+* Tune semantic similarity matching
+* Add post-meeting deduplication review step (manual or automated)
+
+== Security Considerations
+
+=== Secrets Management
+
+**Do NOT commit to Git**:
+* `.env` file (use `.env.example` as template)
+* Personal Access Tokens (PAT)
+* Service Principal credentials
+* Teams bot app password
+* API keys
+
+**Use Azure Key Vault**:
+* Store all secrets in Key Vault
+* Grant VM Managed Identity access to Key Vault
+* Bot and MCP server read secrets at runtime
+
+**Rotate Secrets**:
+* Teams bot password: Every 90 days
+* Azure DevOps PAT: Every 90 days
+* Service Principal credentials: Every 365 days
+
+=== Network Security
+
+**VM Network Security Group (NSG)**:
+* Inbound: Allow HTTPS (443) from Teams service IPs only
+* Outbound: Allow HTTPS (443) to Azure services
+* Block all other traffic
+
+**VNet Integration** (recommended for production):
+* Deploy VM in Azure VNet with private subnet
+* Use Azure Bastion for secure VM access (no public RDP)
+* Private Endpoints for Azure services (AI Foundry, Speech, DevOps)
+
+=== Compliance
+
+**GDPR**:
+* Meeting participants must consent to transcription
+* Bot announces presence when joining meeting
+* Transcripts not stored long-term (real-time processing only)
+* Right to deletion: Manually delete work items if requested
+
+**Data Residency**:
+* All components in single region (UK South for UK data residency)
+* No cross-border data transfer
+* Work items stored in Azure DevOps (verify region)
+
+== Cost Optimization
+
+=== Monitoring Costs
+
+**Azure Cost Management**:
+* Tag resources with `Project=Pennie` for cost tracking
+* Review monthly cost reports
+* Set budget alerts (e.g., alert if >$300/month)
+
+**Cost Breakdown by Component**:
+```kusto
+// Sample query in Cost Management
+// Group by resource type, last 30 days
+```
+
+=== Optimization Tips
+
+1. **VM Right-Sizing**:
+   - Start with D2s_v3 (2 vCPU, 8GB RAM)
+   - Monitor CPU/memory usage in first month
+   - Downsize to B2s if utilization <30%
+   - Estimated savings: $20-30/month
+
+2. **GPT-4o vs GPT-4 Turbo**:
+   - GPT-4o is 50-70% cheaper
+   - Already configured in `agent-config.json`
+
+3. **Speech Services Optimization**:
+   - Only enable diarization when needed (adds cost)
+   - Use batch transcription for non-real-time scenarios
+   - Estimated: $1/hour for real-time diarization
+
+4. **Application Insights Log Retention**:
+   - Default: 90 days retention
+   - Reduce to 30 days if not needed
+   - Estimated savings: $5-10/month
+
+5. **Dev/Test Subscription Pricing**:
+   - Use Azure Dev/Test subscription for TEST environment
+   - Savings: 40-60% on VM costs
+
+== Rollback Procedures
+
+=== Rollback Triggers
+
+* Smoke tests fail post-deployment
+* Critical bug found in production within 24 hours
+* Work item quality degrades significantly (manual review)
+* Bot cannot join meetings reliably (<90% success rate)
+
+=== Rollback Steps
+
+**Option 1: GitHub Actions Rollback** (Recommended)
+
+```bash
+# Revert commit on main branch
+git revert HEAD
+git push origin main
+
+# This triggers deployment pipeline with previous version
+```
+
+**Option 2: Manual Rollback**
+
+1. **Identify Last Good Commit**:
+   ```bash
+   git log --oneline
+   # Find last successful deployment commit
+   ```
+
+2. **Deploy Previous Version**:
+   ```bash
+   git checkout <last-good-commit>
+   az deployment sub create \
+     --location uksouth \
+     --template-file infra/main.bicep \
+     --parameters @infra/main.parameters.prod.json
+   ```
+
+3. **Verify Rollback**:
+   ```bash
+   pytest tests/smoke/ --env=prod
+   ```
+
+**Option 3: Blue-Green Swap**
+
+If blue-green deployment was used:
+```bash
+# Switch back to blue VM (previous version)
+az vm start --name pennie-vm-blue --resource-group TMinus15Agents
+az network traffic-manager endpoint update \
+  --name pennie-endpoint \
+  --profile-name pennie-traffic \
+  --type azureEndpoints \
+  --target-resource-id /subscriptions/.../pennie-vm-blue
+```
+
+=== Post-Rollback Actions
+
+* Investigate root cause in logs
+* Create incident report
+* Fix issue in `develop` branch
+* Redeploy to TEST for validation
+* Schedule new PROD deployment when ready
+
+== Support and Escalation
+
+=== Internal Support (KnowAll AI)
+
+**Level 1: Self-Service**:
+* Check Application Insights logs
+* Review troubleshooting section in this document
+* Restart services if needed
+
+**Level 2: Development Team**:
+* Email: ben.weeks@outlook.com
+* Slack: #pennie-support channel
+* GitHub Issues: https://github.com/benweeks/GetPenn.ie/issues
+
+**Level 3: Microsoft Support**:
+* Azure Support Portal (for infrastructure issues)
+* Azure DevOps Support (for DevOps API issues)
+* Teams Support (for Graph API issues)
+
+=== External Support (for Open Source Users)
+
+* **Documentation**: https://github.com/benweeks/GetPenn.ie
+* **GitHub Issues**: https://github.com/benweeks/GetPenn.ie/issues
+* **Community**: Discussions tab in GitHub repo

@@ -19,10 +19,10 @@
 FOR delivery teams, business analysts, and product owners
 WHO struggle to capture and maintain high-quality requirements during fast-paced project meetings
 THE Pennie the Prepper for Teams (MVP)
-IS A conversational AI assistant integrated with Microsoft Teams and Azure DevOps
-THAT listens silently to meetings, asks intelligent clarifying questions, and generates structured backlog items in real time using the T-Minus-15 framework
-UNLIKE traditional note-taking or manual backlog entry processes that are inconsistent and error-prone
-OUR SOLUTION automates requirements capture within the organization’s secure Azure tenant, improving clarity, reducing rework, and allowing teams to stay focused on meaningful client conversations while Pennie builds a consistent, high-quality backlog behind the scenes.
+IS A real-time AI agent that joins Microsoft Teams meetings, listens to live conversations with speaker diarization, and generates structured backlog items in Azure DevOps using the T-Minus-15 framework
+THAT uses Graph Communications API for real-time audio access, Azure Speech Services for transcription with speaker attribution, and Azure AI Foundry for intelligent requirement extraction
+UNLIKE traditional note-taking or manual backlog entry processes that are inconsistent and error-prone, or passive transcript review after meetings
+OUR SOLUTION actively listens during meetings, identifies who said what, creates work items tagged with speaker names and timestamps, and posts real-time notifications in Teams chat—all within the organization's secure Azure tenant, improving clarity, reducing rework, and allowing teams to stay focused on meaningful client conversations while Pennie builds a consistent, high-quality backlog behind the scenes.
 |*Business Outcome Hypothesis* |We believe that better documented and detailed requirements will improve design, engineering, and testing, enabling us to leverage AI more effectively and deliver solutions that closely match client expectations.
 |*Leading Indicators* |A leading indicator is that we can invite Pennie to meetings and see her actively capturing requirements and creating backlog items.
 |*Non-Functional Requirements (NFRs)* |All data must reside within the organization’s Azure tenant and be secure, reliable, and easy to use.

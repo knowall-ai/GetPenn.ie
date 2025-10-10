@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "azure-devops": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@azure-devops/mcp",
+        "${AZURE_DEVOPS_ORG}"
+      ],
+      "domains": [
+        "work-items"
+      ],
+      "env": {
+        "AZURE_DEVOPS_ORG": "${AZURE_DEVOPS_ORG}",
+        "AZURE_DEVOPS_PROJECT": "${AZURE_DEVOPS_PROJECT}"
+      }
+    }
+  },
+  "description": "Azure DevOps MCP Server configuration for Pennie the Prepper",
+  "version": "1.0.0"
+}

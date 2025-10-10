@@ -1,0 +1,715 @@
+= Test Strategy: Pennie the Prepper
+
+== Overview
+
+This document defines the comprehensive testing strategy for Pennie the Prepper, ensuring reliability, accuracy, and quality across all components of the real-time Teams meeting AI agent system.
+
+== Test Pyramid
+
+[source]
+----
+                    ┌─────────────────────┐
+                    │  End-to-End Tests   │  (5%)
+                    │  Live Teams Meeting │
+                    └─────────────────────┘
+                  ┌───────────────────────────┐
+                  │  Integration Tests        │  (20%)
+                  │  MCP Server + AI Agent    │
+                  └───────────────────────────┘
+              ┌───────────────────────────────────┐
+              │  Component Tests                  │  (35%)
+              │  Bot, Speech, Agent Logic         │
+              └───────────────────────────────────┘
+          ┌───────────────────────────────────────────┐
+          │  Unit Tests                               │  (40%)
+          │  Individual Functions, Parsing, Validation│
+          └───────────────────────────────────────────┘
+----
+
+== Test Levels
+
+=== 1. Unit Tests (40% of test effort)
+
+**Scope**: Individual components, functions, and modules in isolation
+
+**Target Components**:
+
+* **Agent Logic**
+  - Requirement extraction from transcripts
+  - Epic/Feature/User Story classification logic
+  - Ambiguity detection algorithms
+  - Speaker attribution parsing
+  - Timestamp formatting and validation
+  - Chat message formatting
+  - Batch notification grouping logic (30-second window)
+
+* **Speech Transcription Parsing**
+  - Parse speaker diarization output format
+  - Handle overlapping speakers (clubbed audio)
+  - Timestamp extraction and conversion
+  - Handling of unclear/garbled speech
+
+* **Work Item Creation Logic**
+  - Epic value statement generation
+  - Feature grouping under Epics
+  - User Story Given/When/Then generation
+  - Question work item creation for ambiguities
+  - Parent-child relationship validation
+
+**Testing Framework**: Python `pytest` for agent logic, C# `xUnit` for Bot code
+
+**Example Unit Tests**:
+```python
+def test_extract_epic_from_statement():
+    transcript = "Ben: We need an epic for customer portal with SSO"
+    result = agent.identify_work_item_type(transcript)
+    assert result.type == "Epic"
+    assert "customer portal" in result.title.lower()
+
+def test_detect_ambiguity_missing_acceptance_criteria():
+    transcript = "Sarah: It should be fast"
+    result = agent.detect_ambiguity(transcript)
+    assert result.is_ambiguous == True
+    assert "quantitative" in result.clarification_needed
+
+def test_speaker_attribution_parsing():
+    line = "Speaker: Ben Weeks | Timestamp: 10:23:15 | Text: Create login feature"
+    result = parser.parse_speaker_line(line)
+    assert result.speaker == "Ben Weeks"
+    assert result.timestamp == "10:23:15"
+    assert result.text == "Create login feature"
+```
+
+**Coverage Target**: 80% code coverage for agent logic and parsing functions
+
+=== 2. Component Tests (35% of test effort)
+
+**Scope**: Individual services and components with mocked dependencies
+
+**Target Components**:
+
+* **Teams Media Bot**
+  - Join/leave meeting lifecycle
+  - Audio stream capture (mocked Teams API)
+  - RTP packet handling (50 frames/sec simulation)
+  - Error handling (network failures, disconnections)
+  - Meeting event processing
+
+* **Azure Speech Services Integration**
+  - Audio streaming to MeetingTranscriber
+  - Real-time transcription output handling
+  - Speaker diarization result parsing
+  - Handling of low-quality audio
+  - Reconnection logic
+
+* **AI Foundry Agent**
+  - System prompt compliance
+  - Structured output validation (JSON schema strict)
+  - Temperature consistency (0.1 verification)
+  - Context window management (128K tokens)
+  - Function calling accuracy
+
+* **Azure DevOps MCP Server**
+  - Work item creation (all types: Epic, Feature, Story, Question)
+  - Work item updates
+  - Parent-child relationship creation
+  - Comment addition (speaker attribution)
+  - Query execution (get backlog items)
+
+**Testing Approach**:
+
+* Mock external APIs (Teams Graph API, Speech Services, DevOps REST API)
+* Use recorded sample data (meeting audio, transcripts, DevOps responses)
+* Validate output structure and content
+* Test error conditions and fallback behavior
+
+**Example Component Tests**:
+
+```csharp
+[Fact]
+public async Task Bot_JoinsTeamsMeeting_Successfully()
+{
+    // Arrange
+    var mockTeamsClient = new MockGraphCommunicationsClient();
+    var bot = new MediaBot(mockTeamsClient);
+    var meetingId = "test-meeting-123";
+
+    // Act
+    var result = await bot.JoinMeetingAsync(meetingId);
+
+    // Assert
+    Assert.True(result.Success);
+    Assert.Equal(BotState.Connected, bot.State);
+}
+```
+
+```python
+def test_mcp_server_creates_epic():
+    # Arrange
+    mock_devops_client = MockAzureDevOpsClient()
+    mcp_server = McpServer(mock_devops_client)
+    epic_data = {
+        "title": "Customer Portal",
+        "value_statement": "For delivery teams...",
+        "speaker": "Ben Weeks",
+        "timestamp": "10:23:15"
+    }
+
+    # Act
+    result = mcp_server.create_work_item("Epic", epic_data)
+
+    # Assert
+    assert result.id is not None
+    assert result.type == "Epic"
+    assert result.fields["Speaker"] == "Ben Weeks"
+```
+
+**Coverage Target**: 75% code coverage for component logic
+
+=== 3. Integration Tests (20% of test effort)
+
+**Scope**: Multiple components working together with real dependencies
+
+**Test Scenarios**:
+
+* **Speech-to-Text to AI Agent**
+  - Stream pre-recorded meeting audio to Speech Services
+  - Verify transcript output with speaker diarization
+  - Pass transcript to AI Foundry Agent
+  - Validate agent correctly extracts requirements
+  - No actual Teams meeting required
+
+* **AI Agent to MCP Server**
+  - Feed sample transcripts to AI Foundry Agent
+  - Verify agent calls correct MCP tools
+  - Validate work items created in real Azure DevOps test project
+  - Verify parent-child relationships established correctly
+  - Check speaker attribution and timestamps present
+
+* **End-to-End Workflow (No Live Meeting)**
+  - Simulate transcribed conversation (text file input)
+  - Agent processes line-by-line in real-time simulation
+  - Work items created in DevOps
+  - Chat notifications generated
+  - Post-meeting summary produced
+
+**Test Data**:
+
+* Pre-recorded meeting scenarios (3-5 minute conversations)
+* Scripted requirements discussions covering:
+  - Epic creation statements
+  - Feature discussions under Epics
+  - User Stories with acceptance criteria
+  - Ambiguous requirements needing clarification
+  - Multiple speakers with overlapping dialogue
+
+**Example Scenarios**:
+
+* **Scenario 1: Customer Portal Epic with Features**
+  - Ben: "We need an epic for customer portal"
+  - Sarah: "Should we support OAuth and SAML?"
+  - Expected: Epic #XXX created, Question #YYY created
+
+* **Scenario 2: Ambiguous Performance Requirement**
+  - John: "The login should be fast"
+  - Expected: Question work item created asking for quantitative target
+
+* **Scenario 3: Backlog Grooming Session**
+  - Review existing Story #500
+  - Add missing acceptance criteria
+  - Expected: Story #500 updated with Given/When/Then
+
+**Testing Environment**:
+
+* Azure DevOps test project (separate from production)
+* Dedicated AI Foundry project for testing
+* Pre-recorded audio files and transcripts
+* Automated cleanup scripts (delete test work items after run)
+
+**Coverage Target**: 10-15 key end-to-end scenarios
+
+=== 4. End-to-End Tests (5% of test effort)
+
+**Scope**: Live Microsoft Teams meetings with real bot participation
+
+**Test Approach**:
+
+* Manual testing with controlled meeting scenarios
+* Bot joins live Teams meeting
+* Team members read from test scripts (requirements scenarios)
+* Validate bot behavior in real-time
+* Check work items created in Azure DevOps during meeting
+* Review chat notifications posted by bot
+
+**Test Scenarios**:
+
+* **Happy Path Meeting**
+  - 3 participants discussing project requirements
+  - Clear Epic, Feature, and Story statements
+  - Bot creates work items correctly
+  - Chat notifications posted with links
+  - Post-meeting summary generated
+
+* **Ambiguity and Questions**
+  - Requirements with missing details
+  - Bot asks clarifying questions in chat
+  - Bot creates Question work items
+  - Team responds to questions
+  - Bot updates work items based on responses
+
+* **Meeting with Multiple Epics**
+  - Discussion covers 2-3 different epics
+  - Bot correctly groups Features under appropriate Epics
+  - Parent-child relationships correct
+  - No duplicate work items created
+
+* **Edge Cases**
+  - Meeting with background noise
+  - Multiple people speaking at once (overlapping audio)
+  - Long silences during meeting
+  - Bot handles reconnection if network drops
+  - Meeting ends abruptly (bot leaves gracefully)
+
+**Success Criteria**:
+
+* Bot joins meeting within 10 seconds
+* Transcription accuracy ≥85% (manual review)
+* Correct work item type classification ≥90%
+* All work items have speaker attribution
+* No duplicate work items created
+* Chat notifications appear within 5 seconds of work item creation
+* Post-meeting summary contains all work items
+
+**Test Frequency**: Weekly during development, before each release
+
+== Test Types by Component
+
+=== Teams Media Bot (C#)
+
+**Unit Tests**:
+* Audio buffer management
+* RTP packet parsing
+* State machine transitions (Idle → Joining → Connected → Transcribing → Disconnected)
+
+**Component Tests**:
+* Join/leave meeting (mocked Graph API)
+* Audio streaming simulation
+* Error handling (network failures, auth issues)
+
+**Integration Tests**:
+* Connect to real Speech Services (pre-recorded audio)
+* Validate audio transmission quality
+
+=== Azure Speech Services Integration
+
+**Component Tests**:
+* Parse MeetingTranscriber output
+* Speaker diarization result extraction
+* Handle low-confidence transcriptions
+
+**Integration Tests**:
+* Stream audio to real Speech Services
+* Verify diarization accuracy with known speakers
+
+=== AI Foundry Agent (Pennie)
+
+**Unit Tests**:
+* Requirement classification logic (Epic/Feature/Story)
+* Ambiguity detection rules
+* Value statement generation
+* Acceptance criteria formatting (Given/When/Then)
+* Chat message formatting
+
+**Component Tests**:
+* System prompt compliance
+* Structured output validation (JSON schema)
+* Function calling behavior (MCP tools)
+* Context window management (handle long meetings)
+
+**Integration Tests**:
+* Process sample transcripts end-to-end
+* Validate work items created match expectations
+* Test with real MCP server calls
+
+=== Azure DevOps MCP Server
+
+**Unit Tests**:
+* Work item field mapping
+* Parent-child relationship logic
+* Query building
+
+**Component Tests**:
+* Create work items (mocked DevOps API)
+* Update work items
+* Add comments with metadata
+
+**Integration Tests**:
+* Create work items in real test DevOps project
+* Verify hierarchy (Epic → Feature → Story)
+* Query backlog and validate results
+
+== Quality Metrics
+
+=== Functional Accuracy
+
+* **Work Item Classification Accuracy**: ≥90%
+  - Measured: Correct Epic/Feature/Story/Question classification
+  - Method: Manual review of 100 test transcripts
+
+* **Transcription Accuracy**: ≥85%
+  - Measured: Word error rate (WER) for transcribed text
+  - Method: Compare Azure Speech Services output to ground truth
+
+* **Speaker Attribution Accuracy**: ≥90%
+  - Measured: Correct speaker name assigned to transcript lines
+  - Method: Manual review of diarization output
+
+* **Ambiguity Detection Recall**: ≥80%
+  - Measured: % of ambiguous requirements detected
+  - Method: Test suite with known ambiguous statements
+
+=== Performance
+
+* **Bot Join Latency**: ≤10 seconds
+  - Measured: Time from meeting invite to bot fully connected
+
+* **Transcription Latency**: ≤3 seconds
+  - Measured: Time from speech to transcript output
+
+* **Work Item Creation Latency**: ≤5 seconds
+  - Measured: Time from transcript line to DevOps work item created
+
+* **Chat Notification Latency**: ≤2 seconds
+  - Measured: Time from work item created to chat message posted
+
+=== Reliability
+
+* **Bot Availability**: ≥99%
+  - Measured: Uptime of bot service
+  - Method: Health check endpoint monitoring
+
+* **Meeting Join Success Rate**: ≥95%
+  - Measured: % of meeting join attempts that succeed
+  - Method: Log analysis
+
+* **Work Item Creation Success Rate**: ≥99%
+  - Measured: % of work item creation attempts that succeed
+  - Method: MCP server logs
+
+=== Code Quality
+
+* **Unit Test Coverage**: ≥80%
+  - Measured: Line and branch coverage
+  - Tools: `pytest-cov` (Python), `coverlet` (C#)
+
+* **Component Test Coverage**: ≥75%
+  - Measured: Component-level coverage
+
+* **Linting Compliance**: 100%
+  - Tools: `pylint`, `flake8` (Python), `StyleCop` (C#)
+
+== Test Data Management
+
+=== Sample Transcripts
+
+**Repository**: `tests/fixtures/transcripts/`
+
+**Categories**:
+* `happy_path/` - Clear requirements, single Epic
+* `multi_epic/` - Multiple Epics in one meeting
+* `ambiguous/` - Requirements with missing details
+* `edge_cases/` - Overlapping speech, long silences, interruptions
+
+**Format**:
+```
+Speaker: Ben Weeks | Timestamp: 00:01:23 | Text: We need an epic for customer portal with SSO integration
+Speaker: Sarah Johnson | Timestamp: 00:01:45 | Text: Should we support OAuth 2.0 and SAML?
+Speaker: Ben Weeks | Timestamp: 00:02:10 | Text: Let's support both OAuth and SAML
+```
+
+=== Sample Audio Files
+
+**Repository**: `tests/fixtures/audio/`
+
+**Format**: WAV, 16kHz, mono, 16-bit PCM
+
+**Duration**: 2-5 minutes per sample
+
+**Speakers**: 2-4 participants per recording
+
+**Content**: Scripted requirements discussions
+
+=== Expected Work Items
+
+**Repository**: `tests/fixtures/expected_outputs/`
+
+**Format**: JSON schema matching Azure DevOps work item structure
+
+**Example**:
+```json
+{
+  "type": "Epic",
+  "title": "Customer Portal with SSO Integration",
+  "fields": {
+    "ValueStatement": "FOR delivery teams WHO need secure authentication...",
+    "Speaker": "Ben Weeks",
+    "Timestamp": "00:01:23",
+    "MeetingID": "test-meeting-001"
+  },
+  "children": [
+    {
+      "type": "Feature",
+      "title": "OAuth 2.0 Authentication",
+      ...
+    }
+  ]
+}
+```
+
+== Test Automation
+
+=== Continuous Integration (GitHub Actions)
+
+**Workflow**: `.github/workflows/test.yml`
+
+**Triggers**:
+* Pull request to `main` branch
+* Push to `main` branch
+* Nightly scheduled run
+
+**Stages**:
+1. **Lint and Format Check**
+   - Run linters (`pylint`, `flake8`, `StyleCop`)
+   - Check code formatting (Black, C# formatter)
+
+2. **Unit Tests**
+   - Run all unit tests
+   - Generate coverage reports
+   - Fail if coverage <80%
+
+3. **Component Tests**
+   - Run component tests with mocked dependencies
+   - Validate structured outputs
+
+4. **Integration Tests** (on `main` only)
+   - Connect to test Azure DevOps project
+   - Create test work items
+   - Cleanup after test run
+
+5. **Report Generation**
+   - Publish test results to GitHub Actions summary
+   - Upload coverage reports to Codecov
+
+=== Pre-Deployment Testing
+
+**Workflow**: `.github/workflows/pre-deploy.yml`
+
+**Runs before**: Infrastructure deployment
+
+**Tests**:
+* Full integration test suite
+* MCP server connectivity test
+* Azure DevOps authentication verification
+* Speech Services connection test
+* AI Foundry agent availability check
+
+**Gate**: Deployment blocked if any test fails
+
+=== Post-Deployment Smoke Tests
+
+**Workflow**: `.github/workflows/smoke-tests.yml`
+
+**Runs after**: Successful deployment
+
+**Tests**:
+* Bot service health check
+* MCP server health check
+* Sample transcript processing (end-to-end)
+* Single work item creation test
+
+**Alert**: Notify team if smoke tests fail
+
+== Manual Testing
+
+=== Pre-Release Testing Checklist
+
+- [ ] Bot joins Teams meeting successfully
+- [ ] Audio transcription visible in logs
+- [ ] Speaker diarization working (correct names)
+- [ ] Epic created from clear statement
+- [ ] Feature grouped under Epic
+- [ ] User Story with Given/When/Then created
+- [ ] Question work item created for ambiguous requirement
+- [ ] Chat notifications posted with correct links
+- [ ] Parent-child relationships correct in DevOps
+- [ ] Speaker attribution present on all work items
+- [ ] Timestamps accurate
+- [ ] Post-meeting summary generated
+- [ ] Bot leaves meeting gracefully
+
+=== User Acceptance Testing (UAT)
+
+**Participants**: Internal KnowAll AI team members
+
+**Duration**: 1 week before production release
+
+**Approach**:
+* Real project meetings with Pennie
+* Team members act naturally (not scripted)
+* Review work items created after each meeting
+* Provide feedback on:
+  - Work item quality
+  - Classification accuracy
+  - Ambiguity detection
+  - Chat notification timing
+  - Meeting summary usefulness
+
+**Success Criteria**:
+* 80% of team members satisfied with output quality
+* No critical bugs reported
+* Work items require minimal manual correction
+
+== Testing Tools and Frameworks
+
+=== Unit and Component Testing
+
+* **Python**: `pytest`, `pytest-cov`, `pytest-mock`
+* **C#**: `xUnit`, `Moq`, `FluentAssertions`
+* **JavaScript/Node.js** (MCP): `jest`, `supertest`
+
+=== Integration Testing
+
+* **Azure SDK**: Official Python/C# SDKs for Speech, DevOps, AI Foundry
+* **HTTP Mocking**: `responses` (Python), `WireMock.Net` (C#)
+* **Test Fixtures**: Pre-recorded audio, transcripts, expected outputs
+
+=== End-to-End Testing
+
+* **Teams Bot Testing**: Bot Framework Emulator (local testing)
+* **Live Meeting Testing**: Manual with real Teams meetings
+* **Monitoring**: Application Insights for real-time log analysis
+
+=== CI/CD
+
+* **GitHub Actions**: Workflow automation
+* **Codecov**: Coverage reporting
+* **SonarCloud**: Code quality analysis (optional)
+
+== Test Environments
+
+=== Local Development
+
+* **Bot**: Bot Framework Emulator
+* **Speech**: Azure Speech Services (dev subscription)
+* **DevOps**: Test project in Azure DevOps
+* **AI Agent**: Local AI Foundry project instance
+
+=== Continuous Integration (GitHub Actions)
+
+* **Bot**: Mocked Graph API
+* **Speech**: Mocked MeetingTranscriber
+* **DevOps**: Test project (separate from prod)
+* **AI Agent**: Test AI Foundry project
+
+=== Staging
+
+* **Deployment**: Separate Windows VM in staging resource group
+* **Teams**: Test Teams tenant (if available) or production tenant with test meetings
+* **DevOps**: Staging project in Azure DevOps
+* **AI Agent**: Staging AI Foundry project
+
+=== Production
+
+* **Deployment**: Production Windows VM in `TMinus15Agents` resource group
+* **Teams**: Production Teams tenant (KnowAll AI)
+* **DevOps**: Production Azure DevOps project
+* **AI Agent**: Production AI Foundry project (`knowall-ai-foundry`)
+
+== Risk Mitigation
+
+=== High-Risk Areas
+
+**1. Speaker Diarization Accuracy**
+* **Risk**: Incorrect speaker attribution leads to incorrect work item metadata
+* **Mitigation**:
+  - Test with multiple speaker profiles (male/female, accents)
+  - Provide manual correction capability in post-meeting review
+  - Log confidence scores from Speech Services
+
+**2. Ambiguity Detection False Positives**
+* **Risk**: Too many clarifying questions annoy users
+* **Mitigation**:
+  - Tune ambiguity detection threshold
+  - Only ask questions for critical missing information
+  - Batch questions (ask every 5 minutes, not every 30 seconds)
+
+**3. Duplicate Work Item Creation**
+* **Risk**: Same requirement mentioned multiple times creates duplicates
+* **Mitigation**:
+  - Check existing work items before creating new
+  - Use semantic similarity matching (vector embeddings)
+  - Provide deduplication review in post-meeting summary
+
+**4. Network Failures During Meeting**
+* **Risk**: Bot disconnects, loses context, creates incomplete backlog
+* **Mitigation**:
+  - Implement reconnection logic with state preservation
+  - Store partial transcript locally before processing
+  - Alert team if bot disconnects
+
+**5. Azure DevOps API Rate Limiting**
+* **Risk**: Too many work item creation requests hit rate limits
+* **Mitigation**:
+  - Batch work item creation requests
+  - Implement exponential backoff on API failures
+  - Monitor rate limit usage in Application Insights
+
+== Test Schedule
+
+=== During Development
+
+* **Daily**: Unit tests (automated via pre-commit hooks)
+* **Per Pull Request**: Unit + Component tests (GitHub Actions)
+* **Weekly**: Integration tests (automated nightly)
+* **Bi-weekly**: End-to-end manual tests with live meeting
+
+=== Pre-Release
+
+* **1 week before release**: Full regression test suite
+* **3 days before release**: User acceptance testing (UAT)
+* **1 day before release**: Final smoke tests
+
+=== Post-Release
+
+* **Immediately**: Post-deployment smoke tests (automated)
+* **Week 1**: Daily monitoring of production logs
+* **Week 2-4**: Weekly review of work item quality metrics
+
+== Success Criteria for MVP Release
+
+- [ ] All unit tests passing (≥80% coverage)
+- [ ] All component tests passing (≥75% coverage)
+- [ ] 10+ integration tests passing (key scenarios)
+- [ ] 3+ successful end-to-end live meeting tests
+- [ ] Work item classification accuracy ≥85% (manually verified)
+- [ ] No critical bugs outstanding
+- [ ] UAT completed with positive feedback
+- [ ] Documentation complete (README, SOLUTION_DESIGN, this document)
+- [ ] Deployment pipeline tested and working
+- [ ] Post-deployment smoke tests passing
+
+== Future Testing Enhancements
+
+=== Phase 2
+
+* **Load Testing**: Multiple concurrent meetings
+* **Stress Testing**: Long meetings (2+ hours)
+* **Performance Testing**: Optimize latency and throughput
+* **Chaos Engineering**: Simulate service failures
+
+=== Phase 3
+
+* **A/B Testing**: Compare different agent prompts and models
+* **User Behavior Analytics**: Track how teams use Pennie
+* **Model Accuracy Tuning**: Fine-tune on organization-specific terminology
+* **Automated Regression**: Expand test suite to 100+ scenarios

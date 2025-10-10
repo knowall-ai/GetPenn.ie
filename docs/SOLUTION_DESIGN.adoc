@@ -3,7 +3,7 @@
 
 
 == Overview
-Pennie is a Microsoft Teams-friendly AI agent that joins meetings and converts conversation into structured Azure DevOps backlog items. She is built with Azure AI Foundry, deploys via GitHub Actions, and is fully defined as code.
+Pennie is a Microsoft Teams-friendly AI agent that joins meetings as a real-time participant, listens to conversations using speech-to-text transcription with speaker diarization, and converts conversation into structured Azure DevOps backlog items. She is built with Azure AI Foundry, Graph Communications API, Azure Speech Services, and deploys via GitHub Actions. The entire solution is fully defined as code.
 
 
 == Architecture
@@ -12,48 +12,443 @@ Pennie is a Microsoft Teams-friendly AI agent that joins meetings and converts c
 [mermaid]
 ----
 flowchart TD
-Teams(Meeting Transcript) -->|Real-time Context| FoundryAgent["Pennie (Azure AI Foundry Agent)"]
-FoundryAgent -->|Clarifying Questions| TeamsChat(Teams Chat)
-FoundryAgent -->|API Call| DevOpsTools(Azure Functions for DevOps)
-DevOpsTools -->|Create/Update| AzureDevOps["Azure DevOps (Boards)"]
-FoundryAgent --> Storage(Azure Storage - optional logs)
+    TeamsMeeting[Microsoft Teams Meeting<br/>Audio/Video Streams] -->|Bot joins meeting| MediaBot[Teams Media Bot<br/>Windows Server VM<br/>Graph Communications SDK]
+    MediaBot -->|RTP Audio Frames<br/>50 frames/sec| SpeechServices[Azure Speech Services<br/>MeetingTranscriber API<br/>Real-time Diarization]
+    SpeechServices -->|Transcribed Text<br/>Speaker Attribution| FoundryAgent[Pennie - Azure AI Foundry Agent<br/>GPT-4 + T-Minus-15 Logic]
+    FoundryAgent -->|Clarifying Questions<br/>Work Item Links| TeamsChat[Teams Meeting Chat]
+    FoundryAgent -->|Optional: Text-to-Speech| Avatar[Azure AI Avatar<br/>Optional Visual Presence]
+    Avatar -->|Audio/Video Stream| MediaBot
+    FoundryAgent -->|API Calls| DevOpsTools[Azure Functions<br/>CreateWorkItem, GetWorkItems, etc.]
+    DevOpsTools -->|Create/Update| AzureDevOps[Azure DevOps Boards<br/>Epics, Features, Stories, Questions]
+    FoundryAgent -->|Logs & Metrics| Storage[Azure Storage<br/>Application Insights]
 ----
 
 
-== System Prompt
-Pennie’s prompt is defined in `agents/penn.ie.yml` and instructs her to:
-- Act like a business analyst
-- Remain silent in meetings
-- Post clarifying questions in Teams chat when needed
-- Structure backlog in Epic > Feature > User Story > Acceptance Criteria format
+== Core Components
 
 
-== Tooling
-Pennie is connected to:
-- Azure DevOps via Azure Functions (`GetWorkItems`, `CreateWorkItem`)
-- Azure Storage for logging (optional)
+=== 1. Teams Media Bot (Application-Hosted Media)
+**Technology**: C# .NET with Microsoft Graph Communications SDK
+
+**Hosting**: Windows Server VM in Azure (required for Media SDK)
+
+**Responsibilities**:
+
+* Join Microsoft Teams meetings as a bot participant
+* Receive real-time audio streams (RTP packets at 50 frames/second, 20ms each)
+* Send audio streams to Azure Speech Services for transcription
+* Optional: Send audio/video back to meeting (Pennie can speak and appear visually)
+* Handle bot lifecycle (join, leave, meeting events)
+* Manage meeting chat interactions
+
+**Required Permissions**:
+
+* `Calls.AccessMedia.All` - Access media streams in calls
+* `Calls.JoinGroupCall.All` - Join group calls and meetings
+* `OnlineMeetings.ReadWrite.All` - Read and create online meetings
 
 
-== DevOps Integration
-Functions use PAT token or managed identity to:
-- Create and update Epics, Features, Stories, and Questions
-- Follow naming convention + metadata from T-Minus-15
+=== 2. Azure Speech Services (Real-time Transcription)
+**API**: MeetingTranscriber API with speaker diarization
+
+**Capabilities**:
+
+* Real-time speech-to-text transcription
+* Speaker identification by name (not just GUEST1, GUEST2)
+* Handles multiple speakers with distinct attribution
+* Outputs structured transcript with timestamps and speaker labels
+
+**Limitations**:
+
+* When speakers overlap (talk simultaneously), audio is clubbed as single speaker
+* Requires clear audio quality for accurate diarization
 
 
-== Deployment
-* Infrastructure as Code via Bicep
-* GitHub Action `deploy.yml` runs:
-** Azure login
-** Bicep deploy (Foundry project + storage + functions)
-** Deploy agent config from `pennie.yml`
+=== 3. Azure AI Foundry Agent (Pennie's Intelligence)
+**Model**: GPT-4o (temperature: 0.1 for consistent structured output)
+
+**Region**: UK South (full stack deployed in single region for data residency)
+
+**Why GPT-4o**:
+* 100% reliable structured outputs for JSON schema compliance
+* 5.5x faster than GPT-4 Turbo (109 vs 20 tokens/sec)
+* 50-70% cheaper ($3 input, $10 output per 1M tokens)
+* Superior function calling for MCP tool integration
+* 128K token context window for entire meeting transcripts
+
+**System Prompt**: Defined in `agent-config.json`
+
+**Core Behaviors**:
+
+* Listen to real-time transcription stream
+* Identify business requirements, features, and user stories from conversation
+* Apply T-Minus-15 methodology (Epic > Feature > User Story > Acceptance Criteria)
+* Detect ambiguity and formulate clarifying questions
+* Generate speaker-attributed work items
+* Decide when to create vs. update work items
+* Post real-time notifications to Teams chat
+
+**Tools Available**:
+
+* `GetWorkItems` - Retrieve existing backlog items
+* `CreateWorkItem` - Create Epics, Features, Stories, Questions
+* `UpdateWorkItem` - Update existing work items
+* `LinkWorkItems` - Create parent-child relationships
 
 
-== Security
-- All components deployed in tenant
-- No external services required
-- Secrets managed via GitHub Secrets and Azure Key Vault
+=== 4. Azure DevOps MCP Server (DevOps Integration)
+**Technology**: Microsoft's official Azure DevOps MCP Server (`@azure-devops/mcp`)
+
+**Deployment**: Node.js server running on Windows Server VM (co-located with Teams Media Bot)
+
+**Available Work Item Tools**:
+
+* `wit_create_work_item` - Create new work items (Epic, Feature, User Story, Question)
+* `wit_update_work_item` - Update existing work item fields
+* `wit_add_child_work_items` - Create parent-child relationships (Epic > Feature > Story)
+* `wit_get_work_item` - Retrieve single work item by ID
+* `wit_get_work_items_batch_by_ids` - Retrieve multiple work items
+* `wit_my_work_items` - List current user's work items
+* `wit_add_work_item_comment` - Add comments with speaker attribution
+* `wit_list_backlog_work_items` - Retrieve backlog items
+* `wit_get_query_results` - Execute saved queries
+
+**Authentication**: Microsoft account with Azure DevOps access (OAuth flow)
+
+**Integration**: Azure AI Foundry Agent connects via MCP protocol
+
+**Benefits**:
+
+* Official Microsoft product - actively maintained
+* No custom function code to write or maintain
+* Automatic tool discovery by AI Foundry Agent
+* Domain-based loading (only load "work-items" domain)
+* Standard MCP protocol for easy integration
+
+
+=== 5. Optional: Azure AI Avatar
+**Purpose**: Visual presence in Teams meeting
+
+**Capabilities**:
+
+* Animated avatar that represents Pennie visually
+* Text-to-speech for verbal clarifying questions
+* Gestures and expressions for engagement
+* Makes bot feel more like a team member
+
+**Integration**: Avatar video/audio stream sent via Media Bot back to Teams meeting
+
+
+== System Prompt & Behavioral Guidelines
+
+Pennie's prompt is defined in `agent-config.json` and instructs her to:
+
+* Act as a skilled business analyst
+* Listen passively to meeting conversation (audio transcription)
+* Apply T-Minus-15 methodology for structuring backlog items
+* Ask clarifying questions in Teams chat when requirements are ambiguous
+* Tag work items with speaker attribution and timestamps for traceability
+* Post change notifications with links to created DevOps items
+* Batch related changes (within 30 seconds) to reduce chat noise
+* Never hallucinate - always use tools to fetch real DevOps data
+
+
+== T-Minus-15 Methodology Integration
+
+**Hierarchy**:
+
+* Epic > Feature > User Story > Question
+
+**Metadata Captured**:
+
+* Speaker name and timestamp (from MeetingTranscriber)
+* Meeting ID and date
+* Originating conversation context
+* Parent-child relationships
+* Value statements and acceptance criteria (Given/When/Then format)
+
+
+== Data Flow
+
+
+=== Real-Time Meeting Processing
+
+[source]
+----
+1. Meeting starts → Bot joins via Graph API
+2. Audio streams → Media Bot receives RTP packets
+3. Audio → Azure Speech Services (MeetingTranscriber)
+4. Transcript with speakers → "Ben: We need a login feature for mobile users"
+5. AI Foundry Agent processes → Identifies User Story
+6. Agent calls CreateWorkItem function
+7. Azure Function creates work item in DevOps
+8. Bot posts in Teams chat: "✓ Created User Story #1234: Mobile Login [link]"
+----
+
+
+=== Speaker Diarization Flow
+
+[source]
+----
+MeetingTranscriber Output:
+├─ Speaker: Ben Weeks (Product Owner)
+│  ├─ Timestamp: 10:23:15
+│  └─ Text: "We need epic for customer portal with SSO integration"
+├─ Speaker: Sarah Johnson (Developer)
+│  ├─ Timestamp: 10:23:42
+│  └─ Text: "Should we support OAuth 2.0 and SAML?"
+└─ Speaker: Pennie (via chat or speech)
+   ├─ Timestamp: 10:23:50
+   └─ Text: "Created Epic #500: Customer Portal [link]. Question #501: Which SSO protocols? OAuth, SAML, or both?"
+----
+
+
+== Deployment Strategy
+
+
+=== Infrastructure as Code (Bicep)
+
+**Deployment Scope**: Subscription-level
+
+**Resources Provisioned**:
+
+**UK South Region** (All Resources):
+* Resource Group (TMinus15Agents)
+* Windows Server VM (Dv2-series, minimum 2 vCPUs) - hosts Teams Media Bot and MCP Server
+* Azure AI Foundry Hub (knowall-ai-foundry)
+* Azure AI Foundry Project (T-Minus-15 Agents)
+* Azure OpenAI Service (GPT-4o deployment - model version 2024-08-06)
+* Azure Speech Services (real-time transcription with speaker diarization)
+* Azure Storage Account (logs, metrics)
+* Application Insights (monitoring)
+* Key Vault (secrets management)
+* Managed Identities (for secure service-to-service auth)
+
+**Bicep Modules**:
+
+* `infra/main.bicep` - Main orchestration
+* `infra/modules/windows-vm.bicep` - Windows Server VM (Teams Bot + MCP Server + Node.js)
+* `infra/modules/ai-services.bicep` - AI Foundry + Speech + OpenAI
+* `infra/modules/monitoring.bicep` - Application Insights + Storage
+
+
+=== GitHub Actions Workflow
+
+**Trigger**: Push to `main` branch or manual dispatch
+
+**Steps**:
+
+1. Azure login (Service Principal with Contributor + User Access Administrator roles)
+2. Deploy Bicep infrastructure (Windows VM, AI services, monitoring)
+3. Install Node.js 20+ on Windows VM (for MCP server)
+4. Install Azure DevOps MCP Server (`npm install -g @azure-devops/mcp`)
+5. Deploy Teams Media Bot application to Windows VM
+6. Configure MCP server with Azure DevOps credentials
+7. Configure AI Foundry project and deploy agent from `agent-config.json`
+8. Configure App Registration and grant admin consent for Graph API permissions
+9. Test MCP server connectivity and work item operations
+10. Run health checks and integration tests
+11. Post deployment summary to GitHub
+
+
+=== Bot Registration & Permissions
+
+**Azure AD App Registration**:
+
+* Application type: Multi-tenant or single tenant
+* Redirect URIs: `https://<bot-endpoint>/api/messages`
+* API Permissions (Application-level, admin consent required):
+** `Calls.AccessMedia.All`
+** `Calls.JoinGroupCall.All`
+** `OnlineMeetings.ReadWrite.All`
+
+**Bot Framework Registration**:
+
+* Messaging endpoint: `https://<vm-public-ip>/api/messages`
+* App ID and secret stored in Key Vault
+
+
+== Security & Compliance
+
+
+=== Data Residency
+
+**Regional Deployment Strategy**:
+
+* **UK South Region** (All Components):
+  - Windows Server VM (Teams Media Bot + Azure DevOps MCP Server)
+  - Azure Speech Services (Real-time transcription with speaker diarization)
+  - Azure AI Foundry Agent (Pennie with GPT-4o)
+  - Azure OpenAI Service (GPT-4o deployment)
+  - Azure Storage (logs, metrics)
+  - Application Insights (monitoring)
+
+**Single-Region Architecture Benefits**:
+* All data processing within UK South for complete data residency
+* No cross-region latency - optimal performance
+* Simplified compliance and data governance
+* Lower egress costs (no inter-region data transfer)
+
+**Data Minimization**:
+* Only conversation segments requiring analysis sent to AI Foundry
+* Structured work items (summaries) stored in Azure DevOps UK South
+* Raw meeting audio processed entirely in UK South (never leaves region)
+* No external third-party services required
+
+
+=== Authentication & Authorization
+
+* Managed Identity for service-to-service authentication (Functions ↔ DevOps, Functions ↔ AI Foundry)
+* Azure DevOps PAT stored in Key Vault (fallback to Managed Identity where possible)
+* Bot credentials stored in Key Vault
+* Graph API permissions granted via admin consent
+
+
+=== Audio & Transcript Security
+
+* Audio streams processed in real-time, not recorded or stored
+* Transcripts stored temporarily in AI Foundry agent memory (session-scoped)
+* Optional: Persistent transcript storage in Azure Storage (encrypted at rest)
+* Speaker attribution data treated as sensitive metadata
+
+
+=== Compliance
+
+* GDPR compliant (data residency in EU, right to deletion)
+* Meeting participants must consent to bot joining and transcribing
+* Bot announces presence when joining meeting
+* Transcription status visible to all participants
+
+
+== Monitoring & Observability
+
+
+=== Metrics Tracked
+
+* Work items created (by type: Epic, Feature, Story, Question)
+* Questions asked (clarifications)
+* Meetings attended
+* Response time (audio → transcript → work item)
+* Tool usage (CreateWorkItem, GetWorkItems, etc.)
+* Transcription accuracy (manual quality sampling)
+
+
+=== Application Insights Integration
+
+* Custom events for work item creation
+* Performance tracking for transcription latency
+* Exception logging and alerting
+* Bot lifecycle events (join, leave, errors)
+
+
+=== Logging Strategy
+
+* **Verbose**: Transcription output, AI agent reasoning
+* **Info**: Work item creation, bot actions, meeting events
+* **Warning**: Ambiguous requirements, missing data
+* **Error**: API failures, permission issues, network errors
+
+
+== Cost Estimation
+
+
+=== Compute
+
+* Windows Server VM (D2s_v3): ~$70-100/month (Teams Media Bot + Node.js MCP Server)
+
+
+=== AI Services
+
+* Azure OpenAI (GPT-4o): ~$0.003/1K tokens (input), $0.010/1K tokens (output) - 50-70% cheaper than GPT-4 Turbo
+* Azure Speech Services: ~$1.00/hour for real-time transcription with diarization
+* Estimated: $30-150/month based on meeting frequency (lower due to GPT-4o pricing)
+
+
+=== Storage & Monitoring
+
+* Azure Storage: <$5/month
+* Application Insights: ~$10-20/month
+
+**Total Estimated Cost**: $110-270/month
+
+**Component Breakdown**:
+* Windows VM (UK South): $70-100/month (Teams Media Bot + MCP Server co-located)
+* Azure Speech Services (UK South): $30-150/month (based on meeting hours ~$1/hour)
+* Azure OpenAI GPT-4o (UK South): $10-30/month (50-70% cheaper than GPT-4 Turbo)
+* Storage & Monitoring (UK South): $10-20/month
+
+**Cost Savings**:
+* GPT-4o vs GPT-4 Turbo: ~$20-40/month saved
+* Co-located MCP server vs separate container: ~$10-20/month saved
+* Total: ~$30-60/month saved vs. original architecture
+
+
+== Scalability Considerations
+
+
+=== Current Design (MVP)
+
+* Single Windows VM handles one bot instance
+* Bot can join one meeting at a time
+* Suitable for internal KnowAll AI team usage
+
+
+=== Future Scaling (Multiple Concurrent Meetings)
+
+* Deploy multiple Windows VM instances in VMSS (Virtual Machine Scale Set)
+* Load balancer to distribute meeting join requests
+* Horizontal scaling based on active meeting count
+* Kubernetes cluster (AKS with Windows node pools) for containerized bot instances
 
 
 == Future Enhancements
-- Ingest existing DevOps backlog for grounding/fine-tuning
-- Use RAG approach or Azure Search index of historical work items
+
+
+=== Phase 2: Advanced Features
+
+* Post-meeting summary emails with backlog links
+* Sentiment analysis during meetings (detect blockers, concerns)
+* Integration with Microsoft Planner for task tracking
+* Voice commands: "Pennie, create an epic for..."
+
+
+=== Phase 3: Machine Learning
+
+* Ingest historical DevOps backlog for grounding (RAG approach)
+* Fine-tune model on organization-specific terminology
+* Predictive work item suggestions based on conversation patterns
+* Automatic story point estimation
+
+
+=== Phase 4: Multi-Agent Orchestration
+
+* Edmund (Engineer) reviews technical feasibility of stories
+* Facilitator agent coordinates meeting agenda
+* Multi-agent collaboration for comprehensive backlog creation
+
+
+== Dependencies & Prerequisites
+
+
+=== Required Azure Resources
+
+* Active Azure subscription (KnowAll Ltd)
+* Azure AI Foundry Hub with GPT-4 deployment
+* Azure Speech Services resource
+* Azure DevOps organization and project
+
+
+=== Required Permissions
+
+* Subscription Contributor (for infrastructure deployment)
+* Global Administrator or Privileged Role Administrator (for Graph API consent)
+* Azure DevOps Project Administrator (for PAT or Managed Identity setup)
+
+
+=== Development Tools
+
+* Visual Studio 2022 or VS Code with C# extension
+* .NET 8.0 SDK
+* Azure CLI
+* Bot Framework Emulator (for local testing)
+* Postman or similar (for Function testing)
