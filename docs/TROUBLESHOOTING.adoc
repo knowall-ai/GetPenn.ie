@@ -1,260 +1,128 @@
-= Troubleshooting Guide: Pennie the Prepper
+= Pennie the Prepper - Troubleshooting Guide
+:toc:
 
-This document contains solutions to common problems encountered when deploying and operating Pennie the Prepper.
+== The Core Issue: OpenAPI Spec Not Connected to Pennie
 
-== Quick Reference Table
+=== What's Wrong
+Your screenshot shows Pennie called `read_projects()` but got empty output. The backend returns data correctly when tested with curl (26 projects), but Pennie doesn't receive the data.
 
-[cols="1,2", options="header"]
-|===
-|Problem |Solution
+=== Why This Happens
+**Pennie has the function schema but not the HTTP endpoint URL.** She knows the function signature but doesn't know WHERE to send the HTTP request.
 
-|**Bot doesn't join Teams meeting**
-a|
-1. Check Graph API permissions granted (admin consent required)
-2. Verify bot app ID and password in Key Vault
-3. Check Windows VM is running: `nssm status PennieBot`
-4. Verify firewall allows outbound HTTPS to Teams service
-5. Ensure bot was explicitly invited to meeting
+In Azure AI Foundry, when you add an "Action", you must provide:
+1. Function name and parameters (schema) ✅ You have this
+2. HTTP endpoint URL ❌ This is missing or incorrect
 
-|**No transcription / No work items created**
-a|
-1. Check Azure Speech Services connection and API key
-2. Restart MCP service: `nssm restart PennieMCP`
-3. Verify AI Foundry agent is connected to MCP server
-4. Check meeting audio quality (reduce background noise)
-5. Review Application Insights logs for errors
+=== The Fix
+The OpenAPI spec at `/mnt/raid1/GitHub/GetPenn.ie/openapi/pennie-backend-openapi.json` contains all 9 function definitions WITH the correct endpoint URLs.
 
-|**Work items missing speaker attribution**
-a|
-1. Verify Speech Services has diarization enabled (`speakerDiarization: true`)
-2. Ensure meeting participants join with authenticated accounts (not anonymous)
-3. Improve audio quality (use headsets, reduce echo)
-4. Check Speech Services logs for diarization confidence scores
+This spec needs to be added to Pennie as an Action in the Azure AI Foundry portal.
 
-|**Duplicate work items created**
-a|
-1. Update agent instructions to check existing items before creation
-2. Tune semantic similarity matching threshold
-3. Implement post-meeting deduplication review
-4. Check agent is calling `wit_get_work_item` before `wit_create_work_item`
+**Backend URL**: `https://pennie-backend-prod.azurewebsites.net`
 
-|**MCP server authentication fails**
-a|
-1. Clear cached credentials: `Remove-Item -Path "$env:USERPROFILE\.azure-devops-mcp" -Recurse -Force`
-2. Re-authenticate: `npx @azure-devops/mcp YourOrg`
-3. Ensure user has Azure DevOps project access
-4. Check firewall allows HTTPS to `dev.azure.com`
+All 9 functions are operational and return HTTP 200 responses.
 
-|**MCP server connection errors**
-a|
-1. Verify Azure DevOps organization name is correct
-2. Check network connectivity: `Test-NetConnection dev.azure.com -Port 443`
-3. Ensure Windows VM firewall allows outbound HTTPS
-4. Restart MCP service: `nssm restart PennieMCP`
+---
 
-|**Deployment fails: Resource already exists**
-a|
-1. Check parameter file matches existing resource names (e.g., AI Hub)
-2. Use existing resources: deployment will update, not recreate
-3. If conflict persists, rename resource in parameters or delete existing
+== Regional Limitations
 
-|**Key Vault access denied**
-a|
-1. Grant deployment principal `Key Vault Administrator` or `Key Vault Secrets Officer` role
-2. Ensure VM Managed Identity has `Key Vault Secrets User` role
-3. Check Key Vault firewall allows Azure services
+=== Azure AI Agents Service Not Available in UK South
+As of October 2025, Azure AI Foundry Agents Service with OpenAPI HTTP tools does NOT work in UK South.
 
-|**VM Extension installation failed**
-a|
-1. Check extension logs: `az vm extension show --resource-group TMinus15Agents --vm-name pennie-vm-prod --name InstallDependencies`
-2. Retry manually: RDP to VM and run installation script
-3. Verify VM has internet access for downloading packages
+**Supported Regions:**
+- East US 2 ✅
+- West US ✅  
+- North Europe ✅
 
-|**Public IP not accessible**
-a|
-1. Check Network Security Group allows traffic from your IP
-2. Verify Public IP is correctly associated with NIC
-3. Check VM is running: `az vm show --resource-group TMinus15Agents --name pennie-vm-prod --show-details`
+**Not Supported:**
+- UK South ❌
+- UK West ❌
 
-|**Speech Services transcription errors**
-a|
-1. Check Speech Services API key is valid
-2. Verify audio format: 16kHz, mono, 16-bit PCM
-3. Ensure Speech Services region matches deployment region
-4. Review Speech Services quota and usage limits
+**Solution:** Use East US 2 for Pennie's AI Services account (`benw-mgan4638-eastus2`)
 
-|**AI Foundry agent not responding**
-a|
-1. Check GPT-4o deployment is active in Azure OpenAI
-2. Verify agent configuration in `agent-config.json`
-3. Check Application Insights for quota or rate limit errors
-4. Ensure MCP server endpoint is reachable from AI Foundry
+---
 
-|**Bot service won't start**
-a|
-1. Check service logs: `Get-Content C:\Pennie\logs\bot.log -Tail 50`
-2. Verify all dependencies installed: Node.js, .NET 8.0
-3. Check environment variables are set correctly
-4. Ensure port 443 is not already in use: `netstat -ano \| findstr :443`
+== Python SDK Issues
 
-|**Missing tools in MCP server**
-a|
-1. Ensure `work-items` domain specified in `mcp-config.json`
-2. Verify MCP server version: `npx @azure-devops/mcp --version`
-3. Update to latest: `npm update -g @azure-devops/mcp`
-4. Restart MCP service after configuration changes
+=== OpenApiTool Not JSON Serializable
+**Error:** `TypeError: Object of type OpenApiTool is not JSON serializable`
 
-|**GitHub Actions deployment fails**
-a|
-1. Check GitHub secrets are set correctly: `AZURE_CREDENTIALS`, `AZURE_SUBSCRIPTION_ID`, etc.
-2. Verify service principal has Contributor role on subscription
-3. Review workflow logs in GitHub Actions tab
-4. Ensure Bicep templates are valid: `az bicep build --file infra/main.bicep`
+**Cause:** Bug in azure-ai-agents SDK v1.0.0
 
-|**Teams chat notifications not appearing**
-a|
-1. Verify bot has permission to post in meeting chat
-2. Check Application Insights for message send errors
-3. Ensure Teams app has correct scopes in manifest
-4. Test bot messaging with simple "Hello" message
+**Workaround:** Use REST API directly instead of Python SDK (see scripts/update-pennie-tools.sh)
 
-|**Audio quality poor / garbled transcription**
-a|
-1. Ask participants to use headsets instead of speakers
-2. Reduce background noise (close windows, mute when not speaking)
-3. Check network bandwidth for audio streaming
-4. Verify RTP audio frames are being received correctly
+---
 
-|**Costs higher than expected**
-a|
-1. Review Azure Cost Management dashboard for breakdown
-2. Check Speech Services usage (charged per hour of audio)
-3. Verify VM is not oversized (downsize if CPU <30%)
-4. Ensure logs retention not set too high (reduce to 30 days)
-5. Monitor OpenAI token usage in Application Insights
+== Backend Deployment Issues
 
-|**Agent creates wrong work item type**
-a|
-1. Review and refine agent instructions in `agent-config.json`
-2. Provide clearer examples in system prompt
-3. Increase temperature slightly for more creative classification (0.1 → 0.2)
-4. Add explicit keywords to meeting discussion ("This is an epic...")
+=== Windows vs Linux Function App
+**Problem:** Functions return HTTP 503 "Function host is not running"
 
-|**Meeting transcripts not captured**
-a|
-1. Verify bot joined meeting successfully (check Teams)
-2. Check Audio stream connection to Speech Services
-3. Review Speech Services logs for errors
-4. Ensure Speech Services has sufficient quota
+**Cause:** Python Azure Functions MUST run on Linux, not Windows
 
-|**DevOps work items have incorrect fields**
-a|
-1. Check work item type templates in Azure DevOps project
-2. Verify MCP server has correct field mappings
-3. Update agent instructions to include required fields
-4. Test with minimal work item creation first
+**Fix:** Deploy with `kind: 'functionapp,linux'` and `linuxFxVersion: 'Python|3.11'` in Bicep
 
-|===
+---
 
-== Detailed Diagnostics
+== Current Status
 
-=== Checking Bot Service Health
+✅ **Backend Fully Operational**
+- All 9 functions deployed on Linux Function App
+- URL: https://pennie-backend-prod.azurewebsites.net
+- Returns HTTP 200 with correct data
+- 26 DevOps projects accessible
 
-```powershell
-# Check service status
-nssm status PennieBot
+✅ **OpenAPI Spec Complete**
+- Location: `/mnt/raid1/GitHub/GetPenn.ie/openapi/pennie-backend-openapi.json`
+- All 9 functions documented
+- Anonymous authentication configured
+- Ready to add to Pennie
 
-# View recent logs
-Get-Content C:\Pennie\logs\bot.log -Tail 100 -Wait
+❌ **Pennie Configuration Incomplete**
+- Pennie exists in eastus2 (ID: asst_yhQ9HVWxaIyeaSZwjBDOkSQi)
+- Has 2 old functions (wit_create_work_item, wit_add_child_work_items)
+- Missing read_projects and 6 other functions
+- Needs OpenAPI spec added as Action
 
-# Check process details
-Get-Process -Name PennieBot
+---
 
-# Test health endpoint
-Invoke-WebRequest -Uri http://localhost/health
-```
+== How to Fix Pennie (Manual Portal Steps Required)
 
-=== Checking MCP Server Health
+Since the Python SDK has bugs and REST API for adding Actions is not documented, the current solution requires adding the OpenAPI spec via the Azure AI Foundry portal:
 
-```powershell
-# Check service status
-nssm status PennieMCP
+1. Open https://ai.azure.com/resource/agentsList
+2. Select "Pennie the Prepper"
+3. Click "Actions" → "+ Add Action" → "From OpenAPI"
+4. Paste the content of `/mnt/raid1/GitHub/GetPenn.ie/openapi/pennie-backend-openapi.json`
+5. Save
 
-# View recent logs
-Get-Content C:\Pennie\logs\mcp.log -Tail 100 -Wait
+**Test:** Ask Pennie "What DevOps projects do we have?" - She should return all 26 projects.
 
-# Test connection
-npx @azure-devops/mcp YourOrg --test
+---
 
-# List available tools
-npx @azure-devops/mcp YourOrg --list-tools
-```
+== Testing Commands
 
-=== Checking Azure Services
+[source,bash]
+----
+# Test backend directly
+curl https://pennie-backend-prod.azurewebsites.net/api/read_projects
 
-```bash
-# Check Speech Services status
-az cognitiveservices account show \
-  --name pennie-speech-prod \
-  --resource-group TMinus15Agents
+# Expected output:
+# {"success": true, "count": 26, "projects": [...]}
 
-# Check OpenAI deployment
-az cognitiveservices account deployment show \
-  --name pennie-openai-prod \
+# List all functions
+az functionapp function list \
+  --name pennie-backend-prod \
   --resource-group TMinus15Agents \
-  --deployment-name gpt-4o
+  --query "[].name"
 
-# Check VM status
-az vm show \
-  --name pennie-vm-prod \
+# Check Function App is Linux
+az functionapp show \
+  --name pennie-backend-prod \
   --resource-group TMinus15Agents \
-  --show-details
-```
+  --query "{kind:kind, reserved:reserved, linuxFxVersion:siteConfig.linuxFxVersion}"
+----
 
-=== Application Insights Queries
+---
 
-```kusto
-// Bot errors in last hour
-traces
-| where timestamp > ago(1h)
-| where severityLevel >= 3
-| where message contains "PennieBot"
-| order by timestamp desc
-
-// Work items created today
-traces
-| where timestamp > startofday(now())
-| where message contains "Created work item"
-| summarize count() by tostring(customDimensions.WorkItemType)
-
-// Meeting join events
-traces
-| where timestamp > ago(24h)
-| where message contains "JoinMeeting"
-| project timestamp, message, customDimensions
-```
-
-== Getting Help
-
-If troubleshooting steps don't resolve the issue:
-
-1. **Check Application Insights** for detailed error logs
-2. **Review GitHub Issues** for similar problems: https://github.com/benweeks/GetPenn.ie/issues
-3. **Open a new issue** with:
-   - Problem description
-   - Steps to reproduce
-   - Logs from Application Insights
-   - Environment details (region, versions)
-4. **Contact support**: ben.weeks@outlook.com
-
-== Preventive Measures
-
-To avoid common issues:
-
-- ✅ Use headsets in meetings for better audio quality
-- ✅ Ensure participants join with authenticated accounts (not anonymous)
-- ✅ Monitor Application Insights daily for errors
-- ✅ Keep MCP server and dependencies updated
-- ✅ Rotate secrets regularly (every 90 days)
-- ✅ Test deployments in TEST environment before PROD
-- ✅ Review work item quality weekly and refine agent instructions
+Last Updated: October 11, 2025
