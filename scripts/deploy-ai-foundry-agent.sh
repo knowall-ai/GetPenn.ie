@@ -102,34 +102,130 @@ jq --arg deployment_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     {
       type: "function",
       function: {
-        name: "wit_create_work_item",
-        description: "Create a new work item in Azure DevOps",
+        name: "read_projects",
+        description: "List all Azure DevOps projects (GET /api/read_projects)",
         parameters: {
           type: "object",
-          properties: {
-            type: {type: "string", enum: ["Epic", "Feature", "User Story", "Question"]},
-            title: {type: "string"},
-            description: {type: "string"},
-            acceptanceCriteria: {type: "array", items: {type: "string"}},
-            priority: {type: "integer"},
-            estimatedEffort: {type: "string"}
-          },
-          required: ["type", "title", "description"]
+          properties: {},
+          required: []
         }
       }
     },
     {
       type: "function",
       function: {
-        name: "wit_add_child_work_items",
-        description: "Add child work items to a parent work item",
+        name: "read_teams",
+        description: "List teams in a specific Azure DevOps project (POST /api/read_teams)",
         parameters: {
           type: "object",
           properties: {
-            parentId: {type: "integer"},
-            childIds: {type: "array", items: {type: "integer"}}
+            project: {type: "string", description: "Name of the Azure DevOps project"}
           },
-          required: ["parentId", "childIds"]
+          required: ["project"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "read_work_item",
+        description: "Get a single work item by ID (POST /api/read_work_item)",
+        parameters: {
+          type: "object",
+          properties: {
+            project: {type: "string", description: "Name of the Azure DevOps project"},
+            workItemId: {type: "integer", description: "ID of the work item to retrieve"}
+          },
+          required: ["project", "workItemId"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "read_work_items",
+        description: "Get work items with optional filtering and recursive depth 1-5 (POST /api/read_work_items)",
+        parameters: {
+          type: "object",
+          properties: {
+            project: {type: "string", description: "Name of the Azure DevOps project"},
+            parentId: {type: "integer", description: "Optional parent work item ID to filter by"},
+            depth: {type: "integer", minimum: 1, maximum: 5, description: "Recursive depth for child items (1-5)"}
+          },
+          required: ["project"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "read_work_item_types",
+        description: "Get available work item types for a project (POST /api/read_work_item_types)",
+        parameters: {
+          type: "object",
+          properties: {
+            project: {type: "string", description: "Name of the Azure DevOps project"}
+          },
+          required: ["project"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "read_link_types",
+        description: "Get all 7 available link types (GET /api/read_link_types)",
+        parameters: {
+          type: "object",
+          properties: {},
+          required: []
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "search_work_items",
+        description: "Search work items using WIQL (Work Item Query Language) (POST /api/search_work_items)",
+        parameters: {
+          type: "object",
+          properties: {
+            project: {type: "string", description: "Name of the Azure DevOps project"},
+            wiql: {type: "string", description: "WIQL query string"}
+          },
+          required: ["project", "wiql"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "create_work_item",
+        description: "Create a new work item (Epic, Feature, Story, Task, Bug, Question) (POST /api/create_work_item)",
+        parameters: {
+          type: "object",
+          properties: {
+            project: {type: "string", description: "Name of the Azure DevOps project"},
+            workItemType: {type: "string", enum: ["Epic", "Feature", "User Story", "Task", "Bug", "Question"], description: "Type of work item to create"},
+            title: {type: "string", description: "Title of the work item"}
+          },
+          required: ["project", "workItemType", "title"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "link_work_items",
+        description: "Link work items together (child relationship) (POST /api/link_work_items)",
+        parameters: {
+          type: "object",
+          properties: {
+            project: {type: "string", description: "Name of the Azure DevOps project"},
+            sourceId: {type: "integer", description: "Source work item ID (parent)"},
+            targetIds: {type: "array", items: {type: "integer"}, description: "Array of target work item IDs (children)"}
+          },
+          required: ["project", "sourceId", "targetIds"]
         }
       }
     }
