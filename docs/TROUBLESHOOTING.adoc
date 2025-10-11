@@ -1,128 +1,47 @@
 = Pennie the Prepper - Troubleshooting Guide
-:toc:
 
-== The Core Issue: OpenAPI Spec Not Connected to Pennie
+[cols="1,2", options="header"]
+|===
+| Problem | Solution
 
-=== What's Wrong
-Your screenshot shows Pennie called `read_projects()` but got empty output. The backend returns data correctly when tested with curl (26 projects), but Pennie doesn't receive the data.
+| **Pennie calls `read_projects()` but gets empty output**
+| Backend is working (returns 26 projects via curl), but Pennie doesn't have the HTTP endpoint URL configured. Open the OpenAPI spec at `/mnt/raid1/GitHub/GetPenn.ie/openapi/pennie-backend-openapi.json` and add it as an Action in Azure AI Foundry portal: Actions → + Add Action → From OpenAPI → Paste spec → Save. Test: "What DevOps projects do we have?"
 
-=== Why This Happens
-**Pennie has the function schema but not the HTTP endpoint URL.** She knows the function signature but doesn't know WHERE to send the HTTP request.
+| **Azure Functions return HTTP 503 "Function host is not running"**
+| Python Azure Functions were deployed to Windows Function App. Python requires Linux. Redeploy with `kind: 'functionapp,linux'` and `linuxFxVersion: 'Python|3.11'` in Bicep template. Verify with: `az functionapp show --query "{kind:kind, reserved:reserved}"`
 
-In Azure AI Foundry, when you add an "Action", you must provide:
-1. Function name and parameters (schema) ✅ You have this
-2. HTTP endpoint URL ❌ This is missing or incorrect
+| **Python SDK error: "OpenApiTool is not JSON serializable"**
+| Bug in azure-ai-agents SDK v1.0.0. Use the REST API scripts in `scripts/update-pennie-tools.sh` instead of Python SDK until SDK is fixed.
 
-=== The Fix
-The OpenAPI spec at `/mnt/raid1/GitHub/GetPenn.ie/openapi/pennie-backend-openapi.json` contains all 9 function definitions WITH the correct endpoint URLs.
+| **Azure AI Foundry Agents fails in UK South**
+| Azure AI Agents Service with OpenAPI tools not available in UK South. Use East US 2 (`benw-mgan4638-eastus2`) for Pennie's AI Services account.
 
-This spec needs to be added to Pennie as an Action in the Azure AI Foundry portal.
+| **Backend functions return empty data despite HTTP 200**
+| Missing environment variables. Set `AZURE_DEVOPS_ORG` and `AZURE_DEVOPS_PAT` in Function App settings via Bicep or: `az functionapp config appsettings set --settings AZURE_DEVOPS_ORG="KnowAll" AZURE_DEVOPS_PAT="your-token"`
 
-**Backend URL**: `https://pennie-backend-prod.azurewebsites.net`
+| **Agent can't call functions due to auth errors**
+| Functions have `auth_level=FUNCTION` requiring API keys. Change to `auth_level=func.AuthLevel.ANONYMOUS` for agent-callable functions. Configure CORS: `allowedOrigins: ['https://ai.azure.com']`
 
-All 9 functions are operational and return HTTP 200 responses.
-
----
-
-== Regional Limitations
-
-=== Azure AI Agents Service Not Available in UK South
-As of October 2025, Azure AI Foundry Agents Service with OpenAPI HTTP tools does NOT work in UK South.
-
-**Supported Regions:**
-- East US 2 ✅
-- West US ✅  
-- North Europe ✅
-
-**Not Supported:**
-- UK South ❌
-- UK West ❌
-
-**Solution:** Use East US 2 for Pennie's AI Services account (`benw-mgan4638-eastus2`)
-
----
-
-== Python SDK Issues
-
-=== OpenApiTool Not JSON Serializable
-**Error:** `TypeError: Object of type OpenApiTool is not JSON serializable`
-
-**Cause:** Bug in azure-ai-agents SDK v1.0.0
-
-**Workaround:** Use REST API directly instead of Python SDK (see scripts/update-pennie-tools.sh)
-
----
-
-== Backend Deployment Issues
-
-=== Windows vs Linux Function App
-**Problem:** Functions return HTTP 503 "Function host is not running"
-
-**Cause:** Python Azure Functions MUST run on Linux, not Windows
-
-**Fix:** Deploy with `kind: 'functionapp,linux'` and `linuxFxVersion: 'Python|3.11'` in Bicep
-
----
+|===
 
 == Current Status
 
-✅ **Backend Fully Operational**
-- All 9 functions deployed on Linux Function App
-- URL: https://pennie-backend-prod.azurewebsites.net
-- Returns HTTP 200 with correct data
-- 26 DevOps projects accessible
+✅ *Backend*: All 9 functions operational at https://pennie-backend-prod.azurewebsites.net (Linux, Python 3.11)
 
-✅ **OpenAPI Spec Complete**
-- Location: `/mnt/raid1/GitHub/GetPenn.ie/openapi/pennie-backend-openapi.json`
-- All 9 functions documented
-- Anonymous authentication configured
-- Ready to add to Pennie
+✅ *OpenAPI Spec*: Complete at `/mnt/raid1/GitHub/GetPenn.ie/openapi/pennie-backend-openapi.json`
 
-❌ **Pennie Configuration Incomplete**
-- Pennie exists in eastus2 (ID: asst_yhQ9HVWxaIyeaSZwjBDOkSQi)
-- Has 2 old functions (wit_create_work_item, wit_add_child_work_items)
-- Missing read_projects and 6 other functions
-- Needs OpenAPI spec added as Action
+❌ *Pennie*: Needs OpenAPI spec added as Action in AI Foundry portal
 
----
-
-== How to Fix Pennie (Manual Portal Steps Required)
-
-Since the Python SDK has bugs and REST API for adding Actions is not documented, the current solution requires adding the OpenAPI spec via the Azure AI Foundry portal:
-
-1. Open https://ai.azure.com/resource/agentsList
-2. Select "Pennie the Prepper"
-3. Click "Actions" → "+ Add Action" → "From OpenAPI"
-4. Paste the content of `/mnt/raid1/GitHub/GetPenn.ie/openapi/pennie-backend-openapi.json`
-5. Save
-
-**Test:** Ask Pennie "What DevOps projects do we have?" - She should return all 26 projects.
-
----
-
-== Testing Commands
+== Quick Test Commands
 
 [source,bash]
 ----
-# Test backend directly
+# Test backend
 curl https://pennie-backend-prod.azurewebsites.net/api/read_projects
 
-# Expected output:
-# {"success": true, "count": 26, "projects": [...]}
-
-# List all functions
-az functionapp function list \
-  --name pennie-backend-prod \
-  --resource-group TMinus15Agents \
-  --query "[].name"
+# Expected: {"success": true, "count": 26, "projects": [...]}
 
 # Check Function App is Linux
-az functionapp show \
-  --name pennie-backend-prod \
-  --resource-group TMinus15Agents \
+az functionapp show --name pennie-backend-prod --resource-group TMinus15Agents \
   --query "{kind:kind, reserved:reserved, linuxFxVersion:siteConfig.linuxFxVersion}"
 ----
-
----
-
-Last Updated: October 11, 2025
