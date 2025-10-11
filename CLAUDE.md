@@ -21,11 +21,13 @@ Pennie the Prepper is an AI-powered business analyst that joins Microsoft Teams 
 
 3. **Azure OpenAI Assistant** (Pennie)
    - Deployed via scripts/deploy-agent.sh
-   - Assistant ID: asst_RI08aAoWkmjTZASEVmiBBwj0 (UK South)
-   - Endpoint: https://knowall-ai-foundry.cognitiveservices.azure.com/
+   - Assistant ID: asst_NpRS5WvtJOW8DeWgIKz11JA8 (East US 2)
+   - Endpoint: https://benw-mgan4638-eastus2.openai.azure.com
+   - Project: benw-mgan4638-eastus2_project (T-Minus-15-Agents-US)
    - GPT-4o (model version 2024-08-06) with T-Minus-15 logic (temperature: 0.1)
    - **OpenAI Assistants function calling pattern** - Pennie calls functions, application code must handle them
-   - Functions defined: wit_create_work_item, wit_add_child_work_items (2 functions currently)
+   - **IMPORTANT**: Use the OpenAI endpoint (*.openai.azure.com), NOT AI Services endpoint (*.cognitiveservices.azure.com)
+   - Functions defined: All 9 backend functions (read_projects, read_teams, read_work_item, read_work_items, read_work_item_types, read_link_types, search_work_items, create_work_item, link_work_items)
 
 4. **Azure Functions Backend** (Python 3.11 on Linux)
    - URL: https://pennie-backend-prod.azurewebsites.net
