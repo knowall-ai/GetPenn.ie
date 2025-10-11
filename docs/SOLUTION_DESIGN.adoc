@@ -88,42 +88,109 @@ flowchart TD
 * Decide when to create vs. update work items
 * Post real-time notifications to Teams chat
 
-**Tools Available**:
+**Tools Available** (via Azure Functions Backend):
 
-* `GetWorkItems` - Retrieve existing backlog items
-* `CreateWorkItem` - Create Epics, Features, Stories, Questions
-* `UpdateWorkItem` - Update existing work items
-* `LinkWorkItems` - Create parent-child relationships
+* `read_projects` - List all 26 client projects in DevOps organization
+* `read_teams` - List teams within a specific project
+* `read_work_item` - Get single work item with full details (by ID)
+* `read_work_items` - Get multiple work items with flexible filtering (by IDs, parentId with recursive depth, type, state)
+* `read_work_item_types` - Discover available work item types for a project
+* `read_link_types` - Discover available link types (Parent, Child, Related, Dependency, Duplicate)
+* `search_work_items` - WIQL-based search with advanced filtering
+* `create_work_item` - Create Epics, Features, Stories, Questions
+* `link_work_items` - Create flexible work item links with custom link types (not just parent-child)
 
 
-=== 4. Azure DevOps MCP Server (DevOps Integration)
-**Technology**: Microsoft's official Azure DevOps MCP Server (`@azure-devops/mcp`)
+=== 4. Azure Functions Backend (DevOps Integration)
+**Technology**: Azure Functions (Python 3.11) with Azure DevOps REST API
 
-**Deployment**: Node.js server running on Windows Server VM (co-located with Teams Media Bot)
+**Deployment**: Serverless compute on Azure Functions Consumption Plan (Y1)
 
-**Available Work Item Tools**:
+**Function App Name**: `pennie-backend-prod`
 
-* `wit_create_work_item` - Create new work items (Epic, Feature, User Story, Question)
-* `wit_update_work_item` - Update existing work item fields
-* `wit_add_child_work_items` - Create parent-child relationships (Epic > Feature > Story)
-* `wit_get_work_item` - Retrieve single work item by ID
-* `wit_get_work_items_batch_by_ids` - Retrieve multiple work items
-* `wit_my_work_items` - List current user's work items
-* `wit_add_work_item_comment` - Add comments with speaker attribution
-* `wit_list_backlog_work_items` - Retrieve backlog items
-* `wit_get_query_results` - Execute saved queries
+**Available Functions** (Standardized CRUD Naming):
 
-**Authentication**: Microsoft account with Azure DevOps access (OAuth flow)
+* `read_projects` (GET /api/read_projects) - List all client projects in KnowAll organization
+** Returns: Project ID, name, description, state, visibility
+** Use case: Pennie discovers available client projects dynamically
 
-**Integration**: Azure AI Foundry Agent connects via MCP protocol
+* `read_teams` (POST /api/read_teams) - List teams in a specific project
+** Parameters: `project` (project name or ID)
+** Returns: Team ID, name, description
+** Use case: Team-specific work item routing
+
+* `read_work_item` (POST /api/read_work_item) - Get single work item with full details
+** Parameters: `project`, `workItemId`
+** Returns: All fields, relations, comments, attachments
+** Use case: Logic App reads specific Epic for document generation
+
+* `read_work_items` (POST /api/read_work_items) - Get multiple work items with flexible filtering
+** Parameters: `project`, `workItemIds` (optional array), `parentId` (optional), `depth` (1-5, default 1), `workItemType` (optional), `state` (optional), `top` (default 100, max 200)
+** Returns: Array of work items with depth level indicator (`_depth` field)
+** Use cases:
+*** Get specific IDs: `{"project": "ClientA", "workItemIds": [123, 456]}`
+*** Get direct children: `{"project": "ClientA", "parentId": 123}` (Epic -> Features)
+*** Get nested hierarchy: `{"project": "ClientA", "parentId": 123, "depth": 3}` (Epic -> Features -> Stories)
+*** Filter by type: `{"project": "ClientA", "parentId": 123, "workItemType": "Feature"}`
+** **Recursive depth support**: depth=1 (direct children), depth=2 (children + grandchildren), up to depth=5
+
+* `read_work_item_types` (POST /api/read_work_item_types) - Get available work item types
+** Parameters: `project`
+** Returns: Array of work item types with name, description, icon, color
+** Use case: Pennie discovers what types are configured (Epic, Feature, User Story, Bug, etc.)
+
+* `search_work_items` (POST /api/search_work_items) - WIQL-based advanced search
+** Parameters: `project`, `workItemType` (optional), `state` (optional), `assignedTo` (optional), `tags` (optional), `titleContains` (optional), `top` (default 50)
+** Returns: Array of work items matching all specified filters
+** Use case: Find all Active Features assigned to a user, or search by title keywords
+
+* `create_work_item` (POST /api/create_work_item) - Create new work items
+** Parameters: `project`, `workItemType` (Epic/Feature/User Story/Question), `title`, `description`, `acceptanceCriteria`, etc.
+** Returns: Created work item ID and URL
+** Use case: Pennie creates backlog items from meeting transcripts
+
+* `read_link_types` (GET /api/read_link_types) - Get available link types
+** Parameters: None required
+** Returns: Array of link types with name, display name, description, direction, category
+** Link categories: hierarchy (Parent/Child), dependency (Predecessor/Successor), related, other (Duplicate)
+** Use case: Pennie discovers what link types are available
+
+* `link_work_items` (POST /api/link_work_items) - Create flexible work item links
+** Parameters: `project`, `sourceId`, `targetIds` (array), `linkType` (optional, defaults to Hierarchy-Forward), `comment` (optional)
+** **Backward compatible**: Also accepts legacy `parentId`/`childIds` parameters (maps to Hierarchy-Forward)
+** Returns: Success status for each link with link type
+** Link types supported:
+*** `System.LinkTypes.Hierarchy-Forward` - Parent → Child (default)
+*** `System.LinkTypes.Hierarchy-Reverse` - Child → Parent
+*** `System.LinkTypes.Related` - Related work items
+*** `System.LinkTypes.Dependency-Forward` - Predecessor → Successor
+*** `System.LinkTypes.Dependency-Reverse` - Successor → Predecessor
+*** `System.LinkTypes.Duplicate-Forward` - Duplicate item
+** Use cases:
+*** Maintain Epic > Feature > Story hierarchy
+*** Create task dependencies (must complete X before Y)
+*** Link related work items
+*** Mark duplicates
+
+**Authentication**: Personal Access Token (PAT) stored in Azure Function App settings
+
+**Dynamic Multi-Client Support**: All functions accept `project` parameter for per-client project selection (26 client projects supported)
+
+**Naming Convention**: Standardized CRUD operations:
+* `read_*` - Retrieve data (GET operations)
+* `create_*` - Create new items (POST operations)
+* `link_*` - Create relationships (POST operations)
+
+**Integration**: Azure AI Foundry Agent calls functions via HTTP (function-level auth)
 
 **Benefits**:
 
-* Official Microsoft product - actively maintained
-* No custom function code to write or maintain
-* Automatic tool discovery by AI Foundry Agent
-* Domain-based loading (only load "work-items" domain)
-* Standard MCP protocol for easy integration
+* Serverless - no infrastructure to manage
+* Standardized naming convention (CRUD-based)
+* Dynamic project selection (per-client support)
+* Direct Azure DevOps REST API integration
+* Custom logic for T-Minus-15 methodology
+* Supports both real-time agent actions and Logic App document generation
 
 
 === 5. Optional: Azure AI Avatar

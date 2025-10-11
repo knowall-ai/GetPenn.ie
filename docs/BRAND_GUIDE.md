@@ -1,0 +1,534 @@
+# Pennie the Prepper - Brand Guidelines
+
+**Version**: 1.0
+**Last Updated**: 2025-10-11
+**Status**: Draft
+
+This document defines the visual identity, brand colors, typography, and design principles for Pennie the Prepper.
+
+---
+
+## 🎨 Brand Identity
+
+### Brand Positioning
+
+**Pennie the Prepper** is an AI-powered meeting assistant that transforms Teams meetings into actionable Azure DevOps work items using the T-Minus-15 methodology.
+
+**Brand Personality:**
+- **Professional**: Enterprise-grade, reliable, trustworthy
+- **Efficient**: Streamlines meeting outcomes, saves time
+- **Intelligent**: AI-powered, context-aware, proactive
+- **Organized**: Methodical, structured, preparation-focused
+- **Approachable**: Friendly assistant, not intimidating
+
+**Brand Voice:**
+- Clear and concise
+- Professional but conversational
+- Action-oriented
+- Helpful and supportive
+- Technical when needed, accessible always
+
+---
+
+## 🎨 Color Palette
+
+### Primary Colors
+
+Our primary palette combines **KnowAll's lime green brand identity** with **Microsoft Teams/Azure blue** for platform consistency.
+
+#### Lime Green (KnowAll Brand)
+```
+Primary Lime:   #BEF264  (Tailwind lime-300)
+Bright Lime:    #84CC16  (Tailwind lime-500)
+Dark Lime:      #65A30D  (Tailwind lime-600)
+```
+
+**Usage:**
+- Primary accent color
+- Call-to-action buttons
+- Success states
+- Highlights and emphasis
+- Links and interactive elements
+
+**CSS Variables:**
+```css
+--pennie-lime-light: #BEF264;
+--pennie-lime:       #84CC16;
+--pennie-lime-dark:  #65A30D;
+```
+
+#### Azure Blue (Microsoft Ecosystem)
+```
+Primary Blue:   #0078D4  (Microsoft Azure blue)
+Light Blue:     #50E6FF  (Azure accent)
+Teams Blue:     #6264A7  (Microsoft Teams purple-blue)
+```
+
+**Usage:**
+- Secondary brand color
+- Azure/Teams integration visuals
+- Information states
+- Neutral accents
+
+**CSS Variables:**
+```css
+--pennie-azure:      #0078D4;
+--pennie-azure-light: #50E6FF;
+--pennie-teams:      #6264A7;
+```
+
+---
+
+### Secondary Colors
+
+#### Dark Theme (KnowAll Inspired)
+```
+Black:          #000000  (Pure black)
+Gray 950:       #0A0A0A  (Near black backgrounds)
+Gray 900:       #171717  (Dark backgrounds)
+Gray 800:       #262626  (Elevated surfaces)
+Gray 700:       #404040  (Borders, dividers)
+```
+
+**Usage:**
+- Dark mode backgrounds
+- High-contrast layouts
+- Technical/developer interfaces
+- Diagram backgrounds
+
+#### Light Theme (Microsoft Inspired)
+```
+White:          #FFFFFF  (Pure white)
+Gray 50:        #F9FAFB  (Light backgrounds)
+Gray 100:       #F3F4F6  (Subtle backgrounds)
+Gray 200:       #E5E7EB  (Borders)
+Gray 300:       #D1D5DB  (Dividers)
+```
+
+**Usage:**
+- Light mode backgrounds
+- Documentation pages
+- Teams integration UI
+- Presentation slides
+
+---
+
+### Semantic Colors
+
+#### Success
+```
+Success Green:  #10B981  (Tailwind emerald-500)
+Success Light:  #D1FAE5  (Tailwind emerald-100)
+Success Dark:   #047857  (Tailwind emerald-700)
+```
+
+**Usage:** Completed actions, successful work item creation, confirmations
+
+#### Warning
+```
+Warning Orange: #F59E0B  (Tailwind amber-500)
+Warning Light:  #FEF3C7  (Tailwind amber-100)
+Warning Dark:   #B45309  (Tailwind amber-700)
+```
+
+**Usage:** Pending actions, clarification needed, cautions
+
+#### Error
+```
+Error Red:      #EF4444  (Tailwind red-500)
+Error Light:    #FEE2E2  (Tailwind red-100)
+Error Dark:     #B91C1C  (Tailwind red-700)
+```
+
+**Usage:** Errors, failed operations, critical alerts
+
+#### Info
+```
+Info Blue:      #3B82F6  (Tailwind blue-500)
+Info Light:     #DBEAFE  (Tailwind blue-100)
+Info Dark:      #1E40AF  (Tailwind blue-700)
+```
+
+**Usage:** Information, tips, neutral states
+
+---
+
+### Color Usage Matrix
+
+| Element | Light Mode | Dark Mode | Accent |
+|---------|------------|-----------|--------|
+| **Primary Action** | Lime 500 | Lime 300 | — |
+| **Secondary Action** | Azure Blue | Azure Light | — |
+| **Background** | White / Gray 50 | Gray 950 / 900 | — |
+| **Surface** | White | Gray 900 / 800 | — |
+| **Text Primary** | Gray 900 | White | — |
+| **Text Secondary** | Gray 600 | Gray 400 | — |
+| **Border** | Gray 200 | Gray 700 | — |
+| **Link** | Lime 600 | Lime 300 | Lime 500 (hover) |
+| **Code Block** | Gray 100 | Gray 900 | Lime 500 (syntax) |
+
+---
+
+## ✍️ Typography
+
+### Font Families
+
+#### Primary Font: Segoe UI
+```css
+font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+```
+
+**Rationale:** Native to Windows and Microsoft Teams, ensures consistency across the Microsoft ecosystem.
+
+**Weights:**
+- **Light (300)**: Large display text
+- **Regular (400)**: Body text, paragraphs
+- **Semibold (600)**: Subheadings, emphasis
+- **Bold (700)**: Headings, strong emphasis
+
+#### Monospace Font: Cascadia Code
+```css
+font-family: 'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', monospace;
+```
+
+**Usage:** Code snippets, JSON examples, technical documentation, developer-facing content
+
+---
+
+### Type Scale
+
+| Element | Size | Weight | Line Height | Letter Spacing |
+|---------|------|--------|-------------|----------------|
+| **H1 Display** | 48px (3rem) | Light 300 | 1.2 | -0.02em |
+| **H1** | 36px (2.25rem) | Semibold 600 | 1.2 | -0.01em |
+| **H2** | 30px (1.875rem) | Semibold 600 | 1.3 | 0 |
+| **H3** | 24px (1.5rem) | Semibold 600 | 1.4 | 0 |
+| **H4** | 20px (1.25rem) | Semibold 600 | 1.4 | 0 |
+| **H5** | 18px (1.125rem) | Semibold 600 | 1.5 | 0 |
+| **Body Large** | 18px (1.125rem) | Regular 400 | 1.6 | 0 |
+| **Body** | 16px (1rem) | Regular 400 | 1.6 | 0 |
+| **Body Small** | 14px (0.875rem) | Regular 400 | 1.5 | 0 |
+| **Caption** | 12px (0.75rem) | Regular 400 | 1.4 | 0.01em |
+| **Code** | 14px (0.875rem) | Regular 400 | 1.6 | 0 |
+
+---
+
+### Typography Examples
+
+**Headings:**
+```css
+h1 {
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--gray-900); /* Light mode */
+  color: var(--white);    /* Dark mode */
+}
+
+h2 {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+}
+```
+
+**Body Text:**
+```css
+body {
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: #262626; /* Gray 800 */
+}
+```
+
+**Code Blocks:**
+```css
+code {
+  font-family: 'Cascadia Code', monospace;
+  font-size: 14px;
+  background: #F3F4F6; /* Light mode */
+  background: #171717; /* Dark mode */
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+}
+```
+
+---
+
+## 🎭 Logo & Iconography
+
+### Logo Variations
+
+**Primary Logo:**
+- Full color version with "Pennie the Prepper" wordmark
+- Minimum size: 120px width
+- Clear space: 20px on all sides
+
+**Icon-Only:**
+- Square format (512x512)
+- Works at small sizes (32x32)
+- Recognizable without text
+
+**Monochrome:**
+- Single-color versions for special uses
+- White on dark backgrounds
+- Dark on light backgrounds
+
+### Icon Style
+
+**Design Principles:**
+- **Stroke weight**: 2px for 24x24 icons
+- **Corner radius**: 2px for rounded elements
+- **Padding**: 2-3px from icon edges
+- **Style**: Outlined (not filled) for consistency with Fluent UI
+
+**Inspiration:**
+- Microsoft Fluent UI System Icons
+- Phosphor Icons (outline style)
+- Heroicons (outline variant)
+
+**Status Icons:**
+- Listening: Waveform or microphone icon
+- Processing: Spinning gear or dots
+- Creating: Plus icon or pencil
+- Idle: Clock or pause icon
+- Error: X or exclamation triangle
+
+---
+
+## 📐 Layout & Spacing
+
+### Spacing Scale (8px base unit)
+
+```
+4px   (0.25rem) - Tiny
+8px   (0.5rem)  - XXS
+12px  (0.75rem) - XS
+16px  (1rem)    - SM (base)
+24px  (1.5rem)  - MD
+32px  (2rem)    - LG
+48px  (3rem)    - XL
+64px  (4rem)    - 2XL
+96px  (6rem)    - 3XL
+```
+
+**Usage:**
+- Component padding: 16px (SM)
+- Section spacing: 48px (XL)
+- Card margins: 24px (MD)
+- Button padding: 12px 24px (XS MD)
+
+### Grid System
+
+**12-column grid** with 24px gutters
+
+**Breakpoints:**
+```
+Mobile:  < 640px
+Tablet:  640px - 1024px
+Desktop: > 1024px
+Wide:    > 1440px
+```
+
+### Container Max Widths
+
+```
+Documentation: 896px (prose width)
+Dashboard:     1280px
+Full bleed:    100%
+```
+
+---
+
+## 🖼️ Image Guidelines
+
+### Photography Style
+
+**Preferred:**
+- Professional meeting environments
+- Diverse teams collaborating
+- Modern office spaces
+- Clean, uncluttered backgrounds
+
+**Avoid:**
+- Stock photo "corporate" clichés
+- Overly staged scenarios
+- Distracting backgrounds
+- Low resolution or pixelated images
+
+### Image Treatments
+
+**Overlays:**
+```css
+background: linear-gradient(135deg, rgba(0,0,0,0.7), rgba(132,204,22,0.3));
+```
+
+**Filters:**
+- Subtle desaturation for backgrounds
+- Lime green tint for brand consistency
+- High contrast for readability
+
+---
+
+## 🎯 Design Principles
+
+### 1. Clarity Over Cleverness
+- Clear, direct communication
+- No jargon without explanation
+- Obvious interaction patterns
+
+### 2. Consistency
+- Reuse components and patterns
+- Match Microsoft Teams design language
+- Predictable behavior
+
+### 3. Accessibility
+- WCAG 2.1 AA minimum
+- Color contrast ratios: 4.5:1 (text), 3:1 (UI)
+- Keyboard navigation support
+- Screen reader friendly
+
+### 4. Performance
+- Optimize images (WebP, lazy loading)
+- Minimize file sizes
+- Fast, responsive interactions
+
+### 5. Microsoft Ecosystem Alignment
+- Follow Fluent UI design patterns
+- Match Teams visual language
+- Consistent with Azure branding
+
+---
+
+## 🎬 Motion & Animation
+
+### Animation Principles
+
+**Timing:**
+```
+Fast:    100-200ms (micro-interactions, hovers)
+Medium:  200-400ms (transitions, reveals)
+Slow:    400-600ms (major state changes)
+```
+
+**Easing:**
+```css
+--ease-in:     cubic-bezier(0.4, 0, 1, 1);
+--ease-out:    cubic-bezier(0, 0, 0.2, 1);
+--ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+```
+
+**Common Animations:**
+- Fade in: `opacity 0 → 1` (300ms)
+- Slide in: `translateY(20px) → 0` (400ms)
+- Scale up: `scale(0.95) → 1` (200ms)
+
+**Avoid:**
+- Excessive animation
+- Parallax effects
+- Continuous animations (drain battery)
+- Motion without purpose
+
+---
+
+## 💬 Tone of Voice
+
+### Writing Style
+
+**Do:**
+- ✅ Use active voice ("Pennie creates work items")
+- ✅ Be concise and direct
+- ✅ Use "you" and "your" (second person)
+- ✅ Explain technical terms when first used
+- ✅ Use examples and real scenarios
+
+**Don't:**
+- ❌ Use passive voice ("Work items are created")
+- ❌ Be overly formal or corporate
+- ❌ Use unexplained acronyms
+- ❌ Make assumptions about user knowledge
+- ❌ Use humor at the expense of clarity
+
+### Example Copy
+
+**Good:**
+> "Pennie listens to your Teams meeting and automatically creates Azure DevOps work items. You'll see Epics, Features, and User Stories appear in real-time as decisions are made."
+
+**Bad:**
+> "Leveraging advanced NLP algorithms, our solution facilitates the transformation of verbal discourse into structured work item artifacts within your project management ecosystem."
+
+---
+
+## 🚫 Common Mistakes to Avoid
+
+### Color
+- ❌ Using lime green for errors (use red)
+- ❌ Low contrast text (fails accessibility)
+- ❌ Mixing warm and cool grays
+- ❌ Overusing bright lime (use as accent only)
+
+### Typography
+- ❌ Too many font weights in one view
+- ❌ Line lengths over 75 characters (prose)
+- ❌ All caps for long text
+- ❌ Centered body text
+
+### Layout
+- ❌ Inconsistent spacing
+- ❌ Not aligning to grid
+- ❌ Cluttered interfaces
+- ❌ Ignoring mobile view
+
+### Icons
+- ❌ Mixing icon styles (outline + filled)
+- ❌ Inconsistent icon sizes in the same context
+- ❌ Using icons without labels in complex UIs
+- ❌ Custom icons that don't match Fluent UI style
+
+---
+
+## 📦 Brand Assets
+
+All brand assets are located in `/assets/` directory:
+
+```
+assets/
+├── avatars/          # Pennie avatars (512x512)
+├── icons/            # App icons (16-512px)
+├── teams/            # Teams-specific assets
+├── banners/          # Marketing banners
+├── diagrams/         # Architecture diagrams
+├── social/           # Social media assets
+└── brand/            # Logo files, color swatches
+```
+
+**See:** [assets/README.md](../assets/README.md) for complete asset list.
+
+---
+
+## 🔄 Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | 2025-10-11 | Initial brand guidelines created |
+| | | - KnowAll lime green palette integrated |
+| | | - Microsoft Teams/Azure alignment defined |
+| | | - Typography scale established |
+
+---
+
+## 📞 Questions?
+
+For questions about brand guidelines:
+- **Documentation**: See [SOLUTION_DESIGN.adoc](SOLUTION_DESIGN.adoc)
+- **Issues**: [GitHub Issues](https://github.com/bengweeks/GetPenn.ie/issues)
+- **Assets**: [assets/README.md](../assets/README.md)
+
+---
+
+**Maintained by**: KnowAll Design Team
+**Last Review**: 2025-10-11

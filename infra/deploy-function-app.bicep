@@ -36,7 +36,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   }
 }
 
-// App Service Plan (Consumption)
+// App Service Plan (Consumption) - Linux for Python
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-01-01' = {
   name: hostingPlanName
   location: location
@@ -44,17 +44,22 @@ resource hostingPlan 'Microsoft.Web/serverfarms@2023-01-01' = {
     name: 'Y1'
     tier: 'Dynamic'
   }
-  properties: {}
+  kind: 'linux'
+  properties: {
+    reserved: true  // Required for Linux
+  }
 }
 
-// Azure Function App
+// Azure Function App - Linux Python
 resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
   name: functionAppNameFull
   location: location
-  kind: 'functionapp'
+  kind: 'functionapp,linux'
   properties: {
     serverFarmId: hostingPlan.id
+    reserved: true  // Required for Linux
     siteConfig: {
+      linuxFxVersion: 'Python|3.11'  // Required for Linux Python apps
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
@@ -93,7 +98,6 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           value: 'INFO'
         }
       ]
-      pythonVersion: '3.11'
       cors: {
         allowedOrigins: [
           'https://ai.azure.com'
