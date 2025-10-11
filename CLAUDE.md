@@ -19,22 +19,39 @@ Pennie the Prepper is an AI-powered business analyst that joins Microsoft Teams 
    - Real-time speech-to-text transcription
    - Outputs: Speaker name + timestamp + text
 
-3. **Azure AI Foundry Agent** (Pennie)
+3. **Azure OpenAI Assistant** (Pennie)
+   - Deployed via scripts/deploy-agent.sh
+   - Assistant ID: asst_RI08aAoWkmjTZASEVmiBBwj0 (UK South)
+   - Endpoint: https://knowall-ai-foundry.cognitiveservices.azure.com/
    - GPT-4o (model version 2024-08-06) with T-Minus-15 logic (temperature: 0.1)
-   - Deployed in same region as other components for optimal performance
-   - Processes transcribed conversation with 100% reliable structured outputs
-   - Calls Azure DevOps MCP Server via Model Context Protocol
+   - **OpenAI Assistants function calling pattern** - Pennie calls functions, application code must handle them
+   - Functions defined: wit_create_work_item, wit_add_child_work_items (2 functions currently)
 
-4. **Azure DevOps MCP Server** (Node.js on Windows VM)
-   - Microsoft's official MCP server (`@azure-devops/mcp`)
-   - Co-located with Teams Bot for simplicity
-   - Provides work item tools to AI Foundry Agent
+4. **Azure Functions Backend** (Python 3.11 on Linux)
+   - URL: https://pennie-backend-prod.azurewebsites.net
+   - 9 HTTP endpoints for Azure DevOps integration
+   - Functions: read_projects, read_teams, read_work_item, read_work_items, read_work_item_types, read_link_types, search_work_items, create_work_item, link_work_items
+   - Anonymous authentication (no API keys)
+   - Recursive depth support (1-5 levels) for work item hierarchies
+   - 7 link types supported (not just parent-child)
+
+5. **Function Call Handler** (Teams Bot or middleware - REQUIRED)
+   - **Architecture Pattern**: OpenAI Assistants don't make HTTP requests directly
+   - When Pennie calls a function (e.g., read_projects):
+     1. Azure OpenAI returns "requires_action" status
+     2. YOUR code must intercept this function call
+     3. Call the Azure Functions backend (https://pennie-backend-prod.azurewebsites.net/api/read_projects)
+     4. Submit the result back to Pennie via the Runs API
+     5. Pennie then processes the result and responds
+   - This handler is what makes Pennie's function calls work
 
 ### Key Design Decisions
 - **Real-time Audio**: Graph Communications Media SDK (Windows-only requirement)
 - **Speaker Identification**: Azure Speech Services MeetingTranscriber API
-- **DevOps Integration**: Official Azure DevOps MCP Server (not custom Azure Functions)
-- **Deployment**: Single Windows VM hosts both Bot (C#) and MCP Server (Node.js)
+- **DevOps Integration**: Custom Azure Functions backend (9 HTTP endpoints)
+- **Agent Pattern**: OpenAI Assistants with function calling (requires application handler)
+- **Backend**: Linux Function App (Python 3.11) - Windows doesn't support Python properly
+- **Regional**: UK South for AI services, Linux Function App can be any region
 
 ## T-Minus-15 Methodology
 
@@ -94,16 +111,49 @@ Pennie uses Microsoft's official Azure DevOps MCP Server for work item operation
 
 **Note for Other Deployers**: This is KnowAll's internal configuration. Choose your own region based on compliance needs. GPT-4o is available in UK South, East US 2, Sweden Central, and other regions.
 
+### Deployment Scripts
+
+**Pennie Agent Deployment**:
+```bash
+./scripts/deploy-agent.sh
+```
+- Reads configuration from `agent-config.json`
+- Creates OpenAI Assistant in UK South
+- Returns Assistant ID (saved to .env as AZURE_AI_ASSISTANT_ID)
+- Currently configured with 2 functions (wit_create_work_item, wit_add_child_work_items)
+
+**Azure Functions Backend Deployment**:
+```bash
+az deployment group create \
+  --resource-group TMinus15Agents \
+  --template-file infra/deploy-function-app.bicep \
+  --parameters functionAppName="pennie-backend" location="uksouth" environmentName="prod"
+```
+- Deploys Linux Function App (Python 3.11)
+- **CRITICAL**: Must be Linux - Python Azure Functions don't work properly on Windows
+- Sets linuxFxVersion: 'Python|3.11' in Bicep
+- Configures CORS for https://ai.azure.com
+- Sets auth level to ANONYMOUS (no API keys)
+
+**Infrastructure Deployment**:
+```bash
+az deployment sub create \
+  --location uksouth \
+  --template-file infra/main.bicep \
+  --parameters environmentName=prod
+```
+- Deploys AI Foundry Hub, Project, Storage, Key Vault, Monitoring
+- Windows VM for Teams Bot (future phase)
+
 ### GitHub Actions Workflow
 File: `.github/workflows/deploy.yml`
 
 **Automated Deployment**:
-1. Deploy Bicep infrastructure (Windows VM, AI services, storage, monitoring)
-2. Install Node.js 20+ on Windows VM
-3. Install Azure DevOps MCP Server globally (`npm install -g @azure-devops/mcp`)
-4. Deploy Teams Media Bot C# application
-5. Configure AI Foundry agent from `agent-config.json`
-6. Run health checks and integration tests
+1. Deploy Bicep infrastructure (AI services, storage, monitoring)
+2. Deploy Azure Functions backend (Linux Function App)
+3. Deploy Pennie agent via deploy-agent.sh
+4. Deploy Teams Bot with function call handler (future)
+5. Run health checks and integration tests
 
 **Manual One-Time Setup** (security/compliance requirements):
 1. Create Azure AD App Registration for Teams Bot
@@ -156,13 +206,61 @@ Values already configured in `.env`:
 └── README.md                  # Project overview and quick start
 ```
 
+## Critical Troubleshooting
+
+### Pennie Calls Functions But Gets Empty Output
+
+**Symptom**: In Azure AI Foundry playground, Pennie calls `read_projects()` but the output is empty (`output: ""`).
+
+**Root Cause**: OpenAI Assistants use function calling pattern, not HTTP tools. When Pennie calls a function:
+1. Azure OpenAI returns `requires_action` status with function call details
+2. **Your application code must**:
+   - Receive this function call
+   - Call the Azure Functions backend (https://pennie-backend-prod.azurewebsites.net/api/read_projects)
+   - Get the response (26 projects)
+   - Submit the result back to Pennie via the Runs API
+3. Only then can Pennie process the result and respond
+
+**The Missing Piece**: A function call handler (Teams Bot or middleware) that intercepts Pennie's function calls and proxies them to the backend.
+
+**Verification**:
+```bash
+# Test backend directly - this works:
+curl https://pennie-backend-prod.azurewebsites.net/api/read_projects
+# Returns: {"success": true, "count": 26, "projects": [...]}
+
+# But Pennie gets empty output because there's no handler connecting her to the backend
+```
+
+**Solution**: Deploy the Teams Bot which includes the function call handler that:
+- Monitors Pennie's runs for `requires_action` status
+- Calls the appropriate backend endpoint
+- Submits results back to Pennie
+
+### Python Azure Functions Must Be on Linux
+
+**Problem**: Function App returns HTTP 503 "Function host is not running"
+
+**Cause**: Python Azure Functions were deployed to Windows Function App. Python requires Linux.
+
+**Solution**: In Bicep template, set:
+```bicep
+kind: 'functionapp,linux'
+properties: {
+  reserved: true
+  siteConfig: {
+    linuxFxVersion: 'Python|3.11'
+  }
+}
+```
+
 ## Development Workflow
 
 ### Adding New Features to Pennie
 1. Update `agent-config.json` instructions if behavior changes needed
-2. No code changes required for DevOps integration (uses MCP server)
-3. Test locally using `test_pennie_local.py` (to be created)
-4. Deploy via GitHub Actions workflow
+2. Redeploy via `./scripts/deploy-agent.sh`
+3. Update function definitions in agent-config.json
+4. Test via Azure AI Studio: https://ai.azure.com
 
 ### Modifying Work Item Creation Logic
 - Edit `instructions` in `agent-config.json`
