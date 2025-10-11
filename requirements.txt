@@ -1,0 +1,11 @@
+# Azure Functions
+azure-functions==1.18.0
+
+# Azure DevOps integration
+requests==2.31.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Logging and monitoring
+azure-monitor-opentelemetry==1.2.0

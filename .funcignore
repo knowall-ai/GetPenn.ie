@@ -1,0 +1,14 @@
+.git*
+.vscode
+.env
+local.settings.json
+test
+.venv
+__pycache__
+*.pyc
+.python_packages
+infra
+docs
+scripts
+.gitignore
+README.md

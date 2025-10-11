@@ -1,0 +1,235 @@
+{
+  "knowledgeSources": [
+    {
+      "id": "tminus15-methodology",
+      "name": "T-Minus-15 Methodology Repository",
+      "description": "Complete T-Minus-15 methodology documentation including work item types, Epic structure, Feature patterns, User Story templates, and Question classification",
+      "type": "github_repository",
+      "source": {
+        "url": "https://github.com/bengweeks/T-Minus-15",
+        "branch": "main",
+        "recursive": true,
+        "fileTypes": [
+          ".md",
+          ".adoc",
+          ".yml",
+          ".yaml",
+          ".txt"
+        ],
+        "excludePaths": [
+          "node_modules",
+          ".git",
+          "dist",
+          "build"
+        ]
+      },
+      "indexing": {
+        "enabled": true,
+        "chunkSize": 1000,
+        "chunkOverlap": 200,
+        "refreshInterval": "daily"
+      },
+      "search": {
+        "enabled": true,
+        "mode": "semantic",
+        "topK": 5,
+        "relevanceThreshold": 0.7
+      },
+      "priority": "high",
+      "metadata": {
+        "owner": "Ben Weeks",
+        "domain": "requirements_engineering",
+        "tags": [
+          "methodology",
+          "work-items",
+          "epic",
+          "feature",
+          "user-story",
+          "question",
+          "acceptance-criteria"
+        ]
+      }
+    },
+    {
+      "id": "azure-ai-foundry-docs",
+      "name": "Azure AI Foundry Documentation",
+      "description": "Official Microsoft Azure AI Foundry documentation covering agent development, deployment, tools, and best practices",
+      "type": "web_crawler",
+      "source": {
+        "url": "https://docs.microsoft.com/en-us/azure/ai-foundry/",
+        "crawlDepth": 3,
+        "allowedDomains": [
+          "docs.microsoft.com"
+        ],
+        "respectRobotsTxt": true
+      },
+      "indexing": {
+        "enabled": true,
+        "chunkSize": 1000,
+        "chunkOverlap": 200,
+        "refreshInterval": "weekly"
+      },
+      "search": {
+        "enabled": true,
+        "mode": "semantic",
+        "topK": 3,
+        "relevanceThreshold": 0.6
+      },
+      "priority": "medium",
+      "metadata": {
+        "owner": "Microsoft",
+        "domain": "azure_ai",
+        "tags": [
+          "azure",
+          "ai-foundry",
+          "agents",
+          "deployment",
+          "tools"
+        ]
+      }
+    },
+    {
+      "id": "devops-best-practices",
+      "name": "DevOps Best Practices",
+      "description": "Curated collection of DevOps best practices from Microsoft, GitHub, and industry leaders covering work item management, agile processes, and team collaboration",
+      "type": "curated_content",
+      "sources": [
+        {
+          "name": "Microsoft DevOps Documentation",
+          "url": "https://learn.microsoft.com/en-us/devops/",
+          "topics": [
+            "work-item-tracking",
+            "agile",
+            "scrum",
+            "kanban",
+            "backlog-management"
+          ]
+        },
+        {
+          "name": "Azure DevOps Work Items Guide",
+          "url": "https://learn.microsoft.com/en-us/azure/devops/boards/work-items/",
+          "topics": [
+            "epics",
+            "features",
+            "user-stories",
+            "tasks",
+            "bugs",
+            "hierarchy"
+          ]
+        },
+        {
+          "name": "GitHub Best Practices",
+          "url": "https://docs.github.com/en/issues/planning-and-tracking-with-projects/learning-about-projects/best-practices-for-projects",
+          "topics": [
+            "project-management",
+            "issue-tracking",
+            "milestones"
+          ]
+        },
+        {
+          "name": "Agile Alliance",
+          "url": "https://www.agilealliance.org/agile101/",
+          "topics": [
+            "user-stories",
+            "acceptance-criteria",
+            "definition-of-done"
+          ]
+        }
+      ],
+      "indexing": {
+        "enabled": true,
+        "chunkSize": 800,
+        "chunkOverlap": 150,
+        "refreshInterval": "monthly"
+      },
+      "search": {
+        "enabled": true,
+        "mode": "hybrid",
+        "topK": 3,
+        "relevanceThreshold": 0.6
+      },
+      "priority": "low",
+      "metadata": {
+        "owner": "Multiple",
+        "domain": "devops",
+        "tags": [
+          "devops",
+          "agile",
+          "work-items",
+          "best-practices",
+          "processes"
+        ]
+      }
+    },
+    {
+      "id": "azure-devops-api",
+      "name": "Azure DevOps REST API Reference",
+      "description": "Azure DevOps REST API documentation for work item operations, queries, and integrations",
+      "type": "api_documentation",
+      "source": {
+        "url": "https://learn.microsoft.com/en-us/rest/api/azure/devops/",
+        "sections": [
+          "wit/work-items",
+          "wit/queries",
+          "wit/wiql",
+          "wit/comments",
+          "wit/attachments"
+        ]
+      },
+      "indexing": {
+        "enabled": true,
+        "chunkSize": 600,
+        "chunkOverlap": 100,
+        "refreshInterval": "monthly"
+      },
+      "search": {
+        "enabled": true,
+        "mode": "keyword",
+        "topK": 2,
+        "relevanceThreshold": 0.5
+      },
+      "priority": "medium",
+      "metadata": {
+        "owner": "Microsoft",
+        "domain": "api",
+        "tags": [
+          "api",
+          "rest",
+          "work-items",
+          "devops",
+          "integration"
+        ]
+      }
+    }
+  ],
+  "configuration": {
+    "caching": {
+      "enabled": true,
+      "ttl": 3600,
+      "maxSize": "100MB"
+    },
+    "monitoring": {
+      "enabled": true,
+      "logQueries": true,
+      "trackRelevance": true
+    },
+    "fallback": {
+      "enabled": true,
+      "mode": "web_search",
+      "allowedDomains": [
+        "docs.microsoft.com",
+        "learn.microsoft.com",
+        "github.com",
+        "stackoverflow.com"
+      ]
+    }
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "created": "2025-10-11",
+    "lastUpdated": "2025-10-11",
+    "agent": "Pennie the Prepper",
+    "owner": "Ben Weeks",
+    "description": "Knowledge sources for Pennie the Prepper - Business analyst AI agent specialized in T-Minus-15 methodology and Azure DevOps work item management"
+  }
+}
