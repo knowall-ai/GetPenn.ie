@@ -8,29 +8,38 @@ Pennie is a Microsoft Teams-friendly AI agent that joins meetings as a real-time
 
 == Architecture
 
+**Current Implementation** (October 2025):
+* Azure Functions Backend (Python 3.11 on Linux) - 9 HTTP endpoints for Azure DevOps
+* AI Foundry Agent (Pennie) in East US 2 with GPT-4o
+* Function calling pattern - application code handles Pennie's function calls
+* Teams Media Bot - **Future Phase** (requires Windows VM with Graph Communications SDK)
 
 [mermaid]
 ----
 flowchart TD
-    TeamsMeeting[Microsoft Teams Meeting<br/>Audio/Video Streams] -->|Bot joins meeting| MediaBot[Teams Media Bot<br/>Windows Server VM<br/>Graph Communications SDK]
-    MediaBot -->|RTP Audio Frames<br/>50 frames/sec| SpeechServices[Azure Speech Services<br/>MeetingTranscriber API<br/>Real-time Diarization]
-    SpeechServices -->|Transcribed Text<br/>Speaker Attribution| FoundryAgent[Pennie - Azure AI Foundry Agent<br/>GPT-4 + T-Minus-15 Logic]
-    FoundryAgent -->|Clarifying Questions<br/>Work Item Links| TeamsChat[Teams Meeting Chat]
-    FoundryAgent -->|Optional: Text-to-Speech| Avatar[Azure AI Avatar<br/>Optional Visual Presence]
-    Avatar -->|Audio/Video Stream| MediaBot
-    FoundryAgent -->|API Calls| DevOpsTools[Azure Functions<br/>CreateWorkItem, GetWorkItems, etc.]
-    DevOpsTools -->|Create/Update| AzureDevOps[Azure DevOps Boards<br/>Epics, Features, Stories, Questions]
-    FoundryAgent -->|Logs & Metrics| Storage[Azure Storage<br/>Application Insights]
+    TeamsMeeting[Microsoft Teams Meeting<br/>Audio/Video Streams<br/>FUTURE PHASE] -.->|Bot joins meeting| MediaBot[Teams Media Bot<br/>Windows Server VM<br/>Graph Communications SDK<br/>FUTURE PHASE]
+    MediaBot -.->|RTP Audio Frames<br/>50 frames/sec| SpeechServices[Azure Speech Services<br/>MeetingTranscriber API<br/>Real-time Diarization<br/>FUTURE PHASE]
+    SpeechServices -.->|Transcribed Text<br/>Speaker Attribution| FoundryAgent[Pennie - Azure AI Foundry Agent<br/>GPT-4o + T-Minus-15 Logic<br/>DEPLOYED: East US 2]
+    FoundryAgent -.->|Clarifying Questions<br/>Work Item Links| TeamsChat[Teams Meeting Chat<br/>FUTURE PHASE]
+    FoundryAgent -.->|Optional: Text-to-Speech| Avatar[Azure AI Avatar<br/>Optional Visual Presence<br/>FUTURE PHASE]
+    Avatar -.->|Audio/Video Stream| MediaBot
+    FoundryAgent -->|Function Calls<br/>requires_action| DevOpsTools[Azure Functions Backend<br/>DEPLOYED: UK South<br/>9 HTTP Endpoints]
+    DevOpsTools -->|Create/Update| AzureDevOps[Azure DevOps Boards<br/>Epics, Features, Stories, Questions<br/>OPERATIONAL]
+    FoundryAgent -->|Logs & Metrics| Storage[Azure Storage<br/>Application Insights<br/>DEPLOYED]
 ----
+
+NOTE: Solid lines = Currently deployed and operational. Dashed lines = Future phase implementation.
 
 
 == Core Components
 
 
-=== 1. Teams Media Bot (Application-Hosted Media)
+=== 1. Teams Media Bot (Application-Hosted Media) - **FUTURE PHASE**
 **Technology**: C# .NET with Microsoft Graph Communications SDK
 
 **Hosting**: Windows Server VM in Azure (required for Media SDK)
+
+NOTE: The Teams Media Bot is planned for a future phase. Current implementation focuses on the Azure Functions backend and AI Foundry agent with direct manual input.
 
 **Responsibilities**:
 
@@ -67,7 +76,9 @@ flowchart TD
 === 3. Azure AI Foundry Agent (Pennie's Intelligence)
 **Model**: GPT-4o (temperature: 0.1 for consistent structured output)
 
-**Region**: UK South (full stack deployed in single region for data residency)
+**Region**: East US 2 (AI Foundry Agents feature availability)
+
+**Backend Region**: UK South (Azure Functions closer to Azure DevOps)
 
 **Why GPT-4o**:
 * 100% reliable structured outputs for JSON schema compliance
@@ -279,43 +290,51 @@ MeetingTranscriber Output:
 
 **Resources Provisioned**:
 
-**UK South Region** (All Resources):
-* Resource Group (TMinus15Agents)
-* Windows Server VM (Dv2-series, minimum 2 vCPUs) - hosts Teams Media Bot and MCP Server
-* Azure AI Foundry Hub (knowall-ai-foundry)
-* Azure AI Foundry Project (T-Minus-15 Agents)
+**Currently Deployed Resources**:
+
+**East US 2 Region**:
+* Azure AI Foundry Agent (Pennie) - asst_QP4Q94razJnAaC16jjiuDfih
 * Azure OpenAI Service (GPT-4o deployment - model version 2024-08-06)
-* Azure Speech Services (real-time transcription with speaker diarization)
+
+**UK South Region**:
+* Resource Group (TMinus15Agents)
+* Azure Functions App (pennie-backend-prod) - Python 3.11 on Linux
 * Azure Storage Account (logs, metrics)
 * Application Insights (monitoring)
 * Key Vault (secrets management)
+
+**Future Phase - Not Yet Deployed**:
+* Windows Server VM (Dv2-series, minimum 2 vCPUs) - hosts Teams Media Bot with function call handler
+* Azure Speech Services (real-time transcription with speaker diarization)
 * Managed Identities (for secure service-to-service auth)
 
 **Bicep Modules**:
 
 * `infra/main.bicep` - Main orchestration
-* `infra/modules/windows-vm.bicep` - Windows Server VM (Teams Bot + MCP Server + Node.js)
-* `infra/modules/ai-services.bicep` - AI Foundry + Speech + OpenAI
+* `infra/deploy-function-app.bicep` - Azure Functions App (currently deployed)
+* `infra/modules/windows-vm.bicep` - Windows Server VM (Teams Bot + Function Call Handler) - FUTURE
+* `infra/modules/ai-services.bicep` - AI Foundry + Speech + OpenAI - FUTURE
 * `infra/modules/monitoring.bicep` - Application Insights + Storage
 
 
-=== GitHub Actions Workflow
+=== GitHub Actions Workflow (Future Phase)
 
 **Trigger**: Push to `main` branch or manual dispatch
 
-**Steps**:
+**Current Deployment** (Manual):
+1. Deploy Azure Functions Backend via `func azure functionapp publish pennie-backend-prod --python`
+2. Deploy Pennie AI Foundry Agent via `./scripts/deploy-agent.sh`
+
+**Future Automated Deployment Steps**:
 
 1. Azure login (Service Principal with Contributor + User Access Administrator roles)
 2. Deploy Bicep infrastructure (Windows VM, AI services, monitoring)
-3. Install Node.js 20+ on Windows VM (for MCP server)
-4. Install Azure DevOps MCP Server (`npm install -g @azure-devops/mcp`)
+3. Deploy Azure Functions Backend (Python code)
+4. Deploy AI Foundry agent from `agent-config.json`
 5. Deploy Teams Media Bot application to Windows VM
-6. Configure MCP server with Azure DevOps credentials
-7. Configure AI Foundry project and deploy agent from `agent-config.json`
-8. Configure App Registration and grant admin consent for Graph API permissions
-9. Test MCP server connectivity and work item operations
-10. Run health checks and integration tests
-11. Post deployment summary to GitHub
+6. Configure App Registration and grant admin consent for Graph API permissions
+7. Run health checks and integration tests
+8. Post deployment summary to GitHub
 
 
 === Bot Registration & Permissions
@@ -342,16 +361,21 @@ MeetingTranscriber Output:
 
 **Regional Deployment Strategy**:
 
-* **UK South Region** (All Components):
-  - Windows Server VM (Teams Media Bot + Azure DevOps MCP Server)
-  - Azure Speech Services (Real-time transcription with speaker diarization)
-  - Azure AI Foundry Agent (Pennie with GPT-4o)
-  - Azure OpenAI Service (GPT-4o deployment)
-  - Azure Storage (logs, metrics)
-  - Application Insights (monitoring)
+**Current Multi-Region Deployment**:
+* **East US 2**: AI Foundry Agent (Pennie with GPT-4o) - Agents feature availability
+* **UK South**: Azure Functions Backend, Storage, Application Insights - DevOps proximity
 
-**Single-Region Architecture Benefits**:
-* All data processing within UK South for complete data residency
+**Future Single-Region Architecture** (when all components deployed):
+* **Target Region**: UK South or other region based on data residency requirements
+* **Components**: Windows Server VM (Teams Media Bot), Azure Speech Services, AI Foundry Agent, Azure Functions Backend, Storage, Application Insights
+
+**Multi-Region Considerations** (Current):
+* Agent in East US 2 (only region with Agents feature at deployment time)
+* Backend in UK South (closer to Azure DevOps for lower latency)
+* Minimal cross-region traffic (only function call requests/responses)
+
+**Single-Region Architecture Benefits** (Future):
+* All data processing within chosen region for complete data residency
 * No cross-region latency - optimal performance
 * Simplified compliance and data governance
 * Lower egress costs (no inter-region data transfer)
@@ -418,35 +442,45 @@ MeetingTranscriber Output:
 
 == Cost Estimation
 
+=== Current Deployment Costs
 
-=== Compute
+* Azure Functions (Consumption Plan): ~$5-15/month (based on API call volume)
+* Azure Storage: <$5/month
+* Application Insights: ~$10-20/month
+* Azure OpenAI GPT-4o (East US 2): ~$10-30/month (minimal usage via AI Foundry playground)
 
-* Windows Server VM (D2s_v3): ~$70-100/month (Teams Media Bot + Node.js MCP Server)
+**Current Total**: ~$30-70/month (backend and agent operational, no Teams integration yet)
 
+=== Future Full Deployment Costs
 
-=== AI Services
+==== Compute
+
+* Windows Server VM (D2s_v3): ~$70-100/month (Teams Media Bot with function call handler)
+
+==== AI Services
 
 * Azure OpenAI (GPT-4o): ~$0.003/1K tokens (input), $0.010/1K tokens (output) - 50-70% cheaper than GPT-4 Turbo
 * Azure Speech Services: ~$1.00/hour for real-time transcription with diarization
 * Estimated: $30-150/month based on meeting frequency (lower due to GPT-4o pricing)
 
+==== Backend & Monitoring
 
-=== Storage & Monitoring
-
+* Azure Functions: ~$5-15/month
 * Azure Storage: <$5/month
 * Application Insights: ~$10-20/month
 
-**Total Estimated Cost**: $110-270/month
+**Future Total Estimated Cost**: $110-290/month (with Teams Media Bot)
 
-**Component Breakdown**:
-* Windows VM (UK South): $70-100/month (Teams Media Bot + MCP Server co-located)
-* Azure Speech Services (UK South): $30-150/month (based on meeting hours ~$1/hour)
-* Azure OpenAI GPT-4o (UK South): $10-30/month (50-70% cheaper than GPT-4 Turbo)
-* Storage & Monitoring (UK South): $10-20/month
+**Component Breakdown** (Future):
+* Windows VM: $70-100/month (Teams Media Bot with function call handler)
+* Azure Speech Services: $30-150/month (based on meeting hours ~$1/hour)
+* Azure OpenAI GPT-4o: $10-30/month (50-70% cheaper than GPT-4 Turbo)
+* Azure Functions Backend: $5-15/month
+* Storage & Monitoring: $10-20/month
 
 **Cost Savings**:
 * GPT-4o vs GPT-4 Turbo: ~$20-40/month saved
-* Co-located MCP server vs separate container: ~$10-20/month saved
+* Serverless Functions vs dedicated container: ~$10-20/month saved
 * Total: ~$30-60/month saved vs. original architecture
 
 

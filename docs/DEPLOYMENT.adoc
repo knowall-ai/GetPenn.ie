@@ -1,22 +1,46 @@
 = Deployment Guide: Pennie the Prepper
 
+[WARNING]
+====
+**This documentation is outdated** and references the original MCP Server architecture.
+
+The project has evolved to use **Azure Functions Backend** instead of MCP Server.
+
+**Current Implementation**:
+* Azure Functions Backend (Python 3.11) - 9 HTTP endpoints
+* AI Foundry Agent in East US 2 (asst_QP4Q94razJnAaC16jjiuDfih)
+* Function calling pattern (not MCP)
+
+**For current documentation, see**:
+* link:../CLAUDE.md[CLAUDE.md] - Current architecture and configuration
+* link:SOLUTION_DESIGN.adoc[SOLUTION_DESIGN.adoc] - Updated solution design
+* link:TROUBLESHOOTING.adoc[TROUBLESHOOTING.adoc] - Current troubleshooting guide
+* link:../README.md[README.md] - Quick start guide
+
+**This file will be updated in a future release.**
+====
+
 == Overview
 
 This document provides comprehensive deployment instructions for Pennie the Prepper, including environment setup, deployment automation, and operational procedures for DEV / TEST / PROD lifecycle management.
+
+**NOTE**: This guide describes the future Teams Media Bot architecture. Current deployment uses Azure Functions backend (see warning above).
 
 == Architecture Summary
 
 Pennie deploys as a single-region solution with the following components:
 
-* **Windows Server VM**: Hosts Teams Media Bot (C#) + Azure DevOps MCP Server (Node.js)
-* **Azure AI Foundry**: Hosts Pennie agent with GPT-4o model
-* **Azure Speech Services**: Real-time transcription with speaker diarization
+* **Windows Server VM**: Hosts Teams Media Bot (C#) with function call handler - **FUTURE PHASE**
+* **Azure Functions Backend**: Python 3.11 on Linux - **CURRENTLY DEPLOYED**
+* **Azure AI Foundry**: Hosts Pennie agent with GPT-4o model - **CURRENTLY DEPLOYED in East US 2**
+* **Azure Speech Services**: Real-time transcription with speaker diarization - **FUTURE PHASE**
 * **Azure DevOps**: Work item management (Epics, Features, Stories, Questions)
 * **Application Insights**: Monitoring and diagnostics
 * **Azure Storage**: Logs and operational data
 * **Key Vault**: Secrets management
 
-**Deployment Target**: All components in single Azure region (e.g., UK South for data residency)
+**Current Deployment**: Azure Functions backend + AI Foundry agent (manual testing via playground)
+**Future Deployment**: Windows VM with Teams Media Bot for real-time meeting integration
 
 == Environment Strategy
 

@@ -36,30 +36,37 @@ Microsoft Teams Meeting (Live Audio)
 │  │ Teams Media Bot (C#)                           │  │
 │  │ - Graph Communications SDK                     │  │
 │  │ - Real-time audio capture                      │  │
-│  └────────────────┬───────────────────────────────┘  │
-│                   ↓ RTP Audio                        │
-│  ┌────────────────────────────────────────────────┐  │
-│  │ Node.js Runtime                                │  │
-│  │ - Azure DevOps MCP Server (@azure-devops/mcp)  │  │
+│  │ - Function Call Handler (intercepts Pennie's  │  │
+│  │   function calls and proxies to backend)       │  │
 │  └────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────┘
-           ↓ Audio to Speech Services
+           ↓ RTP Audio
 Azure Speech Services (MeetingTranscriber + Diarization)
            ↓ Transcribed Text + Speaker Names
-Azure AI Foundry Agent (Pennie with GPT-4o)
-           ↓ Model Context Protocol (MCP)
-Azure DevOps MCP Server (on Windows VM)
+Azure AI Foundry Agent (Pennie with GPT-4o, East US 2)
+           ↓ Function Calling (requires_action)
+Function Call Handler (in Teams Bot)
+           ↓ HTTP Requests
+Azure Functions Backend (Python, UK South)
+  - 9 HTTP endpoints for Azure DevOps CRUD operations
+  - URL: https://pennie-backend-prod.azurewebsites.net
            ↓ Azure DevOps REST API
 Azure DevOps Boards (Epics, Features, Stories, Questions)
 ```
 
-**Simplified Single-Region Deployment**:
-- **Single Windows Server VM**: Hosts both Teams Media Bot (requires Windows) and Azure DevOps MCP Server (Node.js)
-- **Data Residency**: All components (AI, Speech, Storage) deployed in your chosen region
-- **Co-Located Services**: Simpler deployment, lower cost, no cross-VM networking, no cross-region latency
-- **Official Integration**: Uses [Microsoft's Azure DevOps MCP Server](https://github.com/microsoft/azure-devops-mcp)
+**Current Deployment Architecture**:
+- **Windows Server VM**: Hosts Teams Media Bot with function call handler (future phase)
+- **Azure Functions Backend**: Python 3.11 on Linux (9 HTTP endpoints)
+- **AI Foundry Agent**: Pennie deployed in East US 2 (asst_QP4Q94razJnAaC16jjiuDfih)
+- **Function Calling Pattern**: OpenAI Assistants API - Pennie calls functions, application code handles them
+- **Backend Region**: UK South for Azure DevOps proximity
+- **Agent Region**: East US 2 (Agents feature availability)
 
-**Region Selection**: GPT-4o is available in multiple Azure regions including UK South, East US 2, and others. Choose your region based on data residency requirements and compliance needs.
+**Key Architecture Decision**: Using Azure Functions backend with OpenAI Assistants function calling pattern instead of MCP Server. This provides:
+- Better scalability and serverless pricing model
+- Anonymous HTTP endpoints callable from any client
+- Separation of concerns (backend can be used by other services)
+- Multi-region deployment flexibility
 
 See [docs/SOLUTION_DESIGN.adoc](docs/SOLUTION_DESIGN.adoc) for detailed architecture documentation.
 
@@ -72,25 +79,31 @@ See [docs/SOLUTION_DESIGN.adoc](docs/SOLUTION_DESIGN.adoc) for detailed architec
 ├── .env                       # Local environment configuration (gitignored)
 ├── /docs/
 │   ├── REQUIREMENTS.adoc      # T-Minus-15 requirements (Epic > Features > User Stories)
-│   └── SOLUTION_DESIGN.adoc   # Detailed architecture, components, deployment
+│   ├── SOLUTION_DESIGN.adoc   # Detailed architecture, components, deployment
+│   ├── TROUBLESHOOTING.adoc   # Common issues and solutions
+│   └── AZURE_ENDPOINTS.md     # Azure endpoint documentation
 ├── /infra/                    # Infrastructure as Code (Bicep)
 │   ├── main.bicep             # Main orchestration template
+│   ├── deploy-function-app.bicep  # Azure Functions backend deployment
 │   ├── main.parameters.json   # Environment-specific parameters
 │   └── /modules/              # Modular Bicep templates
-│       ├── windows-vm.bicep   # Windows VM (Bot + MCP Server + Node.js)
-│       ├── ai-services.bicep # AI Foundry, Speech, OpenAI
-│       └── monitoring.bicep  # Application Insights, Storage
-├── /bot/                      # Teams Media Bot (C# .NET)
+│       ├── windows-vm.bicep   # Windows VM (Bot + Function Call Handler)
+│       ├── ai-services.bicep  # AI Foundry, Speech, OpenAI
+│       └── monitoring.bicep   # Application Insights, Storage
+├── /src/                      # Azure Functions Backend (Python 3.11)
+│   └── function_app.py        # 9 HTTP endpoints for Azure DevOps
+├── /bot/                      # Teams Media Bot (C# .NET) - Future Phase
 │   ├── Program.cs             # Bot application entry point
 │   ├── MediaBot.cs            # Media stream handling
 │   ├── SpeechTranscriber.cs   # Azure Speech Services integration
-│   └── ...
-├── /mcp/                      # Azure DevOps MCP Server configuration
-│   ├── mcp-config.json        # MCP server settings
-│   └── README.md              # Setup instructions
+│   └── PennieAgentClient.cs   # Function call handler for Pennie
+├── /scripts/                  # Deployment and management scripts
+│   ├── deploy-agent.sh        # Deploy Pennie AI Foundry agent
+│   └── deploy-backend.sh      # Deploy Azure Functions backend
 ├── /.github/workflows/
 │   └── deploy.yml             # GitHub Actions deployment pipeline
-├── requirements.txt           # Python dependencies (for Functions)
+├── requirements.txt           # Python dependencies (Azure Functions)
+├── host.json                  # Azure Functions configuration
 └── README.md                  # This file
 ```
 
@@ -161,30 +174,53 @@ az ad app create \
 # (via Azure Portal: Entra ID > App Registrations > Pennie > API Permissions > Grant admin consent)
 ```
 
-### 4. Deploy to Windows VM
+### 4. Deploy Azure Functions Backend
 
-Deployment installs both components on the Windows Server VM:
+Deploy the backend that provides Azure DevOps integration:
 
 ```bash
-# Install Node.js 20+ (for MCP server)
-choco install nodejs-lts
+# Deploy Azure Functions (Python 3.11 on Linux)
+cd infra
+az deployment group create \
+  --resource-group TMinus15Agents \
+  --template-file deploy-function-app.bicep \
+  --parameters functionAppName="pennie-backend" location="uksouth" environmentName="prod"
 
-# Install Azure DevOps MCP Server globally
-npm install -g @azure-devops/mcp
-
-# Deploy Teams Media Bot (C# application)
-# (Automated via GitHub Actions)
+# Deploy function code
+cd ..
+func azure functionapp publish pennie-backend-prod --python
 ```
 
-The MCP server provides these work item tools to Pennie:
-- `wit_create_work_item` - Create Epics, Features, Stories, Questions
-- `wit_update_work_item` - Update existing work items
-- `wit_add_child_work_items` - Create parent-child hierarchy
-- `wit_add_work_item_comment` - Add speaker attribution metadata
+The backend provides these 9 HTTP endpoints for Pennie:
+- `read_projects` - List all Azure DevOps projects
+- `read_teams` - List teams in a project
+- `read_work_item` - Get a single work item by ID
+- `read_work_items` - Get multiple work items with relationships
+- `read_work_item_types` - Get available work item types
+- `read_link_types` - Get available link relationship types
+- `search_work_items` - Search work items by query
+- `create_work_item` - Create new work items (Epics, Features, Stories, Questions)
+- `link_work_items` - Create parent-child and other relationships
 
-Learn more: [Azure DevOps MCP Server Documentation](https://github.com/microsoft/azure-devops-mcp)
+**Backend URL**: https://pennie-backend-prod.azurewebsites.net
 
-### 5. Test Pennie
+### 5. Deploy Pennie AI Foundry Agent
+
+Deploy Pennie as an AI Foundry agent with function calling:
+
+```bash
+# Deploy agent to East US 2 (Agents feature available)
+./scripts/deploy-agent.sh
+```
+
+This creates an AI Foundry agent with:
+- **Model**: GPT-4o (2024-08-06)
+- **Temperature**: 0.1 (for consistent structured outputs)
+- **Functions**: All 9 Azure DevOps backend functions
+- **Region**: East US 2
+- **API Version**: 2025-05-15-preview
+
+### 6. Test Pennie
 
 1. Create a Teams meeting
 2. Invite Pennie to the meeting (via meeting options or @mention)

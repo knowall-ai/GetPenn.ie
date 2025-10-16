@@ -22,6 +22,12 @@
 | **Agent can't call functions due to auth errors**
 | Functions have `auth_level=FUNCTION` requiring API keys. Change to `auth_level=func.AuthLevel.ANONYMOUS` for agent-callable functions. Configure CORS: `allowedOrigins: ['https://ai.azure.com']`
 
+| **Can't find AI Foundry agent with Azure CLI**
+| AI Foundry project agents require specific API version: `2025-05-15-preview`. Endpoint: `https://{resource}.services.ai.azure.com/api/projects/{project}/assistants/{id}?api-version=2025-05-15-preview`. Authentication: `--resource https://ai.azure.com` (NOT cognitiveservices.azure.com). Older API versions like 2024-05-01-preview will return 404 errors.
+
+| **Agent visible in portal but not via OpenAI API**
+| AI Foundry agents are PROJECT-scoped, not OpenAI resource-scoped. Use AI Foundry API endpoint (`/api/projects/{project}/assistants`) instead of OpenAI API endpoint (`/openai/assistants`). Agents created at OpenAI resource level won't appear in AI Foundry project portal.
+
 |===
 
 == Current Status
@@ -44,4 +50,39 @@ curl https://pennie-backend-prod.azurewebsites.net/api/read_projects
 # Check Function App is Linux
 az functionapp show --name pennie-backend-prod --resource-group TMinus15Agents \
   --query "{kind:kind, reserved:reserved, linuxFxVersion:siteConfig.linuxFxVersion}"
+
+# Get AI Foundry agent details (East US 2)
+az rest --url "https://benw-mgan4638-eastus2.services.ai.azure.com/api/projects/benw-mgan4638-eastus2_project/assistants/asst_QP4Q94razJnAaC16jjiuDfih?api-version=2025-05-15-preview" \
+  --resource https://ai.azure.com \
+  --method GET
+
+# Update agent with new functions
+az rest --url "https://benw-mgan4638-eastus2.services.ai.azure.com/api/projects/benw-mgan4638-eastus2_project/assistants/asst_QP4Q94razJnAaC16jjiuDfih?api-version=2025-05-15-preview" \
+  --resource https://ai.azure.com \
+  --method POST \
+  --body @update-payload.json
 ----
+
+== AI Foundry Agent API Reference
+
+**Endpoint Structure**:
+----
+https://{resource-name}.services.ai.azure.com/api/projects/{project-name}/assistants/{assistant-id}?api-version=2025-05-15-preview
+----
+
+**For Pennie (East US 2)**:
+
+- *Resource*: benw-mgan4638-eastus2
+- *Project*: benw-mgan4638-eastus2_project (Display: T-Minus-15-Agents-US)
+- *Assistant ID*: asst_QP4Q94razJnAaC16jjiuDfih
+- *API Version*: `2025-05-15-preview` (CRITICAL - do not use 2024-* versions)
+- *Authentication Scope*: `https://ai.azure.com` (NOT cognitiveservices.azure.com)
+
+**Key Differences from OpenAI Assistants API**:
+
+- AI Foundry agents are *project-scoped*, not OpenAI resource-scoped
+- Different endpoint: `/api/projects/{project}/assistants` vs `/openai/assistants`
+- Different auth scope: `https://ai.azure.com` vs `https://cognitiveservices.azure.com`
+- Newer API version: `2025-05-15-preview` vs 2024-* versions
+- Agents created at OpenAI resource level won't appear in AI Foundry project portal
+- Agents created at AI Foundry project level ARE visible in portal

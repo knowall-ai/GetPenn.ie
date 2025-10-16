@@ -19,14 +19,16 @@ Pennie the Prepper is an AI-powered business analyst that joins Microsoft Teams 
    - Real-time speech-to-text transcription
    - Outputs: Speaker name + timestamp + text
 
-3. **Azure OpenAI Assistant** (Pennie)
+3. **Azure OpenAI Assistant** (Pennie) - **AI Foundry Agent**
    - Deployed via scripts/deploy-agent.sh
-   - Assistant ID: asst_NpRS5WvtJOW8DeWgIKz11JA8 (East US 2)
-   - Endpoint: https://benw-mgan4638-eastus2.openai.azure.com
+   - Assistant ID: asst_QP4Q94razJnAaC16jjiuDfih (East US 2)
+   - **AI Foundry Project Agent API**: `https://benw-mgan4638-eastus2.services.ai.azure.com/api/projects/benw-mgan4638-eastus2_project/assistants/asst_QP4Q94razJnAaC16jjiuDfih`
+   - **API Version**: `2025-05-15-preview` (CRITICAL: Do not use older API versions like 2024-*)
+   - **Azure CLI Authentication**: `--resource https://ai.azure.com` (not cognitiveservices.azure.com)
    - Project: benw-mgan4638-eastus2_project (T-Minus-15-Agents-US)
    - GPT-4o (model version 2024-08-06) with T-Minus-15 logic (temperature: 0.1)
    - **OpenAI Assistants function calling pattern** - Pennie calls functions, application code must handle them
-   - **IMPORTANT**: Use the OpenAI endpoint (*.openai.azure.com), NOT AI Services endpoint (*.cognitiveservices.azure.com)
+   - **IMPORTANT**: This is an AI Foundry PROJECT agent, not an OpenAI resource agent
    - Functions defined: All 9 backend functions (read_projects, read_teams, read_work_item, read_work_items, read_work_item_types, read_link_types, search_work_items, create_work_item, link_work_items)
 
 4. **Azure Functions Backend** (Python 3.11 on Linux)
@@ -207,6 +209,57 @@ Values already configured in `.env`:
 │   └── deploy.yml             # GitHub Actions deployment pipeline
 └── README.md                  # Project overview and quick start
 ```
+
+## Azure AI Foundry Agent API
+
+### Critical Information
+
+**API Endpoint Structure**:
+```
+https://{resource-name}.services.ai.azure.com/api/projects/{project-name}/assistants/{assistant-id}?api-version=2025-05-15-preview
+```
+
+**For Pennie**:
+- Resource: benw-mgan4638-eastus2
+- Project: benw-mgan4638-eastus2_project
+- Assistant: asst_QP4Q94razJnAaC16jjiuDfih
+- Full URL: `https://benw-mgan4638-eastus2.services.ai.azure.com/api/projects/benw-mgan4638-eastus2_project/assistants/asst_QP4Q94razJnAaC16jjiuDfih?api-version=2025-05-15-preview`
+
+**API Version**: `2025-05-15-preview`
+- This is the ONLY supported API version for AI Foundry project agents
+- DO NOT use older versions like 2024-05-01-preview, 2024-07-01-preview, etc.
+- These will return 404 or "API version not supported" errors
+
+**Authentication**:
+```bash
+# Correct resource scope for AI Foundry agents
+az rest --url "<url>" --resource https://ai.azure.com --method GET
+
+# WRONG - this is for OpenAI/Cognitive Services
+az rest --url "<url>" --resource https://cognitiveservices.azure.com --method GET
+```
+
+**Managing AI Foundry Agents**:
+```bash
+# Get agent details
+az rest --url "https://benw-mgan4638-eastus2.services.ai.azure.com/api/projects/benw-mgan4638-eastus2_project/assistants/asst_QP4Q94razJnAaC16jjiuDfih?api-version=2025-05-15-preview" \
+  --resource https://ai.azure.com \
+  --method GET
+
+# Update agent (e.g., add functions)
+az rest --url "https://benw-mgan4638-eastus2.services.ai.azure.com/api/projects/benw-mgan4638-eastus2_project/assistants/asst_QP4Q94razJnAaC16jjiuDfih?api-version=2025-05-15-preview" \
+  --resource https://ai.azure.com \
+  --method POST \
+  --body @update-payload.json
+```
+
+**Key Differences from OpenAI Assistants API**:
+- AI Foundry agents are PROJECT-scoped (not OpenAI resource-scoped)
+- Different endpoint structure: `/api/projects/{project}/assistants` vs `/openai/assistants`
+- Different authentication scope: `https://ai.azure.com` vs `https://cognitiveservices.azure.com`
+- Newer API version: `2025-05-15-preview` vs older 2024-* versions
+- Agents created at the OpenAI resource level are NOT visible in AI Foundry project portal
+- Agents created at the AI Foundry project level ARE visible in the portal
 
 ## Critical Troubleshooting
 
