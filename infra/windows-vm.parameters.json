@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "uksouth"
+    },
+    "environmentName": {
+      "value": "prod"
+    },
+    "keyVaultName": {
+      "value": "pennie-kv-mmdxqm3w7kjwm"
+    },
+    "applicationInsightsConnectionString": {
+      "value": "InstrumentationKey=a1269562-627e-423a-8a5d-6fec575521a0;IngestionEndpoint=https://uksouth-1.in.applicationinsights.azure.com/;LiveEndpoint=https://uksouth.livediagnostics.monitor.azure.com/;ApplicationId=0ac06a02-0a2f-43d2-8842-16db47f14b6d"
+    },
+    "devOpsOrg": {
+      "value": "KnowAll"
+    },
+    "devOpsProject": {
+      "value": "Internal"
+    },
+    "tags": {
+      "value": {
+        "Project": "Pennie",
+        "Environment": "Production",
+        "ManagedBy": "Bicep",
+        "Purpose": "Teams Bot VM"
+      }
+    }
+  }
+}
