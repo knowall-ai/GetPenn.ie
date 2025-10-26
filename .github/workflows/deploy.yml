@@ -143,6 +143,7 @@ jobs:
             --permissions r `
             --expiry $expiry `
             --auth-mode login `
+            --as-user `
             --full-uri -o tsv
 
           Write-Host "Package URL: $packageUrl"
