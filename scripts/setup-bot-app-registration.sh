@@ -22,6 +22,8 @@ if [ -f .env ]; then
     set +a
 else
     echo -e "${RED}Error: .env file not found${NC}"
+    echo -e "${YELLOW}Please create .env file first: cp .env.example .env${NC}"
+    echo -e "${YELLOW}Then edit .env with your Azure subscription details${NC}"
     exit 1
 fi
 
@@ -29,6 +31,7 @@ fi
 APP_NAME="Pennie the Prepper Bot"
 KEY_VAULT_NAME=${AZURE_KEY_VAULT_NAME:-"pennie-kv-mmdxqm3w7kjwm"}
 RESOURCE_GROUP=${AZURE_RESOURCE_GROUP:-"TMinus15Agents"}
+SECRET_EXPIRATION_YEARS=${SECRET_EXPIRATION_YEARS:-2}  # Configurable: default 2 years
 
 echo -e "${GREEN}Step 1: Creating Azure AD App Registration${NC}"
 APP_REGISTRATION=$(az ad app create \
@@ -78,12 +81,12 @@ CREDENTIALS=$(az ad app credential reset \
     --id $APP_ID \
     --append \
     --display-name "PennieBot-Prod-Secret" \
-    --years 2 \
+    --years $SECRET_EXPIRATION_YEARS \
     --query "{password: password}" \
     -o json)
 
 CLIENT_SECRET=$(echo $CREDENTIALS | jq -r '.password')
-echo -e "${GREEN}✓ Client secret created${NC}"
+echo -e "${GREEN}✓ Client secret created (expires in $SECRET_EXPIRATION_YEARS years)${NC}"
 
 echo -e "\n${GREEN}Step 4: Storing credentials in Azure Key Vault${NC}"
 az keyvault secret set \
@@ -119,6 +122,10 @@ fi
 rm -f .env.bak
 
 echo -e "${GREEN}✓ .env file updated${NC}"
+echo -e "${RED}⚠️  WARNING: .env file now contains sensitive credentials${NC}"
+echo -e "${YELLOW}   - Ensure .env is in .gitignore (never commit to Git)${NC}"
+echo -e "${YELLOW}   - Restrict file permissions: chmod 600 .env${NC}"
+echo -e "${YELLOW}   - Credentials are also stored securely in Key Vault${NC}"
 
 echo -e "\n${YELLOW}=== MANUAL STEP REQUIRED ===${NC}"
 echo -e "${YELLOW}Admin consent is required for the Graph API permissions.${NC}"

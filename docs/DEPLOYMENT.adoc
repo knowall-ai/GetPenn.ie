@@ -13,7 +13,7 @@ This guide provides step-by-step instructions for deploying Pennie the Prepper t
 
 === Components
 
-[cols="1,2,2"]
+[cols="1,1,1"]
 |===
 |Component |Status |Purpose
 
@@ -149,6 +149,8 @@ The Windows VM will host the Teams Media Bot with Graph Communications SDK.
 
 Create parameters file (`infra/windows-vm.parameters.json`):
 
+NOTE: Replace placeholder values with your actual Azure resource names. If you deployed infrastructure first, use those resource names (e.g., Key Vault will have a generated name like `pennie-kv-{uniqueId}`).
+
 [source,json]
 ----
 {
@@ -162,16 +164,16 @@ Create parameters file (`infra/windows-vm.parameters.json`):
       "value": "prod"
     },
     "keyVaultName": {
-      "value": "<your-key-vault-name>"
+      "value": "pennie-kv-{uniqueId}"
     },
     "applicationInsightsConnectionString": {
-      "value": "<from-step-2>"
+      "value": "InstrumentationKey=...;IngestionEndpoint=..."
     },
     "devOpsOrg": {
-      "value": "your-org"
+      "value": "YourOrgName"
     },
     "devOpsProject": {
-      "value": "your-project"
+      "value": "YourProjectName"
     },
     "tags": {
       "value": {
