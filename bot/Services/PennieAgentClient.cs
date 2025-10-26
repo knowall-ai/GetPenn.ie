@@ -18,7 +18,7 @@ public class PennieAgentClient : IPennieAgentClient
     private readonly HttpClient _httpClient;
     private readonly AssistantsClient _assistantsClient;
     private readonly string _assistantId;
-    private readonly string _backendUrl = "https://pennie-backend-prod.azurewebsites.net";
+    private readonly string _backendUrl;
     private readonly Dictionary<string, string> _meetingThreads = new();
 
     public PennieAgentClient(
@@ -36,6 +36,9 @@ public class PennieAgentClient : IPennieAgentClient
 
         _assistantId = _configuration["AZURE_AI_FOUNDRY_AGENT_ID"]
             ?? throw new InvalidOperationException("AZURE_AI_FOUNDRY_AGENT_ID not configured");
+
+        _backendUrl = _configuration["AZURE_FUNCTIONS_BACKEND_URL"]
+            ?? "https://pennie-backend-prod.azurewebsites.net"; // Default to production backend
 
         // Create Assistants client using DefaultAzureCredential
         // This will use managed identity in production or developer credentials locally
