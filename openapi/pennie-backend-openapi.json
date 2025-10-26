@@ -15,7 +15,7 @@
       "get": {
         "operationId": "read_projects",
         "summary": "List all Azure DevOps projects",
-        "description": "Returns all client projects in the KnowAll organization. Call this at the start of meetings to discover which client projects are available.",
+        "description": "Returns all client projects in the configured Azure DevOps organization. Call this at the start of meetings to discover which client projects are available.",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -118,7 +118,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["project", "workItemType", "title", "description"],
+                "required": ["project", "workItemType", "title"],
                 "properties": {
                   "project": {"type": "string"},
                   "workItemType": {

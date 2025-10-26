@@ -140,14 +140,7 @@ public class GraphCallService : IGraphCallService
                 },
                 MediaConfig = new ServiceHostedMediaConfig
                 {
-                    PreFetchMedia = new List<MediaInfo>
-                    {
-                        new MediaInfo
-                        {
-                            Uri = "https://example.com/hold-music.wav",
-                            ResourceId = Guid.NewGuid().ToString()
-                        }
-                    }
+                    // PreFetchMedia removed as hold music is not required
                 },
                 TenantId = _configuration["AzureTenantId"]
             };

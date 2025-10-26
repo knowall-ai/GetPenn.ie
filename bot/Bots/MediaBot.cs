@@ -20,6 +20,7 @@ public class MediaBot : ActivityHandler
     private readonly ISpeechTranscriptionService _speechService;
     private readonly IPennieAgentClient _agentClient;
     private readonly IConfiguration _configuration;
+    private readonly Dictionary<string, string> _conversationToMeetingMap = new(); // conversation ID -> meeting ID
 
     public MediaBot(
         ILogger<MediaBot> logger,
@@ -93,9 +94,24 @@ public class MediaBot : ActivityHandler
             _logger.LogInformation("Attempting to join meeting audio for conversation {ConversationId}",
                 turnContext.Activity.Conversation.Id);
 
-            // Get meeting join URL from conversation properties
-            var meetingJoinUrl = turnContext.Activity.Conversation.Id;
-            var meetingId = Guid.NewGuid().ToString(); // Generate unique meeting ID for tracking
+            // Extract meeting join URL from Teams channel data
+            // The join URL is in channelData.meeting.joinUrl for Teams meetings
+            var channelData = turnContext.Activity.ChannelData as Newtonsoft.Json.Linq.JObject;
+            var meetingJoinUrl = channelData?.SelectToken("meeting.joinUrl")?.ToString();
+
+            if (string.IsNullOrEmpty(meetingJoinUrl))
+            {
+                _logger.LogError("Could not extract meeting join URL from Teams activity");
+                await turnContext.SendActivityAsync(
+                    MessageFactory.Text("⚠️ Unable to join meeting - meeting join URL not found in activity."),
+                    cancellationToken);
+                return;
+            }
+
+            var meetingId = turnContext.Activity.Conversation.Id; // Use conversation ID as meeting ID for tracking
+
+            // Track conversation to meeting mapping
+            _conversationToMeetingMap[turnContext.Activity.Conversation.Id] = meetingId;
 
             // Initialize Graph Call Service if not already initialized
             if (!_callService.IsInMeeting(meetingId))
@@ -196,20 +212,35 @@ public class MediaBot : ActivityHandler
         {
             _logger.LogInformation("Stopping transcription and leaving meetings...");
 
-            // Get all active meeting IDs (for now, we're tracking them locally)
-            // In production, this would use a persistent store or session manager
-            // For MVP, we'll leave all active meetings
+            // Leave all active meetings and stop transcriptions
+            foreach (var (conversationId, meetingId) in _conversationToMeetingMap.ToList())
+            {
+                try
+                {
+                    _logger.LogInformation("Leaving meeting {MeetingId}", meetingId);
 
-            // TODO: Track meeting IDs properly and leave specific meetings
-            // This is a placeholder - in production we'd maintain a dictionary of conversation ID -> meeting ID
+                    // Stop transcription
+                    await _speechService.StopTranscriptionAsync(meetingId);
 
-            _logger.LogInformation("Transcription stopped");
+                    // Leave the meeting via Graph Call Service
+                    await _callService.LeaveMeetingAsync(meetingId);
 
-            // TODO: Future enhancement
-            // 1. Request summary from Pennie AI agent
-            // 2. Post summary in chat or send email
+                    // Remove from tracking
+                    _conversationToMeetingMap.Remove(conversationId);
 
-            await Task.CompletedTask;
+                    _logger.LogInformation("Successfully left meeting {MeetingId}", meetingId);
+
+                    // TODO: Future enhancement
+                    // 1. Request summary from Pennie AI agent
+                    // 2. Post summary in chat or send email
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error leaving meeting {MeetingId}", meetingId);
+                }
+            }
+
+            _logger.LogInformation("All transcriptions stopped and meetings left");
         }
         catch (Exception ex)
         {

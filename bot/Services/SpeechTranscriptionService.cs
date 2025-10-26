@@ -10,6 +10,7 @@ namespace PennieBot.Services;
 /// </summary>
 public class SpeechTranscriptionService : ISpeechTranscriptionService
 {
+    private const string UnknownSpeakerConstant = "UNKNOWN_SPEAKER";
     private readonly ILogger<SpeechTranscriptionService> _logger;
     private readonly IConfiguration _configuration;
     private readonly Dictionary<string, ConversationTranscriber> _transcribers = new();
@@ -31,6 +32,17 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
     /// <returns>Friendly speaker name</returns>
     private string MapSpeakerIdToName(string speakerId)
     {
+        // Handle unknown speaker specially to avoid creating multiple "Unknown Speaker N" entries
+        if (speakerId == UnknownSpeakerConstant)
+        {
+            if (!_speakerIdToNameMap.ContainsKey(UnknownSpeakerConstant))
+            {
+                _speakerIdToNameMap[UnknownSpeakerConstant] = "Unknown Speaker";
+                _logger.LogWarning("Speaker diarization returned unknown speaker ID");
+            }
+            return _speakerIdToNameMap[UnknownSpeakerConstant];
+        }
+
         // Check if we have a mapping for this speaker ID
         if (_speakerIdToNameMap.TryGetValue(speakerId, out var name))
         {
@@ -99,7 +111,7 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
                 {
                     // Extract speaker information from conversation transcription result
                     var conversationResult = e.Result as ConversationTranscriptionResult;
-                    var speakerId = conversationResult?.SpeakerId ?? "Unknown";
+                    var speakerId = conversationResult?.SpeakerId ?? UnknownSpeakerConstant;
 
                     // Map speaker ID to friendly name if available
                     // In production, maintain a mapping of speaker IDs to participant names

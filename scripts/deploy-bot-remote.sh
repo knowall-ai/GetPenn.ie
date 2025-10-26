@@ -95,8 +95,8 @@ $PackagePath = "$TempDir\pennie-bot.zip"
 $ExtractPath = "C:\Pennie\bot"
 
 # Ensure directories exist
-New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
-New-Item -ItemType Directory -Path $ExtractPath -Force | Out-Null
+New-Item -ItemType Directory -Path $TempDir -Force
+New-Item -ItemType Directory -Path $ExtractPath -Force
 
 # Download package
 Write-Host "Downloading deployment package..."

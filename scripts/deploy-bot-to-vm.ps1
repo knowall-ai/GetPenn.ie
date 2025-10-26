@@ -73,8 +73,8 @@ if ($KeyVaultName) {
     Write-Host "  Fetching secrets from Key Vault: $KeyVaultName"
 
     # Fetch secrets using VM's managed identity
-    $teamsAppId = az keyvault secret show --vault-name $KeyVaultName --name "TEAMS-APP-ID" --query value -o tsv
-    $teamsAppPassword = az keyvault secret show --vault-name $KeyVaultName --name "TEAMS-APP-PASSWORD" --query value -o tsv
+    $teamsAppId = az keyvault secret show --vault-name $KeyVaultName --name "TEAMS-APP-ID" --query value -o tsv 2>$null
+    $teamsAppPassword = az keyvault secret show --vault-name $KeyVaultName --name "TEAMS-APP-PASSWORD" --query value -o tsv 2>$null
     $speechKey = az keyvault secret show --vault-name $KeyVaultName --name "AZURE-SPEECH-KEY" --query value -o tsv 2>$null
 
     if (-not $teamsAppId -or -not $teamsAppPassword) {

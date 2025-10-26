@@ -20,6 +20,7 @@ public class PennieAgentClient : IPennieAgentClient
     private readonly string _assistantId;
     private readonly string _backendUrl;
     private readonly Dictionary<string, string> _meetingThreads = new();
+    private static readonly HashSet<string> GetFunctions = new() { "read_projects", "read_link_types" };
 
     public PennieAgentClient(
         ILogger<PennieAgentClient> logger,
@@ -121,7 +122,8 @@ public class PennieAgentClient : IPennieAgentClient
     /// </summary>
     private async Task ProcessRunAsync(string threadId, string runId, CancellationToken cancellationToken)
     {
-        const int maxAttempts = 60; // Max 60 seconds (60 attempts * 1 second delay)
+        var timeoutSeconds = _configuration.GetValue<int>("PennieAgent:RunTimeoutSeconds", 60);
+        var maxAttempts = timeoutSeconds; // Default 60 seconds (60 attempts * 1 second delay)
         var attempt = 0;
 
         while (attempt < maxAttempts)
@@ -218,9 +220,9 @@ public class PennieAgentClient : IPennieAgentClient
             // Parse arguments
             var arguments = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
 
-            // Call backend based on HTTP method (GET for read_*, POST for others)
+            // Call backend based on HTTP method (GET for parameterless functions, POST for others)
             HttpResponseMessage response;
-            if (functionName.StartsWith("read_projects") || functionName.StartsWith("read_link_types"))
+            if (GetFunctions.Contains(functionName))
             {
                 // GET request (no body)
                 response = await _httpClient.GetAsync(url, cancellationToken);
