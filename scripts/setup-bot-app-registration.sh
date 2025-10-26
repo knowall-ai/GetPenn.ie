@@ -52,18 +52,18 @@ az ad app permission add \
     --api-permissions a7a681dc-756e-4909-b988-f160edc6655f=Role \
     > /dev/null 2>&1
 
-# Calls.JoinGroupCall.All: f6594d00-0bea-4a83-b09e-4c8c96bc5d28
+# Calls.JoinGroupCall.All: f6b49018-60ab-4f81-83bd-22caeabfed2d
 az ad app permission add \
     --id $APP_ID \
     --api 00000003-0000-0000-c000-000000000000 \
-    --api-permissions f6594d00-0bea-4a83-b09e-4c8c96bc5d28=Role \
+    --api-permissions f6b49018-60ab-4f81-83bd-22caeabfed2d=Role \
     > /dev/null 2>&1
 
-# OnlineMeetings.ReadWrite.All: 9be106e1-f4e3-4df5-bdff-e4bc531cbe43
+# OnlineMeetings.ReadWrite.All: b8bb2037-6e08-44ac-a4ea-4674e010e2a4
 az ad app permission add \
     --id $APP_ID \
     --api 00000003-0000-0000-c000-000000000000 \
-    --api-permissions 9be106e1-f4e3-4df5-bdff-e4bc531cbe43=Role \
+    --api-permissions b8bb2037-6e08-44ac-a4ea-4674e010e2a4=Role \
     > /dev/null 2>&1
 
 echo -e "${GREEN}✓ Graph API permissions added:${NC}"
