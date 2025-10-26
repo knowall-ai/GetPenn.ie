@@ -100,6 +100,7 @@ jobs:
   validate-bicep:
     name: Validate Bicep Templates
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && vars.ENABLE_BICEP_VALIDATION == 'true')
 
     steps:
       - name: Checkout code
@@ -159,10 +160,17 @@ jobs:
     steps:
       - name: Check test results
         run: |
+          # Allow validate-bicep to be skipped
+          BICEP_RESULT="${{ needs.validate-bicep.result }}"
+          if [[ "$BICEP_RESULT" == "skipped" ]]; then
+            echo "ℹ️ Bicep validation skipped (Azure credentials not configured)"
+            BICEP_RESULT="success"
+          fi
+
           if [[ "${{ needs.lint.result }}" == "failure" ]] || \
              [[ "${{ needs.build-bot.result }}" == "failure" ]] || \
              [[ "${{ needs.unit-tests.result }}" == "failure" ]] || \
-             [[ "${{ needs.validate-bicep.result }}" == "failure" ]]; then
+             [[ "$BICEP_RESULT" == "failure" ]]; then
             echo "❌ Tests failed"
             exit 1
           else
