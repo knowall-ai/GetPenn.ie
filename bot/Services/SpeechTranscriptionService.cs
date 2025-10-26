@@ -14,6 +14,7 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
     private readonly IConfiguration _configuration;
     private readonly Dictionary<string, ConversationTranscriber> _transcribers = new();
     private readonly Dictionary<string, PushAudioInputStream> _audioStreams = new();
+    private readonly Dictionary<string, string> _speakerIdToNameMap = new();
 
     public SpeechTranscriptionService(
         ILogger<SpeechTranscriptionService> logger,
@@ -21,6 +22,35 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
     {
         _logger = logger;
         _configuration = configuration;
+    }
+
+    /// <summary>
+    /// Map speaker ID to friendly name.
+    /// </summary>
+    /// <param name="speakerId">Speaker ID from Azure Speech Services</param>
+    /// <returns>Friendly speaker name</returns>
+    private string MapSpeakerIdToName(string speakerId)
+    {
+        // Check if we have a mapping for this speaker ID
+        if (_speakerIdToNameMap.TryGetValue(speakerId, out var name))
+        {
+            return name;
+        }
+
+        // If no mapping exists, create a friendly speaker label
+        // In production, this would:
+        // 1. Query Teams Graph API to get participant names
+        // 2. Match speaker ID to participant based on join time
+        // 3. Store mapping for reuse during the meeting
+
+        var speakerNumber = _speakerIdToNameMap.Count + 1;
+        var friendlyName = $"Speaker {speakerNumber}";
+
+        _speakerIdToNameMap[speakerId] = friendlyName;
+
+        _logger.LogInformation("Mapped speaker ID {SpeakerId} to {FriendlyName}", speakerId, friendlyName);
+
+        return friendlyName;
     }
 
     /// <inheritdoc/>
@@ -67,19 +97,49 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
             {
                 if (e.Result.Reason == ResultReason.RecognizedSpeech)
                 {
+                    // Extract speaker information from conversation transcription result
+                    var conversationResult = e.Result as ConversationTranscriptionResult;
+                    var speakerId = conversationResult?.SpeakerId ?? "Unknown";
+
+                    // Map speaker ID to friendly name if available
+                    // In production, maintain a mapping of speaker IDs to participant names
+                    var speakerName = MapSpeakerIdToName(speakerId);
+
+                    // Extract confidence score from detailed results
+                    var confidence = 1.0;
+                    try
+                    {
+                        var detailedResult = e.Result.Properties.GetProperty(PropertyId.SpeechServiceResponse_JsonResult);
+                        if (!string.IsNullOrEmpty(detailedResult))
+                        {
+                            // Parse JSON to extract confidence score
+                            var json = System.Text.Json.JsonDocument.Parse(detailedResult);
+                            if (json.RootElement.TryGetProperty("NBest", out var nBest) &&
+                                nBest.GetArrayLength() > 0 &&
+                                nBest[0].TryGetProperty("Confidence", out var conf))
+                            {
+                                confidence = conf.GetDouble();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Could not extract confidence score, using default value");
+                    }
+
                     var result = new TranscriptionResult
                     {
-                        Speaker = "Speaker",  // TODO: Implement speaker diarization when available
+                        Speaker = speakerName,
                         Timestamp = DateTime.UtcNow,
                         Text = e.Result.Text,
-                        Confidence = 1.0, // TODO: Extract from detailed results
+                        Confidence = confidence,
                         IsFinal = true,
                         MeetingId = meetingId
                     };
 
                     _logger.LogInformation(
-                        "Transcribed: {Speaker} @ {Timestamp}: {Text}",
-                        result.Speaker, result.Timestamp, result.Text);
+                        "Transcribed: {Speaker} ({SpeakerId}) @ {Timestamp}: {Text} (confidence: {Confidence:F2})",
+                        result.Speaker, speakerId, result.Timestamp, result.Text, result.Confidence);
 
                     // Callback to send to Pennie AI agent
                     await transcriptionCallback(result);

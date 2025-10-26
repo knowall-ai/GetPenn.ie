@@ -38,6 +38,7 @@ builder.Services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>
 
 // Bot Services
 builder.Services.AddSingleton<IBot, MediaBot>();
+builder.Services.AddSingleton<IGraphCallService, GraphCallService>();
 builder.Services.AddSingleton<ISpeechTranscriptionService, SpeechTranscriptionService>();
 builder.Services.AddSingleton<IPennieAgentClient, PennieAgentClient>();
 
