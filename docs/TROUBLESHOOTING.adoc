@@ -28,6 +28,9 @@
 | **Agent visible in portal but not via OpenAI API**
 | AI Foundry agents are PROJECT-scoped, not OpenAI resource-scoped. Use AI Foundry API endpoint (`/api/projects/{project}/assistants`) instead of OpenAI API endpoint (`/openai/assistants`). Agents created at OpenAI resource level won't appear in AI Foundry project portal.
 
+| **Admin consent fails: "Claim is invalid: [permission-id] does not exist on resource application"**
+| Graph API permission IDs are incorrect. Verify permission IDs by querying Microsoft Graph service principal: `az ad sp show --id 00000003-0000-0000-c000-000000000000 --query "appRoles[?contains(value, 'Calls')].{Value:value, ID:id}"`. Correct IDs: `Calls.AccessMedia.All` = `a7a681dc-756e-4909-b988-f160edc6655f`, `Calls.JoinGroupCall.All` = `f6b49018-60ab-4f81-83bd-22caeabfed2d`, `OnlineMeetings.ReadWrite.All` = `b8bb2037-6e08-44ac-a4ea-4674e010e2a4`. Delete incorrect permissions: `az ad app permission delete --id <app-id> --api 00000003-0000-0000-c000-000000000000`, then re-add with correct IDs.
+
 |===
 
 == Current Status
