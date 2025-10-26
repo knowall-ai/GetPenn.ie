@@ -160,17 +160,23 @@ jobs:
     steps:
       - name: Check test results
         run: |
-          # Allow validate-bicep to be skipped
-          BICEP_RESULT="${{ needs.validate-bicep.result }}"
-          if [[ "$BICEP_RESULT" == "skipped" ]]; then
+          # Check if any required job failed
+          LINT="${{ needs.lint.result }}"
+          BUILD="${{ needs.build-bot.result }}"
+          TESTS="${{ needs.unit-tests.result }}"
+          BICEP="${{ needs.validate-bicep.result }}"
+
+          # Bicep validation is optional - treat skipped as success
+          if [[ "$BICEP" == "skipped" ]]; then
             echo "ℹ️ Bicep validation skipped (Azure credentials not configured)"
-            BICEP_RESULT="success"
+            BICEP="success"
           fi
 
-          if [[ "${{ needs.lint.result }}" == "failure" ]] || \
-             [[ "${{ needs.build-bot.result }}" == "failure" ]] || \
-             [[ "${{ needs.unit-tests.result }}" == "failure" ]] || \
-             [[ "$BICEP_RESULT" == "failure" ]]; then
+          # Fail if any job failed
+          if [[ "$LINT" == "failure" ]] || \
+             [[ "$BUILD" == "failure" ]] || \
+             [[ "$TESTS" == "failure" ]] || \
+             [[ "$BICEP" == "failure" ]]; then
             echo "❌ Tests failed"
             exit 1
           else

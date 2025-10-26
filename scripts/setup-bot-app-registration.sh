@@ -15,9 +15,11 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}=== Pennie Bot App Registration Setup ===${NC}"
 
-# Load environment variables
+# Load environment variables safely
 if [ -f .env ]; then
-    export $(cat .env | grep -v '^#' | xargs)
+    set -a
+    source .env
+    set +a
 else
     echo -e "${RED}Error: .env file not found${NC}"
     exit 1
@@ -100,18 +102,21 @@ echo -e "${GREEN}✓ Credentials stored in Key Vault: $KEY_VAULT_NAME${NC}"
 echo -e "  Secret names: TEAMS-APP-ID, TEAMS-APP-PASSWORD"
 
 echo -e "\n${GREEN}Step 5: Updating .env file${NC}"
-# Update .env file with new app ID
+# Update .env file with new app ID (cross-platform compatible)
 if grep -q "^TEAMS_APP_ID=" .env; then
-    sed -i "s|^TEAMS_APP_ID=.*|TEAMS_APP_ID=$APP_ID|" .env
+    sed -i.bak "s|^TEAMS_APP_ID=.*|TEAMS_APP_ID=$APP_ID|" .env
 else
     echo "TEAMS_APP_ID=$APP_ID" >> .env
 fi
 
 if grep -q "^TEAMS_APP_PASSWORD=" .env; then
-    sed -i "s|^TEAMS_APP_PASSWORD=.*|TEAMS_APP_PASSWORD=$CLIENT_SECRET|" .env
+    sed -i.bak "s|^TEAMS_APP_PASSWORD=.*|TEAMS_APP_PASSWORD=$CLIENT_SECRET|" .env
 else
     echo "TEAMS_APP_PASSWORD=$CLIENT_SECRET" >> .env
 fi
+
+# Remove sed backup file
+rm -f .env.bak
 
 echo -e "${GREEN}✓ .env file updated${NC}"
 
