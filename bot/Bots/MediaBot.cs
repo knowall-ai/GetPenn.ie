@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Schema;
 using Microsoft.Graph.Communications.Calls;
@@ -20,6 +21,7 @@ public class MediaBot : ActivityHandler
     private readonly ISpeechTranscriptionService _speechService;
     private readonly IPennieAgentClient _agentClient;
     private readonly IConfiguration _configuration;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly Dictionary<string, string> _conversationToMeetingMap = new(); // conversation ID -> meeting ID
 
     public MediaBot(
@@ -27,13 +29,15 @@ public class MediaBot : ActivityHandler
         IGraphCallService callService,
         ISpeechTranscriptionService speechService,
         IPennieAgentClient agentClient,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
         _callService = callService;
         _speechService = speechService;
         _agentClient = agentClient;
         _configuration = configuration;
+        _httpClientFactory = httpClientFactory;
     }
 
     /// <summary>
@@ -43,12 +47,104 @@ public class MediaBot : ActivityHandler
         ITurnContext<IMessageActivity> turnContext,
         CancellationToken cancellationToken)
     {
+        var text = turnContext.Activity.Text?.ToLowerInvariant() ?? "";
         _logger.LogInformation("Received message: {Text}", turnContext.Activity.Text);
 
-        var responseText = $"Echo: {turnContext.Activity.Text}";
-        await turnContext.SendActivityAsync(
-            MessageFactory.Text(responseText),
-            cancellationToken);
+        // Check for project-related queries
+        if (text.Contains("what projects") || text.Contains("devops projects") ||
+            text.Contains("list projects") || text.Contains("show projects"))
+        {
+            await HandleProjectQueryAsync(turnContext, cancellationToken);
+            return;
+        }
+
+        // Check for help command
+        if (text.Contains("help") || text == "?")
+        {
+            var helpText = "Hi! I'm Pennie the Prepper. Here's what I can do:\n\n" +
+                          "- Ask me: **\"What projects do we have in DevOps?\"**\n" +
+                          "- I'll list all your Azure DevOps projects\n\n" +
+                          "More features coming soon!";
+            await turnContext.SendActivityAsync(MessageFactory.Text(helpText), cancellationToken);
+            return;
+        }
+
+        // Default response
+        var responseText = "I didn't understand that. Try asking:\n" +
+                          "- \"What projects do we have in DevOps?\"\n" +
+                          "- \"Help\"";
+        await turnContext.SendActivityAsync(MessageFactory.Text(responseText), cancellationToken);
+    }
+
+    /// <summary>
+    /// Handle queries about Azure DevOps projects.
+    /// </summary>
+    private async Task HandleProjectQueryAsync(
+        ITurnContext turnContext,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogInformation("Handling project query");
+
+            // Get backend URL from configuration
+            var backendUrl = _configuration["AZURE_FUNCTIONS_BACKEND_URL"]
+                ?? "https://pennie-backend-prod.azurewebsites.net";
+
+            var client = _httpClientFactory.CreateClient();
+            var response = await client.GetStringAsync($"{backendUrl}/api/read_projects", cancellationToken);
+
+            _logger.LogInformation("Backend response: {Response}", response);
+
+            // Parse the JSON response
+            using var doc = JsonDocument.Parse(response);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("success", out var successProp) || !successProp.GetBoolean())
+            {
+                await turnContext.SendActivityAsync(
+                    MessageFactory.Text("Sorry, I couldn't retrieve the projects. Please try again later."),
+                    cancellationToken);
+                return;
+            }
+
+            var count = root.GetProperty("count").GetInt32();
+            var projects = root.GetProperty("projects").EnumerateArray();
+
+            // Build response message
+            var projectList = new List<string>();
+            foreach (var project in projects.Take(15))
+            {
+                var name = project.GetProperty("name").GetString();
+                projectList.Add($"- {name}");
+            }
+
+            var reply = $"**Azure DevOps Projects**\n\n" +
+                       $"Found {count} projects:\n\n" +
+                       string.Join("\n", projectList);
+
+            if (count > 15)
+            {
+                reply += $"\n\n_(Showing first 15 of {count})_";
+            }
+
+            await turnContext.SendActivityAsync(MessageFactory.Text(reply), cancellationToken);
+            _logger.LogInformation("Successfully returned {Count} projects", count);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error calling backend API");
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text("Sorry, I couldn't connect to the backend service. Please try again later."),
+                cancellationToken);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Error parsing backend response");
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text("Sorry, I received an unexpected response from the backend. Please try again later."),
+                cancellationToken);
+        }
     }
 
     /// <summary>
