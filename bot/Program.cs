@@ -2,6 +2,7 @@ using Azure.Identity;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.Integration.AspNet.Core;
+using Microsoft.Bot.Connector.Authentication;
 using PennieBot;
 using PennieBot.Bots;
 using PennieBot.Services;
@@ -33,6 +34,9 @@ builder.Services.AddApplicationInsightsTelemetry(options =>
 builder.Services.AddControllers();
 builder.Services.AddHealthChecks();
 
+// Bot Framework Authentication (reads MicrosoftAppId/Password from config)
+builder.Services.AddSingleton<BotFrameworkAuthentication, ConfigurationBotFrameworkAuthentication>();
+
 // Bot Framework Adapter
 builder.Services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>();
 
@@ -40,7 +44,20 @@ builder.Services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>
 builder.Services.AddSingleton<IBot, MediaBot>();
 builder.Services.AddSingleton<IGraphCallService, GraphCallService>();
 builder.Services.AddSingleton<ISpeechTranscriptionService, SpeechTranscriptionService>();
-builder.Services.AddSingleton<IPennieAgentClient, PennieAgentClient>();
+
+// Only register PennieAgentClient if AI Foundry is configured
+// This is optional - the bot can still handle simple queries via HTTP client
+var aiFoundryEndpoint = builder.Configuration["AZURE_AI_FOUNDRY_ENDPOINT"];
+if (!string.IsNullOrEmpty(aiFoundryEndpoint))
+{
+    builder.Services.AddSingleton<IPennieAgentClient, PennieAgentClient>();
+}
+else
+{
+    // Register a null implementation to satisfy DI
+    builder.Services.AddSingleton<IPennieAgentClient>(sp =>
+        new NullPennieAgentClient(sp.GetRequiredService<ILogger<NullPennieAgentClient>>()));
+}
 
 // HTTP Client
 builder.Services.AddHttpClient();

@@ -43,6 +43,15 @@
 | **Azure Storage SAS token generation fails with "specify --as-user when --auth-mode login is used"**
 | When using `az storage blob generate-sas` with `--auth-mode login`, the `--as-user` flag is required for user delegation SAS tokens. **Error**: `ERROR: incorrect usage: specify --as-user when --auth-mode login is used to get user delegation key.` **Fix**: Add `--as-user` flag to the command: `az storage blob generate-sas --account-name $account --container-name $container --name $blob --permissions r --expiry $expiry --auth-mode login --as-user --full-uri`. This generates a user delegation SAS token using Azure AD credentials instead of account keys.
 
+| **SingleTenant Teams bot - messages not reaching bot endpoint**
+| Direct Line works but Teams messages never arrive. **Fix**: (1) Add Bot Framework redirect URI (CRITICAL): `az ad app update --id {app-id} --web-redirect-uris "https://token.botframework.com/.auth/web/redirect"`, (2) Add identifier URI: `az ad app update --id {app-id} --identifier-uris "api://botid-{app-id}"`, (3) Add `webApplicationInfo` to manifest.json: `{"id": "{app-id}", "resource": "api://botid-{app-id}"}`, (4) Regenerate app secret after switching to SingleTenant: `az ad app credential reset --id {app-id}`, (5) Re-upload Teams app and fully restart Teams client.
+
+| **MultiTenant bot creation deprecated**
+| `az bot create --app-type MultiTenant` fails with deprecation error. **Fix**: Use `--app-type SingleTenant` with `--msi-resource-id` for managed identity, or use `--app-type UserAssignedMSI`. SingleTenant requires extra configuration (identifier URI, webApplicationInfo in manifest).
+
+| **SingleTenant bot auth mismatch**
+| Bot Service is SingleTenant but App Registration is MultiTenant (or vice versa). Causes silent failures. **Verify**: Bot Service: `az bot show --query properties.msaAppType`, App Registration: `az ad app show --query signInAudience`. Both must match: SingleTenant = `AzureADMyOrg`, MultiTenant = `AzureADMultipleOrgs`.
+
 |===
 
 == Current Status
@@ -55,11 +64,9 @@
 
 ✅ *Teams Bot*: Code deployed to Windows VM (pennie-vm-prod) at C:\Pennie\bot via GitHub Actions workflow
 
-⚠️ *Bot Service*: Status unknown - requires RDP verification (Azure CLI run-command Issue #15)
+✅ *Bot Service*: SingleTenant Azure Bot (pennie-bot) with Teams channel enabled
 
-❌ *Health Endpoint*: Not accessible externally (port 443 timeout) - requires service verification and configuration
-
-❌ *Teams Integration*: Not configured - requires Azure AD App Registration and Teams manifest deployment
+✅ *Teams Integration*: Working on Teams Mobile (iOS), Teams Web, and Teams Desktop. App ID: 9707c142-2583-4e56-9983-4d913338afb0
 
 == Quick Test Commands
 
