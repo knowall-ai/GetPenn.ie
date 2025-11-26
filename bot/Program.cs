@@ -58,7 +58,14 @@ else
         new NullPennieAgentClient(sp.GetRequiredService<ILogger<NullPennieAgentClient>>()));
 }
 
-// HTTP Client
+// Memory Cache (for meeting thread caching with expiration)
+builder.Services.AddMemoryCache();
+
+// HTTP Client with 30s timeout for backend calls
+builder.Services.AddHttpClient<PennieAgentClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 builder.Services.AddHttpClient();
 
 // Logging

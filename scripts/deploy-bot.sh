@@ -194,6 +194,14 @@ Write-Output '=== Extracting new version ==='
 Remove-Item -Path 'C:\Pennie\bot\*' -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive -Path 'C:\Temp\pennie-bot-deploy.zip' -DestinationPath 'C:\Pennie\bot' -Force
 
+Write-Output '=== Restoring appsettings.json from backup ==='
+if (Test-Path 'C:\Pennie\bot-backup\appsettings.json') {
+    Copy-Item -Path 'C:\Pennie\bot-backup\appsettings.json' -Destination 'C:\Pennie\bot\appsettings.json' -Force
+    Write-Output 'appsettings.json restored from backup'
+} else {
+    Write-Output 'WARNING: No appsettings.json backup found'
+}
+
 Write-Output '=== Verifying deployment ==='
 Get-Item 'C:\Pennie\bot\PennieBot.exe' | Select-Object Name, Length, LastWriteTime
 
