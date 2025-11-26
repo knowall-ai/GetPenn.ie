@@ -55,12 +55,29 @@ if (-not (Test-Path $botProjectPath)) {
     exit 1
 }
 
+# CRITICAL: Backup appsettings.json before build
+# This file contains VM-specific configuration that should not be overwritten
+$appSettingsPath = Join-Path $BotDirectory "appsettings.json"
+$appSettingsBackup = Join-Path $env:TEMP "appsettings.json.backup"
+if (Test-Path $appSettingsPath) {
+    Write-Host "  Backing up existing appsettings.json..."
+    Copy-Item -Path $appSettingsPath -Destination $appSettingsBackup -Force
+}
+
 Write-Host "  Building project: $botProjectPath"
 & dotnet build $botProjectPath --configuration $BuildConfiguration --output $BotDirectory
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Build failed" -ForegroundColor Red
     exit 1
+}
+
+# CRITICAL: Restore appsettings.json after build
+# The build may have overwritten it with the project's default appsettings.json
+if (Test-Path $appSettingsBackup) {
+    Write-Host "  Restoring appsettings.json from backup..."
+    Copy-Item -Path $appSettingsBackup -Destination $appSettingsPath -Force
+    Remove-Item -Path $appSettingsBackup -Force
 }
 
 Write-Host "  Build successful" -ForegroundColor Green
@@ -73,9 +90,22 @@ if ($KeyVaultName) {
     Write-Host "  Fetching secrets from Key Vault: $KeyVaultName"
 
     # Fetch secrets using VM's managed identity
-    $teamsAppId = az keyvault secret show --vault-name $KeyVaultName --name "TEAMS-APP-ID" --query value -o tsv 2>$null
-    $teamsAppPassword = az keyvault secret show --vault-name $KeyVaultName --name "TEAMS-APP-PASSWORD" --query value -o tsv 2>$null
-    $speechKey = az keyvault secret show --vault-name $KeyVaultName --name "AZURE-SPEECH-KEY" --query value -o tsv 2>$null
+    $teamsAppId = az keyvault secret show --vault-name $KeyVaultName --name "TEAMS-APP-ID" --query value -o tsv
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to fetch TEAMS-APP-ID from Key Vault" -ForegroundColor Red
+        Write-Host "  Ensure the secret exists and the VM has access to the Key Vault" -ForegroundColor Red
+    }
+
+    $teamsAppPassword = az keyvault secret show --vault-name $KeyVaultName --name "TEAMS-APP-PASSWORD" --query value -o tsv
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to fetch TEAMS-APP-PASSWORD from Key Vault" -ForegroundColor Red
+        Write-Host "  Ensure the secret exists and the VM has access to the Key Vault" -ForegroundColor Red
+    }
+
+    $speechKey = az keyvault secret show --vault-name $KeyVaultName --name "AZURE-SPEECH-KEY" --query value -o tsv
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARNING: AZURE-SPEECH-KEY not found in Key Vault (speech features may not work)" -ForegroundColor Yellow
+    }
 
     if (-not $teamsAppId -or -not $teamsAppPassword) {
         Write-Host "ERROR: Required secrets not found in Key Vault" -ForegroundColor Red

@@ -21,12 +21,6 @@ if (!string.IsNullOrEmpty(keyVaultName))
     var keyVaultUri = new Uri($"https://{keyVaultName}.vault.azure.net/");
     builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
     Console.WriteLine($"Key Vault configuration loaded from: {keyVaultName}");
-
-    // Debug: Log what credentials the bot sees
-    var appId = builder.Configuration["MicrosoftAppId"];
-    var appPassword = builder.Configuration["MicrosoftAppPassword"];
-    Console.WriteLine($"MicrosoftAppId from config: {(string.IsNullOrEmpty(appId) ? "(empty)" : appId)}");
-    Console.WriteLine($"MicrosoftAppPassword from config: {(string.IsNullOrEmpty(appPassword) ? "(empty)" : appPassword.Substring(0, Math.Min(4, appPassword.Length)) + "...")}");
 }
 
 // Application Insights

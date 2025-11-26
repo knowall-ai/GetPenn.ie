@@ -155,22 +155,42 @@ jobs:
           $rgName = "${{ secrets.AZURE_RESOURCE_GROUP }}"
           $keyVaultName = "${{ secrets.AZURE_KEY_VAULT_NAME }}"
 
-          # Download and extract package on VM
+          # Download and extract package on VM, preserving appsettings.json
           $uploadScript = @'
           param([string]$PackageUrl)
 
           $TempDir = "C:\Temp"
           $PackagePath = "$TempDir\pennie-bot.zip"
           $ExtractPath = "C:\Pennie\bot"
+          $AppSettingsPath = "$ExtractPath\appsettings.json"
+          $AppSettingsBackup = "$TempDir\appsettings.json.backup"
 
           New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
           New-Item -ItemType Directory -Path $ExtractPath -Force | Out-Null
+
+          # CRITICAL: Backup appsettings.json before deployment
+          # This file contains VM-specific configuration (AppId, TenantId, KeyVault name)
+          if (Test-Path $AppSettingsPath) {
+              Write-Host "Backing up existing appsettings.json..."
+              Copy-Item -Path $AppSettingsPath -Destination $AppSettingsBackup -Force
+          }
 
           Write-Host "Downloading deployment package..."
           Invoke-WebRequest -Uri $PackageUrl -OutFile $PackagePath
 
           Write-Host "Extracting to $ExtractPath..."
           Expand-Archive -Path $PackagePath -DestinationPath $ExtractPath -Force
+
+          # CRITICAL: Restore appsettings.json after deployment
+          # The deployed package contains template values, not production configuration
+          if (Test-Path $AppSettingsBackup) {
+              Write-Host "Restoring appsettings.json from backup..."
+              Copy-Item -Path $AppSettingsBackup -Destination $AppSettingsPath -Force
+              Remove-Item -Path $AppSettingsBackup -Force
+              Write-Host "appsettings.json restored successfully"
+          } else {
+              Write-Host "WARNING: No appsettings.json backup found - manual configuration required"
+          }
 
           Write-Host "Upload complete"
           '@

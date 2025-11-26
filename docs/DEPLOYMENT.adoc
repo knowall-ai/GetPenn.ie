@@ -438,10 +438,38 @@ Deploy the bot from your local machine using the automated script:
 7. Generates SAS URL (1-hour expiry)
 8. Deploys to VM via `az vm run-command invoke`:
    - Stops PennieBot service
+   - **Backs up appsettings.json** (preserves VM configuration)
    - Downloads and extracts new version
-   - Backs up previous version
+   - **Restores appsettings.json from backup**
    - Starts PennieBot service
 9. Verifies health endpoint
+
+=== Configuration Preservation During Deployment
+
+**CRITICAL**: The deployment process preserves `appsettings.json` on the VM.
+
+The VM's `appsettings.json` contains environment-specific configuration that must not be overwritten:
+
+[source,json]
+----
+{
+  "MicrosoftAppId": "<your-bot-app-id>",
+  "MicrosoftAppTenantId": "<your-tenant-id>",
+  "MicrosoftAppType": "SingleTenant",
+  "AZURE_KEY_VAULT_NAME": "<your-key-vault-name>"
+}
+----
+
+**Why This Matters**:
+
+* The deployed package contains default/template values, not production configuration
+* Without backup/restore, deployment would break the bot's authentication
+* Secrets (MicrosoftAppPassword) remain in Key Vault - only non-secrets in appsettings.json
+
+**Both deployment methods preserve the configuration**:
+
+1. **GitHub Actions** (`.github/workflows/deploy.yml`): Backs up before extract, restores after
+2. **Local script** (`scripts/deploy-bot-to-vm.ps1`): Backs up before build, restores after
 
 **Key Vault Integration**:
 

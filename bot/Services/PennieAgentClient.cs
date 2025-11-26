@@ -128,7 +128,13 @@ public class PennieAgentClient : IPennieAgentClient, IDisposable
             if (!_meetingThreads.TryAdd(meetingId, threadId))
             {
                 // Another thread beat us, use their thread ID
-                return _meetingThreads[meetingId];
+                // Use TryGetValue to avoid potential KeyNotFoundException if entry was removed
+                if (_meetingThreads.TryGetValue(meetingId, out var existingThread))
+                {
+                    return existingThread;
+                }
+                // Entry was removed between TryAdd and TryGetValue - use our newly created thread
+                _meetingThreads.TryAdd(meetingId, threadId);
             }
 
             _logger.LogInformation("Created new thread {ThreadId} for meeting {MeetingId}", threadId, meetingId);
