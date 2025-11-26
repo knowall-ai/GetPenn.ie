@@ -13,15 +13,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
 
 // Add Key Vault if configured
-// Note: Using legacy API - update to Azure.Extensions.AspNetCore.Configuration.Secrets for newer approach
+// Uses Azure.Extensions.AspNetCore.Configuration.Secrets with DefaultAzureCredential
+// On the VM, this uses the managed identity for authentication
 var keyVaultName = builder.Configuration["AZURE_KEY_VAULT_NAME"];
 if (!string.IsNullOrEmpty(keyVaultName))
 {
-    // Commented out - requires newer Azure.Extensions.AspNetCore.Configuration.Secrets package
-    // var keyVaultUri = new Uri($"https://{keyVaultName}.vault.azure.net/");
-    // builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+    var keyVaultUri = new Uri($"https://{keyVaultName}.vault.azure.net/");
+    builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+    Console.WriteLine($"Key Vault configuration loaded from: {keyVaultName}");
 
-    // For now, use environment variables or appsettings.json
+    // Debug: Log what credentials the bot sees
+    var appId = builder.Configuration["MicrosoftAppId"];
+    var appPassword = builder.Configuration["MicrosoftAppPassword"];
+    Console.WriteLine($"MicrosoftAppId from config: {(string.IsNullOrEmpty(appId) ? "(empty)" : appId)}");
+    Console.WriteLine($"MicrosoftAppPassword from config: {(string.IsNullOrEmpty(appPassword) ? "(empty)" : appPassword.Substring(0, Math.Min(4, appPassword.Length)) + "...")}");
 }
 
 // Application Insights

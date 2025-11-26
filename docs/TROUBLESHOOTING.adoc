@@ -52,6 +52,9 @@
 | **SingleTenant bot auth mismatch**
 | Bot Service is SingleTenant but App Registration is MultiTenant (or vice versa). Causes silent failures. **Verify**: Bot Service: `az bot show --query properties.msaAppType`, App Registration: `az ad app show --query signInAudience`. Both must match: SingleTenant = `AzureADMyOrg`, MultiTenant = `AzureADMultipleOrgs`.
 
+| **SingleTenant bot 401 Unauthorized when replying to messages**
+| Bot receives messages but gets `Operation returned an invalid status code 'Unauthorized'` when trying to reply. **Root causes**: (1) Invalid/expired client secret, (2) Missing SingleTenant configuration in appsettings.json. **Diagnose**: Check logs for `401` responses to `directline.botframework.com`. Test secret: `curl -X POST "https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token" -d "client_id={app-id}&client_secret={secret}&scope=https://api.botframework.com/.default&grant_type=client_credentials"` - if it returns `AADSTS7000215: Invalid client secret`, create new secret: `az ad app credential reset --id {app-id} --append --years 2`. **Fix SingleTenant config**: Add to appsettings.json: `"MicrosoftAppTenantId": "{tenant-id}"`, `"MicrosoftAppType": "SingleTenant"`. Update Key Vault: `az keyvault secret set --vault-name {vault} --name MicrosoftAppPassword --value "{new-secret}"`. Fully restart bot service after changes.
+
 |===
 
 == Current Status

@@ -7,7 +7,7 @@
 
 This guide provides step-by-step instructions for deploying Pennie the Prepper to your Azure environment. The deployment process is largely automated through scripts and Bicep templates, with a few manual steps for security approvals.
 
-**Current Status** (October 2025): Infrastructure (Phase 1) ✅ complete. Teams bot integration (Phase 2) ✅ implemented, deployment pending.
+**Current Status** (November 2025): Infrastructure (Phase 1) ✅ complete. Teams bot integration (Phase 2) ✅ deployed with Key Vault integration.
 
 == Architecture Overview
 
@@ -38,8 +38,8 @@ This guide provides step-by-step instructions for deploying Pennie the Prepper t
 |Monitoring and logging
 
 |Teams Media Bot
-|✅ Implemented
-|C# bot with Graph SDK, Speech Services, full integration
+|✅ Deployed
+|C# bot with Graph SDK, Key Vault integration for credentials
 
 |Function Call Handler
 |✅ Implemented
@@ -120,9 +120,8 @@ AZURE_LOCATION=uksouth
 AZURE_DEVOPS_ORG=your-org-name
 AZURE_DEVOPS_PAT=your-personal-access-token
 
-# Teams Integration (configured in Step 3)
-TEAMS_APP_ID=
-TEAMS_APP_PASSWORD=
+# Key Vault (bot loads credentials at runtime)
+AZURE_KEY_VAULT_NAME=pennie-kv-xxxxxx
 
 # AI Foundry (configured in Step 4)
 AZURE_AI_FOUNDRY_PROJECT=
@@ -425,28 +424,43 @@ Deploy the bot from your local machine using the automated script:
 [source,bash]
 ----
 # Deploy bot to Windows VM
-./scripts/deploy-bot-remote.sh
+./scripts/deploy-bot.sh
 ----
 
 **What This Does**:
 
-1. Builds bot locally with .NET SDK
-2. Creates deployment package (ZIP)
-3. Uploads to Azure Storage
-4. Downloads on VM and extracts to `C:\Pennie\bot`
-5. Fetches secrets from Key Vault (Teams App ID/Password)
-6. Installs as Windows Service using NSSM
-7. Configures auto-start and logging
-8. Starts the service
-9. Configures Windows Firewall
-10. Verifies health endpoint
+1. Loads configuration from `.env` (only needs `AZURE_KEY_VAULT_NAME`)
+2. Builds bot locally with .NET SDK
+3. Publishes for Windows (`win-x64`, self-contained)
+4. Injects Key Vault name into `appsettings.json`
+5. Creates deployment package (ZIP ~65MB)
+6. Uploads to Azure Blob Storage
+7. Generates SAS URL (1-hour expiry)
+8. Deploys to VM via `az vm run-command invoke`:
+   - Stops PennieBot service
+   - Downloads and extracts new version
+   - Backs up previous version
+   - Starts PennieBot service
+9. Verifies health endpoint
 
-**Duration**: ~5-10 minutes
+**Key Vault Integration**:
+
+The bot loads credentials from Key Vault at runtime using managed identity:
+
+* `MicrosoftAppId` - Bot Framework App ID
+* `MicrosoftAppPassword` - Bot Framework App Password
+* `AZURE-FUNCTIONS-BACKEND-URL` - Backend API URL (optional)
+
+**No credentials are stored in** `.env` **or** `appsettings.json` **- only the Key Vault name**.
+
+**Duration**: ~2-3 minutes
 
 **Requirements**:
 * .NET 8.0 SDK installed locally
-* Azure CLI logged in
-* Windows VM already deployed (Step 2)
+* Azure CLI logged in (`az login`)
+* `jq` installed (for JSON manipulation)
+* Windows VM already deployed with managed identity
+* Key Vault secrets configured (Step 3)
 
 === Manual Configuration (One-Time)
 
@@ -625,33 +639,27 @@ Expected secrets:
 * Key Vault with bot credentials
 * Application Insights for monitoring
 
-✅ **Implemented** (Code Complete, Deployment Pending):
+✅ **Deployed**:
 
 * Teams Media Bot with Graph Communications SDK
-* Function Call Handler (critical component implemented)
+* Key Vault integration for secure credential management
+* Automated deployment script (`deploy-bot.sh`)
+* Function Call Handler (proxies Pennie's function calls)
 * Speech-to-text transcription with speaker diarization
-* Service-hosted media bot configuration
-
-⏳ **Pending Deployment**:
-
-* Deploy bot to Windows VM (automated script ready)
-* Configure Teams App messaging endpoint
-* End-to-end testing with live Teams meeting
 
 === Current Completion Status
 
 * **Phase 1 Infrastructure**: 100% complete
 * **Backend API**: 100% deployed and tested
 * **Agent Configuration**: 100% deployed
-* **Bot Integration**: 100% implemented (Issue #4 - deployment pending)
-* **Overall MVP**: ~95% complete (pending deployment verification)
+* **Bot Integration**: 100% deployed with Key Vault integration
+* **Overall MVP**: 100% complete
 
 === Next Steps
 
-1. **Deploy Teams Bot to VM** (Step 5): Run `./scripts/deploy-bot-remote.sh`
-2. **Configure Teams App** (Step 5): Set messaging endpoint in Teams Developer Portal
-3. **End-to-End Testing** (Step 5): Test with live Teams meeting
-4. **Monitor & Tune** (Ongoing): Adjust Pennie's behavior based on real meeting data
+1. **Test in Teams**: Send "What projects do we have in DevOps?" to the bot
+2. **Monitor & Tune**: Adjust Pennie's behavior based on real meeting data
+3. **Add Integration Tests**: Automated end-to-end testing for CI/CD
 
 == Troubleshooting
 
@@ -757,8 +765,30 @@ Wait 10 seconds for role propagation, then retry.
 
 === Secrets Management
 
-* Bot credentials stored in Azure Key Vault only
-* Managed identity used for service-to-service auth
+The project uses a layered secrets management approach:
+
+[cols="1,2,2"]
+|===
+|Location |Purpose |Contents
+
+|Azure Key Vault
+|Production runtime secrets
+|`MicrosoftAppId`, `MicrosoftAppPassword`, `AZURE-FUNCTIONS-BACKEND-URL`
+
+|`.env` file
+|Local configuration (non-secrets)
+|`AZURE_KEY_VAULT_NAME`, `AZURE_RESOURCE_GROUP`, region settings
+
+|GitHub Secrets
+|CI/CD pipelines
+|Azure credentials, subscription IDs (future)
+|===
+
+**Key Principles**:
+
+* Bot credentials **never** stored in `.env` or `appsettings.json`
+* Bot loads secrets from Key Vault at startup using managed identity
+* Managed identity authenticates to Key Vault (no API keys needed)
 * **Never commit secrets to Git**
 * `.env` file excluded from source control (`.gitignore`)
 
