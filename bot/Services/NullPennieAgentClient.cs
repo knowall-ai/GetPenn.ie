@@ -31,4 +31,10 @@ public class NullPennieAgentClient : IPennieAgentClient
         _logger.LogDebug("NotifyWorkItemCreatedAsync called but AI Foundry is not configured");
         return Task.CompletedTask;
     }
+
+    public Task CleanupMeetingAsync(string meetingId)
+    {
+        _logger.LogDebug("CleanupMeetingAsync called but AI Foundry is not configured");
+        return Task.CompletedTask;
+    }
 }

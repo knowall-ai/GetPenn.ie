@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using Azure;
@@ -11,7 +12,7 @@ namespace PennieBot.Services;
 /// Client for communicating with Pennie AI Foundry Agent.
 /// Implements OpenAI Assistants function calling pattern with Azure Functions backend.
 /// </summary>
-public class PennieAgentClient : IPennieAgentClient
+public class PennieAgentClient : IPennieAgentClient, IDisposable
 {
     private readonly ILogger<PennieAgentClient> _logger;
     private readonly IConfiguration _configuration;
@@ -19,8 +20,10 @@ public class PennieAgentClient : IPennieAgentClient
     private readonly AssistantsClient _assistantsClient;
     private readonly string _assistantId;
     private readonly string _backendUrl;
-    private readonly Dictionary<string, string> _meetingThreads = new();
+    private readonly ConcurrentDictionary<string, string> _meetingThreads = new();
+    private readonly SemaphoreSlim _threadCreationLock = new(1, 1);
     private static readonly HashSet<string> GetFunctions = new() { "read_projects", "read_link_types" };
+    private bool _disposed;
 
     public PennieAgentClient(
         ILogger<PennieAgentClient> logger,
@@ -98,44 +101,68 @@ public class PennieAgentClient : IPennieAgentClient
 
     /// <summary>
     /// Get or create a thread for a meeting.
+    /// Uses double-checked locking pattern to prevent race conditions.
     /// </summary>
     private async Task<string> GetOrCreateThreadAsync(string meetingId, CancellationToken cancellationToken)
     {
+        // Fast path: check if thread already exists
         if (_meetingThreads.TryGetValue(meetingId, out var existingThreadId))
         {
             return existingThreadId;
         }
 
-        var thread = await _assistantsClient.CreateThreadAsync(cancellationToken);
+        // Slow path: acquire lock and create thread if needed
+        await _threadCreationLock.WaitAsync(cancellationToken);
+        try
+        {
+            // Double-check after acquiring lock
+            if (_meetingThreads.TryGetValue(meetingId, out existingThreadId))
+            {
+                return existingThreadId;
+            }
 
-        var threadId = thread.Value.Id;
-        _meetingThreads[meetingId] = threadId;
+            var thread = await _assistantsClient.CreateThreadAsync(cancellationToken);
+            var threadId = thread.Value.Id;
 
-        _logger.LogInformation("Created new thread {ThreadId} for meeting {MeetingId}", threadId, meetingId);
+            // Use TryAdd for thread-safe addition
+            if (!_meetingThreads.TryAdd(meetingId, threadId))
+            {
+                // Another thread beat us, use their thread ID
+                return _meetingThreads[meetingId];
+            }
 
-        return threadId;
+            _logger.LogInformation("Created new thread {ThreadId} for meeting {MeetingId}", threadId, meetingId);
+
+            return threadId;
+        }
+        finally
+        {
+            _threadCreationLock.Release();
+        }
     }
 
     /// <summary>
     /// Monitor run status and handle function calls.
     /// This is the CRITICAL function call handler that makes Pennie's backend integration work.
+    /// Uses exponential backoff to reduce load while waiting.
     /// </summary>
     private async Task ProcessRunAsync(string threadId, string runId, CancellationToken cancellationToken)
     {
         var timeoutSeconds = _configuration.GetValue<int>("PennieAgent:RunTimeoutSeconds", 60);
-        var maxAttempts = timeoutSeconds; // Default 60 seconds (60 attempts * 1 second delay)
-        var attempt = 0;
+        var startTime = DateTime.UtcNow;
+        var baseDelayMs = 500;
+        var maxDelayMs = 5000;
+        var currentDelayMs = baseDelayMs;
 
-        while (attempt < maxAttempts)
+        while ((DateTime.UtcNow - startTime).TotalSeconds < timeoutSeconds)
         {
-            attempt++;
-
             // Get current run status
             var run = await _assistantsClient.GetRunAsync(threadId, runId, cancellationToken);
             var status = run.Value.Status;
 
-            _logger.LogDebug("Run {RunId} status: {Status} (attempt {Attempt}/{MaxAttempts})",
-                runId, status, attempt, maxAttempts);
+            var elapsedSeconds = (int)(DateTime.UtcNow - startTime).TotalSeconds;
+            _logger.LogDebug("Run {RunId} status: {Status} (elapsed {Elapsed}s/{Timeout}s)",
+                runId, status, elapsedSeconds, timeoutSeconds);
 
             if (status == RunStatus.Completed)
             {
@@ -153,7 +180,9 @@ public class PennieAgentClient : IPennieAgentClient
             }
             else if (status == RunStatus.RequiresAction)
             {
-                // CRITICAL: Handle function calls
+                // CRITICAL: Handle function calls - reset backoff since we're actively processing
+                currentDelayMs = baseDelayMs;
+
                 _logger.LogInformation("Run requires action - processing function calls");
 
                 var requiredAction = run.Value.RequiredAction;
@@ -195,11 +224,12 @@ public class PennieAgentClient : IPennieAgentClient
                 return;
             }
 
-            // Wait before next status check
-            await Task.Delay(1000, cancellationToken);
+            // Exponential backoff: wait before next status check
+            await Task.Delay(currentDelayMs, cancellationToken);
+            currentDelayMs = Math.Min(currentDelayMs * 2, maxDelayMs);
         }
 
-        _logger.LogWarning("Run {RunId} did not complete within timeout", runId);
+        _logger.LogWarning("Run {RunId} did not complete within {Timeout}s timeout", runId, timeoutSeconds);
     }
 
     /// <summary>
@@ -331,5 +361,59 @@ public class PennieAgentClient : IPennieAgentClient
             _logger.LogError(ex, "Error notifying work item creation");
             return Task.CompletedTask;
         }
+    }
+
+    /// <inheritdoc/>
+    public Task CleanupMeetingAsync(string meetingId)
+    {
+        try
+        {
+            if (_meetingThreads.TryRemove(meetingId, out var threadId))
+            {
+                _logger.LogInformation(
+                    "Cleaned up meeting {MeetingId} (thread {ThreadId})",
+                    meetingId, threadId);
+            }
+            else
+            {
+                _logger.LogDebug("No thread found for meeting {MeetingId} during cleanup", meetingId);
+            }
+
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cleaning up meeting {MeetingId}", meetingId);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// Dispose of managed resources.
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Dispose pattern implementation.
+    /// </summary>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (disposing)
+        {
+            _threadCreationLock.Dispose();
+            _meetingThreads.Clear();
+            _logger.LogInformation("PennieAgentClient disposed");
+        }
+
+        _disposed = true;
     }
 }
