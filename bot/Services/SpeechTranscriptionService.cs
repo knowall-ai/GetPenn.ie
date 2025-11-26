@@ -8,7 +8,7 @@ namespace PennieBot.Services;
 /// <summary>
 /// Azure Speech Services implementation with MeetingTranscriber for speaker diarization.
 /// </summary>
-public class SpeechTranscriptionService : ISpeechTranscriptionService
+public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposable
 {
     private const string UnknownSpeakerConstant = "UNKNOWN_SPEAKER";
     private readonly ILogger<SpeechTranscriptionService> _logger;
@@ -16,6 +16,8 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
     private readonly Dictionary<string, ConversationTranscriber> _transcribers = new();
     private readonly Dictionary<string, PushAudioInputStream> _audioStreams = new();
     private readonly Dictionary<string, string> _speakerIdToNameMap = new();
+    private readonly object _lock = new();
+    private bool _disposed;
 
     public SpeechTranscriptionService(
         ILogger<SpeechTranscriptionService> logger,
@@ -240,5 +242,65 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService
             _logger.LogError(ex, "Error processing audio for meeting {MeetingId}", meetingId);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Dispose of managed resources.
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Dispose pattern implementation.
+    /// </summary>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (disposing)
+        {
+            lock (_lock)
+            {
+                // Dispose all active transcribers
+                foreach (var kvp in _transcribers)
+                {
+                    try
+                    {
+                        kvp.Value.Dispose();
+                        _logger.LogDebug("Disposed transcriber for meeting {MeetingId}", kvp.Key);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error disposing transcriber for meeting {MeetingId}", kvp.Key);
+                    }
+                }
+                _transcribers.Clear();
+
+                // Close all active audio streams
+                foreach (var kvp in _audioStreams)
+                {
+                    try
+                    {
+                        kvp.Value.Close();
+                        _logger.LogDebug("Closed audio stream for meeting {MeetingId}", kvp.Key);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error closing audio stream for meeting {MeetingId}", kvp.Key);
+                    }
+                }
+                _audioStreams.Clear();
+
+                _logger.LogInformation("SpeechTranscriptionService disposed");
+            }
+        }
+
+        _disposed = true;
     }
 }

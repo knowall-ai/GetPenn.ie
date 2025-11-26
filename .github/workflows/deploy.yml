@@ -116,9 +116,12 @@ jobs:
 
       - name: Upload to Azure Storage
         run: |
-          $storageAccount = az storage account list `
-            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" `
-            --query "[0].name" -o tsv
+          # Use explicit storage account from secrets to avoid ambiguity with multiple storage accounts
+          $storageAccount = "${{ secrets.AZURE_STORAGE_ACCOUNT }}"
+          if ([string]::IsNullOrEmpty($storageAccount)) {
+            Write-Host "::error::AZURE_STORAGE_ACCOUNT secret not configured"
+            exit 1
+          }
 
           az storage container create `
             --name deployments `
