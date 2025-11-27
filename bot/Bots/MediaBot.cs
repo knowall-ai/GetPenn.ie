@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Schema;
@@ -17,7 +18,7 @@ public class MediaBot : ActivityHandler
     private readonly IPennieAgentClient _agentClient;
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly Dictionary<string, string> _conversationToMeetingMap = new(); // conversation ID -> meeting ID
+    private readonly ConcurrentDictionary<string, string> _conversationToMeetingMap = new(); // conversation ID -> meeting ID
 
     public MediaBot(
         ILogger<MediaBot> logger,
@@ -110,8 +111,14 @@ public class MediaBot : ActivityHandler
             var projectList = new List<string>();
             foreach (var project in projects.Take(15))
             {
-                var name = project.GetProperty("name").GetString();
-                projectList.Add($"- {name}");
+                if (project.TryGetProperty("name", out var nameProp))
+                {
+                    var name = nameProp.GetString();
+                    if (!string.IsNullOrEmpty(name))
+                    {
+                        projectList.Add($"- {name}");
+                    }
+                }
             }
 
             var reply = $"**Azure DevOps Projects**\n\n" +
@@ -209,10 +216,9 @@ public class MediaBot : ActivityHandler
 
                 // Clean up any meeting resources
                 var conversationId = turnContext.Activity.Conversation.Id;
-                if (_conversationToMeetingMap.TryGetValue(conversationId, out var meetingId))
+                if (_conversationToMeetingMap.TryRemove(conversationId, out var meetingId))
                 {
                     await _agentClient.CleanupMeetingAsync(meetingId);
-                    _conversationToMeetingMap.Remove(conversationId);
                     _logger.LogInformation("Cleaned up meeting {MeetingId}", meetingId);
                 }
                 break;

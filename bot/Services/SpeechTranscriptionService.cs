@@ -34,37 +34,41 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
     /// <returns>Friendly speaker name</returns>
     private string MapSpeakerIdToName(string speakerId)
     {
-        // Handle unknown speaker specially to avoid creating multiple "Unknown Speaker N" entries
-        if (speakerId == UnknownSpeakerConstant)
+        // Thread-safe speaker ID mapping to prevent race conditions
+        lock (_lock)
         {
-            if (!_speakerIdToNameMap.ContainsKey(UnknownSpeakerConstant))
+            // Handle unknown speaker specially to avoid creating multiple "Unknown Speaker N" entries
+            if (speakerId == UnknownSpeakerConstant)
             {
-                _speakerIdToNameMap[UnknownSpeakerConstant] = "Unknown Speaker";
-                _logger.LogWarning("Speaker diarization returned unknown speaker ID");
+                if (!_speakerIdToNameMap.ContainsKey(UnknownSpeakerConstant))
+                {
+                    _speakerIdToNameMap[UnknownSpeakerConstant] = "Unknown Speaker";
+                    _logger.LogWarning("Speaker diarization returned unknown speaker ID");
+                }
+                return _speakerIdToNameMap[UnknownSpeakerConstant];
             }
-            return _speakerIdToNameMap[UnknownSpeakerConstant];
+
+            // Check if we have a mapping for this speaker ID
+            if (_speakerIdToNameMap.TryGetValue(speakerId, out var name))
+            {
+                return name;
+            }
+
+            // If no mapping exists, create a friendly speaker label
+            // In production, this would:
+            // 1. Query Teams Graph API to get participant names
+            // 2. Match speaker ID to participant based on join time
+            // 3. Store mapping for reuse during the meeting
+
+            var speakerNumber = _speakerIdToNameMap.Count + 1;
+            var friendlyName = $"Speaker {speakerNumber}";
+
+            _speakerIdToNameMap[speakerId] = friendlyName;
+
+            _logger.LogInformation("Mapped speaker ID {SpeakerId} to {FriendlyName}", speakerId, friendlyName);
+
+            return friendlyName;
         }
-
-        // Check if we have a mapping for this speaker ID
-        if (_speakerIdToNameMap.TryGetValue(speakerId, out var name))
-        {
-            return name;
-        }
-
-        // If no mapping exists, create a friendly speaker label
-        // In production, this would:
-        // 1. Query Teams Graph API to get participant names
-        // 2. Match speaker ID to participant based on join time
-        // 3. Store mapping for reuse during the meeting
-
-        var speakerNumber = _speakerIdToNameMap.Count + 1;
-        var friendlyName = $"Speaker {speakerNumber}";
-
-        _speakerIdToNameMap[speakerId] = friendlyName;
-
-        _logger.LogInformation("Mapped speaker ID {SpeakerId} to {FriendlyName}", speakerId, friendlyName);
-
-        return friendlyName;
     }
 
     /// <inheritdoc/>

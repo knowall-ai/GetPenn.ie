@@ -33,8 +33,8 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
         # Remove leading/trailing whitespace
         key=$(echo "$key" | xargs)
         value=$(echo "$value" | xargs)
-        # Export the variable
-        eval export "$key"=\""$value"\"
+        # Export the variable (without eval to prevent command injection)
+        export "$key=$value"
     done < "$PROJECT_ROOT/.env"
 else
     echo "❌ .env file not found at $PROJECT_ROOT/.env"

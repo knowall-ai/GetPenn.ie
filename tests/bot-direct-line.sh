@@ -48,14 +48,14 @@ echo "OK: Conversation started: $CONV_ID"
 # Send a message
 echo ""
 echo "Sending: \"$MESSAGE\""
-SEND_RESPONSE=$(curl -s -X POST "https://directline.botframework.com/v3/directline/conversations/$CONV_ID/activities" \
-  -H "Authorization: Bearer $DIRECT_LINE_SECRET" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"type\": \"message\",
-    \"from\": { \"id\": \"test-user\", \"name\": \"Test User\" },
-    \"text\": \"$MESSAGE\"
-  }")
+# Use jq to properly escape the message and construct valid JSON
+SEND_RESPONSE=$(jq -n \
+  --arg msg "$MESSAGE" \
+  '{type: "message", from: {id: "test-user", name: "Test User"}, text: $msg}' | \
+  curl -s -X POST "https://directline.botframework.com/v3/directline/conversations/$CONV_ID/activities" \
+    -H "Authorization: Bearer $DIRECT_LINE_SECRET" \
+    -H "Content-Type: application/json" \
+    -d @-)
 
 ACTIVITY_ID=$(echo "$SEND_RESPONSE" | jq -r '.id')
 ERROR_CODE=$(echo "$SEND_RESPONSE" | jq -r '.error.code // empty')

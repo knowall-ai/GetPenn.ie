@@ -193,6 +193,7 @@ public class PennieAgentClient : IPennieAgentClient, IDisposable
 
         while ((DateTime.UtcNow - startTime).TotalSeconds < timeoutSeconds && iteration < maxIterations)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             iteration++;
             // Get current run status
             var run = await _assistantsClient.GetRunAsync(threadId, runId, cancellationToken);
@@ -234,22 +235,19 @@ public class PennieAgentClient : IPennieAgentClient, IDisposable
                 {
                     var toolOutputs = new List<ToolOutput>();
 
-                    foreach (var toolCall in submitToolOutputsAction.ToolCalls)
+                    foreach (var functionCall in submitToolOutputsAction.ToolCalls.OfType<RequiredFunctionToolCall>())
                     {
-                        if (toolCall is RequiredFunctionToolCall functionCall)
-                        {
-                            _logger.LogInformation(
-                                "Processing function call: {FunctionName} with arguments: {Arguments}",
-                                functionCall.Name, functionCall.Arguments);
+                        _logger.LogInformation(
+                            "Processing function call: {FunctionName} with arguments: {Arguments}",
+                            functionCall.Name, functionCall.Arguments);
 
-                            // Call the backend function
-                            var output = await CallBackendFunctionAsync(
-                                functionCall.Name,
-                                functionCall.Arguments,
-                                cancellationToken);
+                        // Call the backend function
+                        var output = await CallBackendFunctionAsync(
+                            functionCall.Name,
+                            functionCall.Arguments,
+                            cancellationToken);
 
-                            toolOutputs.Add(new ToolOutput(functionCall.Id, output));
-                        }
+                        toolOutputs.Add(new ToolOutput(functionCall.Id, output));
                     }
 
                     // Submit tool outputs back to Pennie
