@@ -58,6 +58,12 @@ public class GraphCallService : IGraphCallService, IDisposable
                 return;
             }
 
+            // MediaPlatform configuration for Graph Communications SDK
+            // Port requirements (from Microsoft Graph Communications SDK documentation):
+            // - InstancePublicPort (8445): External TCP port for media traffic (must be open in firewall/NSG)
+            // - InstanceInternalPort (8445): Internal port the bot listens on (usually same as public)
+            // - CallSignalingPort (9441): TCP port for call signaling/SIP traffic
+            // See: https://learn.microsoft.com/en-us/graph/cloud-communications-media
             var mediaPlatformConfig = _configuration.GetSection("MediaPlatform");
             var serviceFqdn = mediaPlatformConfig["ServiceFqdn"];
             var callNotificationUrl = mediaPlatformConfig["CallNotificationUrl"];
@@ -185,6 +191,11 @@ public class GraphCallService : IGraphCallService, IDisposable
     /// <summary>
     /// Check if the bot is currently in a meeting.
     /// </summary>
+    /// <remarks>
+    /// This is a point-in-time check. The result may become stale immediately after return
+    /// as the meeting state can change asynchronously. Do not use for critical decisions
+    /// without additional synchronization.
+    /// </remarks>
     public bool IsInMeeting(string meetingId)
     {
         return _activeCalls.ContainsKey(meetingId);
@@ -314,6 +325,15 @@ public class GraphCallService : IGraphCallService, IDisposable
         try
         {
             var uri = new Uri(joinUrl);
+
+            // Validate domain to prevent URL injection attacks
+            if (uri.Host != "teams.microsoft.com" && !uri.Host.EndsWith(".teams.microsoft.com"))
+            {
+                throw new ArgumentException(
+                    $"Invalid meeting URL domain: {uri.Host}. Expected teams.microsoft.com",
+                    nameof(joinUrl));
+            }
+
             var path = WebUtility.UrlDecode(uri.AbsolutePath);
             var query = WebUtility.UrlDecode(uri.Query);
 
@@ -346,10 +366,27 @@ public class GraphCallService : IGraphCallService, IDisposable
                 OrganizerId = organizerId ?? "",
             };
         }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse context JSON from meeting join URL: {Url}", joinUrl);
+            // Return partial info even if context JSON is malformed
+            return new MeetingJoinInfo
+            {
+                ThreadId = "",
+                MessageId = "0",
+                TenantId = _configuration["AzureTenantId"] ?? "",
+                OrganizerId = "",
+            };
+        }
+        catch (UriFormatException ex)
+        {
+            _logger.LogError(ex, "Invalid URI format for meeting join URL: {Url}", joinUrl);
+            throw new ArgumentException($"Invalid meeting join URL format: {joinUrl}", nameof(joinUrl), ex);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to parse meeting join URL: {Url}", joinUrl);
-            throw new ArgumentException($"Invalid meeting join URL: {joinUrl}", nameof(joinUrl));
+            throw new ArgumentException($"Invalid meeting join URL: {joinUrl}", nameof(joinUrl), ex);
         }
     }
 
@@ -383,17 +420,22 @@ public class GraphCallService : IGraphCallService, IDisposable
 
         if (disposing)
         {
-            // Leave all active meetings
+            // Leave all active meetings using fire-and-forget pattern
+            // Avoids blocking the dispose call which can cause deadlocks
             foreach (var meetingId in _activeCalls.Keys.ToList())
             {
-                try
+                var id = meetingId; // Capture for closure
+                _ = Task.Run(async () =>
                 {
-                    LeaveMeetingAsync(meetingId).GetAwaiter().GetResult();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error leaving meeting {MeetingId} during dispose", meetingId);
-                }
+                    try
+                    {
+                        await LeaveMeetingAsync(id);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error leaving meeting {MeetingId} during dispose", id);
+                    }
+                });
             }
 
             _logger.LogInformation("GraphCallService disposed");
