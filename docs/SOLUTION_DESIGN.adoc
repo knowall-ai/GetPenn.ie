@@ -8,19 +8,21 @@ Pennie is a Microsoft Teams-friendly AI agent that joins meetings as a real-time
 
 == Architecture
 
-**Current Implementation** (October 2025):
+**Current Implementation** (November 2025):
 * Azure Functions Backend (Python 3.11 on Linux) - 9 HTTP endpoints for Azure DevOps
 * AI Foundry Agent (Pennie) in East US 2 with GPT-4o
 * Function calling pattern - application code handles Pennie's function calls
-* Teams Media Bot - **Future Phase** (requires Windows VM with Graph Communications SDK)
+* Teams Media Bot (C# .NET 8) - **Deployed** on Windows VM (pennie-vm-prod)
+* Calling endpoints (/api/calling, /api/calling/media) - **Deployed** for Graph Communications
+* Azure Speech Services integration - **Implemented** (ConversationTranscriber with diarization)
 
 [mermaid]
 ----
 flowchart TD
-    TeamsMeeting[Microsoft Teams Meeting<br/>Audio/Video Streams<br/>FUTURE PHASE] -.->|Bot joins meeting| MediaBot[Teams Media Bot<br/>Windows Server VM<br/>Graph Communications SDK<br/>FUTURE PHASE]
-    MediaBot -.->|RTP Audio Frames<br/>50 frames/sec| SpeechServices[Azure Speech Services<br/>MeetingTranscriber API<br/>Real-time Diarization<br/>FUTURE PHASE]
-    SpeechServices -.->|Transcribed Text<br/>Speaker Attribution| FoundryAgent[Pennie - Azure AI Foundry Agent<br/>GPT-4o + T-Minus-15 Logic<br/>DEPLOYED: East US 2]
-    FoundryAgent -.->|Clarifying Questions<br/>Work Item Links| TeamsChat[Teams Meeting Chat<br/>FUTURE PHASE]
+    TeamsMeeting[Microsoft Teams Meeting<br/>Audio/Video Streams] -->|Bot joins meeting| MediaBot[Teams Media Bot<br/>Windows Server VM<br/>pennie-vm-prod<br/>DEPLOYED]
+    MediaBot -->|Audio via ConversationTranscriber| SpeechServices[Azure Speech Services<br/>ConversationTranscriber API<br/>Real-time Diarization<br/>IMPLEMENTED]
+    SpeechServices -->|Transcribed Text<br/>Speaker Attribution| FoundryAgent[Pennie - Azure AI Foundry Agent<br/>GPT-4o + T-Minus-15 Logic<br/>DEPLOYED: East US 2]
+    FoundryAgent -->|Clarifying Questions<br/>Work Item Links| TeamsChat[Teams Meeting Chat<br/>meetingChat scope<br/>IMPLEMENTED]
     FoundryAgent -.->|Optional: Text-to-Speech| Avatar[Azure AI Avatar<br/>Optional Visual Presence<br/>FUTURE PHASE]
     Avatar -.->|Audio/Video Stream| MediaBot
     FoundryAgent -->|Function Calls<br/>requires_action| DevOpsTools[Azure Functions Backend<br/>DEPLOYED: UK South<br/>9 HTTP Endpoints]
@@ -28,18 +30,25 @@ flowchart TD
     FoundryAgent -->|Logs & Metrics| Storage[Azure Storage<br/>Application Insights<br/>DEPLOYED]
 ----
 
-NOTE: Solid lines = Currently deployed and operational. Dashed lines = Future phase implementation.
+NOTE: Solid lines = Currently deployed/implemented. Dashed lines = Future phase (Azure AI Avatar).
 
 
 == Core Components
 
 
-=== 1. Teams Media Bot (Application-Hosted Media) - **FUTURE PHASE**
-**Technology**: C# .NET with Microsoft Graph Communications SDK
+=== 1. Teams Media Bot (Application-Hosted Media) - **DEPLOYED**
+**Technology**: C# .NET 8 with Microsoft Graph Communications SDK
 
-**Hosting**: Windows Server VM in Azure (required for Media SDK)
+**Hosting**: Windows Server VM (`pennie-vm-prod`) in Azure UK South
 
-NOTE: The Teams Media Bot is planned for a future phase. Current implementation focuses on the Azure Functions backend and AI Foundry agent with direct manual input.
+**Implementation Status** (November 2025):
+
+* ✅ Bot deployed to Windows VM as Windows Service
+* ✅ Calling endpoints (`/api/calling`, `/api/calling/media`) operational
+* ✅ GraphCallService for meeting join/leave lifecycle
+* ✅ SpeechTranscriptionService with ConversationTranscriber
+* ✅ Teams manifest with `meetingChat` scope
+* ⏳ Full Graph Communications Media SDK integration (requires Windows-specific native DLLs)
 
 **Responsibilities**:
 
@@ -298,23 +307,27 @@ MeetingTranscriber Output:
 
 **UK South Region**:
 * Resource Group (TMinus15Agents)
+* Windows Server VM (`pennie-vm-prod`) - D2s_v3, hosts Teams Media Bot
 * Azure Functions App (pennie-backend-prod) - Python 3.11 on Linux
-* Azure Storage Account (logs, metrics)
+* Azure Storage Account (logs, metrics, deployment artifacts)
 * Application Insights (monitoring)
-* Key Vault (secrets management)
+* Key Vault (secrets management - pennie-keyvault-prod)
+* Azure Speech Services (SpeechTranscriptionService integration)
+
+**Implemented but Pending Full Integration**:
+* Graph Communications Media SDK native DLLs (Windows-only audio capture)
+* Full RTP audio stream handling (requires Media SDK on Windows)
 
 **Future Phase - Not Yet Deployed**:
-* Windows Server VM (Dv2-series, minimum 2 vCPUs) - hosts Teams Media Bot with function call handler
-* Azure Speech Services (real-time transcription with speaker diarization)
-* Managed Identities (for secure service-to-service auth)
+* Azure AI Avatar (optional visual presence in meetings)
 
 **Bicep Modules**:
 
 * `infra/main.bicep` - Main orchestration
-* `infra/deploy-function-app.bicep` - Azure Functions App (currently deployed)
-* `infra/modules/windows-vm.bicep` - Windows Server VM (Teams Bot + Function Call Handler) - FUTURE
-* `infra/modules/ai-services.bicep` - AI Foundry + Speech + OpenAI - FUTURE
-* `infra/modules/monitoring.bicep` - Application Insights + Storage
+* `infra/deploy-function-app.bicep` - Azure Functions App (deployed)
+* `infra/modules/windows-vm.bicep` - Windows Server VM (deployed as pennie-vm-prod)
+* `infra/modules/ai-services.bicep` - AI Foundry + Speech + OpenAI (deployed)
+* `infra/modules/monitoring.bicep` - Application Insights + Storage (deployed)
 
 
 === GitHub Actions Workflow (Future Phase)
