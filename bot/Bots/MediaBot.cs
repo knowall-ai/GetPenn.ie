@@ -174,8 +174,8 @@ public class MediaBot : ActivityHandler
                 MessageFactory.Text(welcomeMessage),
                 cancellationToken);
 
-            // Note: Meeting audio join functionality is planned for a future phase.
-            // The GraphCallService and SpeechTranscriptionService are available for when that's implemented.
+            // Check if this is a meeting and attempt to join for audio capture
+            await TryJoinMeetingForAudioAsync(turnContext, cancellationToken);
         }
     }
 
@@ -218,7 +218,15 @@ public class MediaBot : ActivityHandler
                 var conversationId = turnContext.Activity.Conversation.Id;
                 if (_conversationToMeetingMap.TryRemove(conversationId, out var meetingId))
                 {
+                    // Stop transcription
+                    await _speechService.StopTranscriptionAsync(meetingId);
+
+                    // Leave the meeting call
+                    await _callService.LeaveMeetingAsync(meetingId);
+
+                    // Cleanup agent session
                     await _agentClient.CleanupMeetingAsync(meetingId);
+
                     _logger.LogInformation("Cleaned up meeting {MeetingId}", meetingId);
                 }
                 break;
@@ -226,5 +234,127 @@ public class MediaBot : ActivityHandler
         }
 
         await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Attempt to join a Teams meeting for audio capture if this is a meeting conversation.
+    /// </summary>
+    private async Task TryJoinMeetingForAudioAsync(
+        ITurnContext turnContext,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Extract meeting information from channel data
+            var channelData = turnContext.Activity.ChannelData;
+            if (channelData == null)
+            {
+                _logger.LogDebug("No channel data available, not a meeting context");
+                return;
+            }
+
+            // Parse channel data to extract meeting join URL
+            var channelDataJson = JsonSerializer.Serialize(channelData);
+            _logger.LogDebug("Channel data: {ChannelData}", channelDataJson);
+
+            using var doc = JsonDocument.Parse(channelDataJson);
+            var root = doc.RootElement;
+
+            // Check if this is a meeting
+            string? meetingJoinUrl = null;
+
+            // Try to get meeting info from different possible locations
+            if (root.TryGetProperty("meeting", out var meeting))
+            {
+                if (meeting.TryGetProperty("joinUrl", out var joinUrl))
+                {
+                    meetingJoinUrl = joinUrl.GetString();
+                }
+            }
+            else if (root.TryGetProperty("teamsChannelId", out _) &&
+                     root.TryGetProperty("tenant", out _))
+            {
+                // This might be a meeting context, but we need the join URL
+                _logger.LogInformation("Teams context detected but no meeting join URL available");
+            }
+
+            if (string.IsNullOrEmpty(meetingJoinUrl))
+            {
+                _logger.LogDebug("No meeting join URL found, skipping audio join");
+                return;
+            }
+
+            // Generate meeting ID and store mapping
+            var conversationId = turnContext.Activity.Conversation.Id;
+            var meetingId = $"meeting_{Guid.NewGuid():N}";
+            _conversationToMeetingMap[conversationId] = meetingId;
+
+            _logger.LogInformation(
+                "Detected meeting context. MeetingId={MeetingId}, JoinUrl={JoinUrl}",
+                meetingId, meetingJoinUrl);
+
+            // Start transcription service
+            await _speechService.StartTranscriptionAsync(
+                meetingId,
+                async result => await OnTranscriptReceivedAsync(result, turnContext),
+                cancellationToken);
+
+            // Join the meeting for audio capture
+            await _callService.JoinMeetingAsync(
+                meetingJoinUrl,
+                meetingId,
+                async audioData => await OnAudioReceivedAsync(meetingId, audioData),
+                cancellationToken);
+
+            _logger.LogInformation("Successfully joined meeting {MeetingId} for audio capture", meetingId);
+        }
+        catch (NotImplementedException)
+        {
+            // Expected when running outside Windows VM
+            _logger.LogWarning("Meeting audio join not available - Graph Communications SDK requires Windows Server deployment");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to join meeting for audio capture");
+            // Don't throw - bot should continue to work for chat even if audio fails
+        }
+    }
+
+    /// <summary>
+    /// Handle incoming audio data from the meeting.
+    /// </summary>
+    private async Task OnAudioReceivedAsync(string meetingId, byte[] audioData)
+    {
+        try
+        {
+            // Send audio to speech transcription service
+            await _speechService.ProcessAudioAsync(meetingId, audioData);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing audio for meeting {MeetingId}", meetingId);
+        }
+    }
+
+    /// <summary>
+    /// Handle transcription results from speech service.
+    /// </summary>
+    private async Task OnTranscriptReceivedAsync(
+        TranscriptionResult result,
+        ITurnContext turnContext)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "Transcript received: {Speaker} @ {Timestamp}: {Text}",
+                result.Speaker, result.Timestamp, result.Text);
+
+            // Send transcript to Pennie agent for processing
+            await _agentClient.SendTranscriptAsync(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing transcript for meeting {MeetingId}", result.MeetingId);
+        }
     }
 }

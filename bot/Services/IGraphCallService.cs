@@ -43,4 +43,16 @@ public interface IGraphCallService
     /// <param name="meetingId">Meeting identifier</param>
     /// <returns>Call state (Establishing, Established, Terminated, etc.)</returns>
     string GetCallState(string meetingId);
+
+    /// <summary>
+    /// Process incoming call state notification from Graph.
+    /// </summary>
+    /// <param name="notificationBody">Raw JSON notification body</param>
+    Task ProcessNotificationAsync(string notificationBody);
+
+    /// <summary>
+    /// Process incoming media notification from Graph.
+    /// </summary>
+    /// <param name="notificationBody">Raw JSON notification body</param>
+    Task ProcessMediaNotificationAsync(string notificationBody);
 }
