@@ -27,8 +27,8 @@ jobs:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'prod' }}
-    # Only run if AZURE_CREDENTIALS secret is configured
-    if: ${{ vars.AZURE_DEPLOYMENT_ENABLED == 'true' }}
+    # Skip infrastructure deployment - VM already exists
+    if: false
 
     steps:
       - name: Checkout code
@@ -89,45 +89,140 @@ jobs:
   deploy-bot:
     name: Deploy Bot to VM
     runs-on: windows-latest
-    needs: [deploy-infrastructure, build-bot]
+    needs: [build-bot]
     environment: ${{ github.event.inputs.environment || 'prod' }}
-    # Only run if infrastructure deployment succeeded
-    if: ${{ vars.AZURE_DEPLOYMENT_ENABLED == 'true' && needs.deploy-infrastructure.result == 'success' }}
+    # Deploy to existing VM (infrastructure deployment optional)
+    if: ${{ vars.AZURE_DEPLOYMENT_ENABLED == 'true' }}
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/download-artifact@v4
         with:
           name: pennie-bot
-          path: ./bot-artifact
+          path: ./publish
 
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Create deployment package
+        run: |
+          Compress-Archive -Path ./publish/* -DestinationPath ./pennie-bot.zip
+          Write-Host "Created deployment package: pennie-bot.zip"
+
+      - name: Upload to Azure Storage
+        run: |
+          # Use explicit storage account from secrets to avoid ambiguity with multiple storage accounts
+          $storageAccount = "${{ secrets.AZURE_STORAGE_ACCOUNT }}"
+          if ([string]::IsNullOrEmpty($storageAccount)) {
+            Write-Host "::error::AZURE_STORAGE_ACCOUNT secret not configured"
+            exit 1
+          }
+
+          az storage container create `
+            --name deployments `
+            --account-name $storageAccount `
+            --auth-mode login
+
+          $blobName = "pennie-bot-$(Get-Date -Format 'yyyyMMddHHmmss').zip"
+
+          az storage blob upload `
+            --account-name $storageAccount `
+            --container-name deployments `
+            --name $blobName `
+            --file ./pennie-bot.zip `
+            --auth-mode login `
+            --overwrite
+
+          $expiry = (Get-Date).AddHours(1).ToString("yyyy-MM-ddTHH:mmZ")
+          $packageUrl = az storage blob generate-sas `
+            --account-name $storageAccount `
+            --container-name deployments `
+            --name $blobName `
+            --permissions r `
+            --expiry $expiry `
+            --auth-mode login `
+            --as-user `
+            --full-uri -o tsv
+
+          Write-Host "Package URL: $packageUrl"
+          echo "PACKAGE_URL=$packageUrl" >> $env:GITHUB_ENV
+
       - name: Deploy to Windows VM
         run: |
-          # Get VM details
           $vmName = "pennie-vm-${{ github.event.inputs.environment || 'prod' }}"
           $rgName = "${{ secrets.AZURE_RESOURCE_GROUP }}"
+          $keyVaultName = "${{ secrets.AZURE_KEY_VAULT_NAME }}"
 
-          # TODO: Implement deployment to VM
-          # Options:
-          # 1. Azure VM Extension (custom script)
-          # 2. Azure DevOps SSH task
-          # 3. PowerShell Remoting
-          # 4. Azure Arc (if configured)
+          # Download and extract package on VM, preserving appsettings.json
+          $uploadScript = @'
+          param([string]$PackageUrl)
 
-          Write-Host "Bot deployment to VM would happen here"
-          # For now, manual deployment required
+          $TempDir = "C:\Temp"
+          $PackagePath = "$TempDir\pennie-bot.zip"
+          $ExtractPath = "C:\Pennie\bot"
+          $AppSettingsPath = "$ExtractPath\appsettings.json"
+          $AppSettingsBackup = "$TempDir\appsettings.json.backup"
+
+          New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $ExtractPath -Force | Out-Null
+
+          # CRITICAL: Backup appsettings.json before deployment
+          # This file contains VM-specific configuration (AppId, TenantId, KeyVault name)
+          if (Test-Path $AppSettingsPath) {
+              Write-Host "Backing up existing appsettings.json..."
+              Copy-Item -Path $AppSettingsPath -Destination $AppSettingsBackup -Force
+          }
+
+          Write-Host "Downloading deployment package..."
+          Invoke-WebRequest -Uri $PackageUrl -OutFile $PackagePath
+
+          Write-Host "Extracting to $ExtractPath..."
+          Expand-Archive -Path $PackagePath -DestinationPath $ExtractPath -Force
+
+          # CRITICAL: Restore appsettings.json after deployment
+          # The deployed package contains template values, not production configuration
+          if (Test-Path $AppSettingsBackup) {
+              Write-Host "Restoring appsettings.json from backup..."
+              Copy-Item -Path $AppSettingsBackup -Destination $AppSettingsPath -Force
+              Remove-Item -Path $AppSettingsBackup -Force
+              Write-Host "appsettings.json restored successfully"
+          } else {
+              Write-Host "WARNING: No appsettings.json backup found - manual configuration required"
+          }
+
+          Write-Host "Upload complete"
+          '@
+
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts $uploadScript `
+            --parameters "PackageUrl=$env:PACKAGE_URL"
+
+          # Run deployment script
+          $deployScript = Get-Content ./scripts/deploy-bot-to-vm.ps1 -Raw
+
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts $deployScript `
+            --parameters "KeyVaultName=$keyVaultName"
+
+          Write-Host "✅ Bot deployed successfully to $vmName"
 
   run-smoke-tests:
     name: Run Smoke Tests
     runs-on: ubuntu-latest
     needs: [deploy-bot]
     environment: ${{ github.event.inputs.environment || 'prod' }}
-    if: ${{ vars.AZURE_DEPLOYMENT_ENABLED == 'true' && needs.deploy-bot.result == 'success' }}
+    if: ${{ vars.AZURE_DEPLOYMENT_ENABLED == 'true' && (needs.deploy-bot.result == 'success' || needs.deploy-bot.result == 'skipped') }}
 
     steps:
       - name: Checkout code

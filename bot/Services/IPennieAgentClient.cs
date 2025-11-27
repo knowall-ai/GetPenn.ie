@@ -27,4 +27,11 @@ public interface IPennieAgentClient
     /// <param name="workItemType">Type (Epic, Feature, Story, Question)</param>
     /// <param name="title">Work item title</param>
     Task NotifyWorkItemCreatedAsync(int workItemId, string workItemType, string title);
+
+    /// <summary>
+    /// Clean up resources associated with a meeting when it ends.
+    /// Prevents memory leaks from unbounded dictionary growth.
+    /// </summary>
+    /// <param name="meetingId">Meeting identifier to clean up</param>
+    Task CleanupMeetingAsync(string meetingId);
 }

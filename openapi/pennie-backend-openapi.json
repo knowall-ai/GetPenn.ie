@@ -1,8 +1,8 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "Pennie Backend - Azure DevOps API",
-    "description": "Azure Functions backend for Pennie the Prepper to interact with Azure DevOps Work Item Tracking",
+    "title": "Pennie Backend - Azure DevOps Integration",
+    "description": "Azure Functions backend providing HTTP endpoints for Azure DevOps work item operations",
     "version": "1.0.0"
   },
   "servers": [
@@ -15,7 +15,7 @@
       "get": {
         "operationId": "read_projects",
         "summary": "List all Azure DevOps projects",
-        "description": "Returns all 26 client projects in the KnowAll organization with names, IDs, descriptions, and visibility",
+        "description": "Returns all client projects in the configured Azure DevOps organization. Call this at the start of meetings to discover which client projects are available.",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -24,8 +24,12 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": {"type": "boolean"},
-                    "count": {"type": "integer"},
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
                     "projects": {
                       "type": "array",
                       "items": {
@@ -34,6 +38,7 @@
                           "id": {"type": "string"},
                           "name": {"type": "string"},
                           "description": {"type": "string"},
+                          "state": {"type": "string"},
                           "visibility": {"type": "string"}
                         }
                       }
@@ -61,7 +66,7 @@
                 "properties": {
                   "project": {
                     "type": "string",
-                    "description": "Project name or ID (e.g., 'Internal', 'HSE', 'Flogas')"
+                    "description": "Project name or ID"
                   }
                 }
               }
@@ -70,20 +75,7 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {"type": "boolean"},
-                    "project": {"type": "string"},
-                    "count": {"type": "integer"},
-                    "teams": {"type": "array"}
-                  }
-                }
-              }
-            }
+            "description": "Successful response"
           }
         }
       }
@@ -91,8 +83,8 @@
     "/api/read_work_item": {
       "post": {
         "operationId": "read_work_item",
-        "summary": "Get a single work item by ID",
-        "description": "Returns detailed information about a single work item including all fields",
+        "summary": "Get single work item by ID",
+        "description": "Returns full details of a specific work item including fields, relations, comments",
         "requestBody": {
           "required": true,
           "content": {
@@ -101,141 +93,8 @@
                 "type": "object",
                 "required": ["project", "workItemId"],
                 "properties": {
-                  "project": {
-                    "type": "string",
-                    "description": "Project name or ID"
-                  },
-                  "workItemId": {
-                    "type": "integer",
-                    "description": "Work item ID number"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response"
-          }
-        }
-      }
-    },
-    "/api/read_work_items": {
-      "post": {
-        "operationId": "read_work_items",
-        "summary": "Get multiple work items with filtering",
-        "description": "Get work items by IDs, or get children of a parent with recursive depth (1-5 levels). Useful for hierarchies like Epic→Feature→Story",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["project"],
-                "properties": {
-                  "project": {
-                    "type": "string",
-                    "description": "Project name or ID"
-                  },
-                  "workItemIds": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                    "description": "Optional: List of specific work item IDs to retrieve"
-                  },
-                  "parentId": {
-                    "type": "integer",
-                    "description": "Optional: Get children of this parent work item ID"
-                  },
-                  "depth": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 5,
-                    "default": 1,
-                    "description": "Optional: Recursive depth for nested children (1-5). Use 2-3 for Epic→Feature→Story hierarchies"
-                  },
-                  "workItemType": {
-                    "type": "string",
-                    "description": "Optional: Filter by type (Epic, Feature, User Story, Task, Bug, Question)"
-                  },
-                  "state": {
-                    "type": "string",
-                    "description": "Optional: Filter by state (New, Active, Resolved, Closed, Removed)"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response"
-          }
-        }
-      }
-    },
-    "/api/read_work_item_types": {
-      "post": {
-        "operationId": "read_work_item_types",
-        "summary": "Discover work item types in a project",
-        "description": "Returns available work item types (Epic, Feature, User Story, Task, Bug, Question, etc.) with descriptions, icons, and colors",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["project"],
-                "properties": {
-                  "project": {
-                    "type": "string",
-                    "description": "Project name or ID"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response"
-          }
-        }
-      }
-    },
-    "/api/read_link_types": {
-      "get": {
-        "operationId": "read_link_types",
-        "summary": "Discover available link types",
-        "description": "Returns all 7 link types for connecting work items: Hierarchy-Forward (Parent→Child), Hierarchy-Reverse, Related, Dependency-Forward (Predecessor), Dependency-Reverse (Successor), Duplicate-Forward, Duplicate-Reverse",
-        "responses": {
-          "200": {
-            "description": "Successful response"
-          }
-        }
-      }
-    },
-    "/api/search_work_items": {
-      "post": {
-        "operationId": "search_work_items",
-        "summary": "Advanced work item search using WIQL",
-        "description": "Search for work items using WIQL (Work Item Query Language) with complex queries, multiple conditions, field comparisons, and date ranges",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["project", "wiql"],
-                "properties": {
-                  "project": {
-                    "type": "string",
-                    "description": "Project name or ID"
-                  },
-                  "wiql": {
-                    "type": "string",
-                    "description": "WIQL query string (e.g., 'SELECT [System.Id] FROM WorkItems WHERE [System.State] = \"Active\"')"
-                  }
+                  "project": {"type": "string"},
+                  "workItemId": {"type": "integer"}
                 }
               }
             }
@@ -251,8 +110,8 @@
     "/api/create_work_item": {
       "post": {
         "operationId": "create_work_item",
-        "summary": "Create a new work item",
-        "description": "Create a new work item (Epic, Feature, User Story, Task, Bug, Question) with title, description, assigned to, tags, priority, and effort",
+        "summary": "Create new work item",
+        "description": "Creates Epic, Feature, User Story, or Question in Azure DevOps",
         "requestBody": {
           "required": true,
           "content": {
@@ -261,39 +120,16 @@
                 "type": "object",
                 "required": ["project", "workItemType", "title"],
                 "properties": {
-                  "project": {
-                    "type": "string",
-                    "description": "Project name or ID"
-                  },
+                  "project": {"type": "string"},
                   "workItemType": {
                     "type": "string",
-                    "description": "Type of work item (Epic, Feature, User Story, Task, Bug, Question)"
+                    "enum": ["Epic", "Feature", "User Story", "Question"]
                   },
-                  "title": {
-                    "type": "string",
-                    "description": "Work item title (required)"
-                  },
-                  "description": {
-                    "type": "string",
-                    "description": "Optional: Detailed description (supports HTML)"
-                  },
-                  "assignedTo": {
-                    "type": "string",
-                    "description": "Optional: Email of person to assign"
-                  },
-                  "tags": {
-                    "type": "string",
-                    "description": "Optional: Comma-separated tags"
-                  },
-                  "priority": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 4,
-                    "description": "Optional: Priority (1-4, where 1 is highest)"
-                  },
-                  "effort": {
-                    "type": "number",
-                    "description": "Optional: Story points or effort estimate"
+                  "title": {"type": "string"},
+                  "description": {"type": "string"},
+                  "acceptanceCriteria": {
+                    "type": "array",
+                    "items": {"type": "string"}
                   }
                 }
               }
@@ -302,16 +138,16 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response"
+            "description": "Work item created successfully"
           }
         }
       }
     },
-    "/api/link_work_items_endpoint": {
+    "/api/link_work_items": {
       "post": {
         "operationId": "link_work_items",
-        "summary": "Link work items together",
-        "description": "Create links between work items with flexible types: parent-child, dependencies, related, duplicates. Supports linking multiple targets to one source",
+        "summary": "Create work item links",
+        "description": "Link work items with parent-child or other relationship types",
         "requestBody": {
           "required": true,
           "content": {
@@ -320,27 +156,15 @@
                 "type": "object",
                 "required": ["project", "sourceId", "targetIds"],
                 "properties": {
-                  "project": {
-                    "type": "string",
-                    "description": "Project name or ID"
-                  },
-                  "sourceId": {
-                    "type": "integer",
-                    "description": "Source work item ID"
-                  },
+                  "project": {"type": "string"},
+                  "sourceId": {"type": "integer"},
                   "targetIds": {
                     "type": "array",
-                    "items": {"type": "integer"},
-                    "description": "List of target work item IDs to link"
+                    "items": {"type": "integer"}
                   },
                   "linkType": {
                     "type": "string",
-                    "default": "System.LinkTypes.Hierarchy-Forward",
-                    "description": "Optional: Link type (Hierarchy-Forward, Hierarchy-Reverse, Related, Dependency-Forward, Dependency-Reverse, Duplicate-Forward, Duplicate-Reverse)"
-                  },
-                  "comment": {
-                    "type": "string",
-                    "description": "Optional: Comment for the link relationship"
+                    "default": "System.LinkTypes.Hierarchy-Forward"
                   }
                 }
               }
@@ -349,10 +173,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response"
+            "description": "Links created successfully"
           }
         }
       }
     }
-  }
+  },
+  "components": {
+    "securitySchemes": {}
+  },
+  "security": []
 }

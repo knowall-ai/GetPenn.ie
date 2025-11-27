@@ -1,0 +1,67 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.3",
+  "id": "9707c142-2583-4e56-9983-4d913338afb0",
+  "developer": {
+    "name": "KnowAll Ltd",
+    "websiteUrl": "https://getpenn.ie",
+    "privacyUrl": "https://getpenn.ie/privacy",
+    "termsOfUseUrl": "https://getpenn.ie/terms"
+  },
+  "name": {
+    "short": "Pennie the Prepper",
+    "full": "Pennie the Prepper - Azure DevOps Assistant"
+  },
+  "description": {
+    "short": "AI assistant for Azure DevOps backlog management",
+    "full": "Pennie the Prepper is an AI-powered assistant that helps you manage Azure DevOps projects. Ask questions like 'What projects do we have in DevOps?' and get instant answers."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#1E90FF",
+  "bots": [
+    {
+      "botId": "9707c142-2583-4e56-9983-4d913338afb0",
+      "scopes": [
+        "personal",
+        "team",
+        "groupChat"
+      ],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": [
+            "personal",
+            "team",
+            "groupChat"
+          ],
+          "commands": [
+            {
+              "title": "help",
+              "description": "Show available commands"
+            },
+            {
+              "title": "projects",
+              "description": "List Azure DevOps projects"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": [
+    "pennie-prod-mmdxqm3w7kjwm.uksouth.cloudapp.azure.com"
+  ],
+  "webApplicationInfo": {
+    "id": "9707c142-2583-4e56-9983-4d913338afb0",
+    "resource": "api://botid-9707c142-2583-4e56-9983-4d913338afb0"
+  }
+}

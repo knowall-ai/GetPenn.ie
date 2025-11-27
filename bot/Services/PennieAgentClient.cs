@@ -1,25 +1,91 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using Azure;
+using Azure.AI.OpenAI;
+using Azure.AI.OpenAI.Assistants;
+using Azure.Identity;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace PennieBot.Services;
 
 /// <summary>
 /// Client for communicating with Pennie AI Foundry Agent.
+/// Implements OpenAI Assistants function calling pattern with Azure Functions backend.
 /// </summary>
-public class PennieAgentClient : IPennieAgentClient
+public class PennieAgentClient : IPennieAgentClient, IDisposable
 {
     private readonly ILogger<PennieAgentClient> _logger;
     private readonly IConfiguration _configuration;
     private readonly HttpClient _httpClient;
+    private readonly AssistantsClient _assistantsClient;
+    private readonly string _assistantId;
+    private readonly string _backendUrl;
+    private readonly IMemoryCache _meetingThreadCache;
+    private readonly SemaphoreSlim _threadCreationLock = new(1, 1);
+    private readonly Timer _cleanupTimer;
+
+    /// <summary>
+    /// Allowlist of valid backend function names to prevent URL injection.
+    /// </summary>
+    private static readonly HashSet<string> AllowedFunctions = new()
+    {
+        "read_projects", "read_teams", "read_work_item", "read_work_items",
+        "read_work_item_types", "read_link_types", "search_work_items",
+        "create_work_item", "link_work_items"
+    };
+
+    /// <summary>
+    /// Functions that use GET method (no body).
+    /// </summary>
+    private static readonly HashSet<string> GetFunctions = new() { "read_projects", "read_link_types" };
+
+    private bool _disposed;
 
     public PennieAgentClient(
         ILogger<PennieAgentClient> logger,
         IConfiguration configuration,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        IMemoryCache memoryCache)
     {
         _logger = logger;
         _configuration = configuration;
         _httpClient = httpClient;
+        _meetingThreadCache = memoryCache;
+
+        // Get configuration
+        var endpoint = _configuration["AZURE_AI_FOUNDRY_ENDPOINT"]
+            ?? throw new InvalidOperationException("AZURE_AI_FOUNDRY_ENDPOINT not configured");
+
+        _assistantId = _configuration["AZURE_AI_FOUNDRY_AGENT_ID"]
+            ?? throw new InvalidOperationException("AZURE_AI_FOUNDRY_AGENT_ID not configured");
+
+        _backendUrl = _configuration["AZURE_FUNCTIONS_BACKEND_URL"]
+            ?? "https://pennie-backend-prod.azurewebsites.net"; // Default to production backend
+
+        // Create Assistants client using DefaultAzureCredential
+        // This will use managed identity in production or developer credentials locally
+        _assistantsClient = new AssistantsClient(
+            new Uri(endpoint),
+            new DefaultAzureCredential());
+
+        // Start cleanup timer - runs every 5 minutes to log cache statistics
+        _cleanupTimer = new Timer(LogCacheStatistics, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+
+        _logger.LogInformation(
+            "Pennie Agent Client initialized with assistant {AssistantId} at {Endpoint}",
+            _assistantId, endpoint);
+    }
+
+    /// <summary>
+    /// Log cache statistics periodically.
+    /// </summary>
+    private void LogCacheStatistics(object? state)
+    {
+        if (_meetingThreadCache is MemoryCache mc)
+        {
+            _logger.LogDebug("Meeting thread cache entries: {Count}", mc.Count);
+        }
     }
 
     /// <inheritdoc/>
@@ -33,46 +99,247 @@ public class PennieAgentClient : IPennieAgentClient
                 "Sending transcript to Pennie: {Speaker} - {Text}",
                 result.Speaker, result.Text);
 
-            // TODO: Implement Azure AI Foundry Agent API call
-            // This would send the transcript to Pennie's endpoint
-            // Pennie would:
-            // 1. Analyze the transcript segment
-            // 2. Determine if it contains a requirement
-            // 3. Call MCP server to create/update work items
-            // 4. Return any clarifying questions
+            // Get or create thread for this meeting
+            var threadId = await GetOrCreateThreadAsync(result.MeetingId, cancellationToken);
 
-            var agentEndpoint = _configuration["PENNIE_AGENT_ENDPOINT"];
-            if (string.IsNullOrEmpty(agentEndpoint))
-            {
-                _logger.LogWarning("PENNIE_AGENT_ENDPOINT not configured, logging transcript only");
-                return;
-            }
+            // Add transcript message to thread
+            var message = $"[{result.Timestamp:HH:mm:ss}] {result.Speaker}: {result.Text}";
+            await _assistantsClient.CreateMessageAsync(
+                threadId,
+                MessageRole.User,
+                message,
+                cancellationToken: cancellationToken);
 
-            var payload = new
-            {
-                meetingId = result.MeetingId,
-                speaker = result.Speaker,
-                timestamp = result.Timestamp,
-                text = result.Text,
-                confidence = result.Confidence
-            };
+            _logger.LogInformation("Added message to thread {ThreadId}", threadId);
 
-            var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            var response = await _httpClient.PostAsync(
-                $"{agentEndpoint}/transcript",
-                content,
+            // Create run to process the transcript
+            var run = await _assistantsClient.CreateRunAsync(
+                threadId,
+                new CreateRunOptions(_assistantId),
                 cancellationToken);
 
-            response.EnsureSuccessStatusCode();
+            _logger.LogInformation("Created run {RunId} with status {Status}", run.Value.Id, run.Value.Status);
 
-            _logger.LogInformation("Transcript sent successfully to Pennie");
+            // Monitor run and handle function calls
+            await ProcessRunAsync(threadId, run.Value.Id, cancellationToken);
+
+            _logger.LogInformation("Transcript processed successfully by Pennie");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sending transcript to Pennie");
             // Don't throw - we don't want transcription failures to break the bot
+        }
+    }
+
+    /// <summary>
+    /// Get or create a thread for a meeting.
+    /// Uses MemoryCache with 2-hour expiration to prevent unbounded memory growth.
+    /// </summary>
+    private async Task<string> GetOrCreateThreadAsync(string meetingId, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"meeting_thread:{meetingId}";
+
+        // Fast path: check if thread already exists in cache
+        if (_meetingThreadCache.TryGetValue(cacheKey, out string? existingThreadId) && existingThreadId != null)
+        {
+            return existingThreadId;
+        }
+
+        // Slow path: acquire lock and create thread if needed
+        await _threadCreationLock.WaitAsync(cancellationToken);
+        try
+        {
+            // Double-check after acquiring lock
+            if (_meetingThreadCache.TryGetValue(cacheKey, out existingThreadId) && existingThreadId != null)
+            {
+                return existingThreadId;
+            }
+
+            var thread = await _assistantsClient.CreateThreadAsync(cancellationToken);
+            var threadId = thread.Value.Id;
+
+            // Cache with sliding expiration of 2 hours (typical max meeting length)
+            var cacheOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromHours(2))
+                .SetAbsoluteExpiration(TimeSpan.FromHours(4));
+
+            _meetingThreadCache.Set(cacheKey, threadId, cacheOptions);
+
+            _logger.LogInformation("Created new thread {ThreadId} for meeting {MeetingId}", threadId, meetingId);
+
+            return threadId;
+        }
+        finally
+        {
+            _threadCreationLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Monitor run status and handle function calls.
+    /// This is the CRITICAL function call handler that makes Pennie's backend integration work.
+    /// Uses exponential backoff to reduce load while waiting.
+    /// </summary>
+    private async Task ProcessRunAsync(string threadId, string runId, CancellationToken cancellationToken)
+    {
+        var timeoutSeconds = _configuration.GetValue<int>("PennieAgent:RunTimeoutSeconds", 60);
+        var maxIterations = _configuration.GetValue<int>("PennieAgent:MaxRunIterations", 120);
+        var startTime = DateTime.UtcNow;
+        var baseDelayMs = 500;
+        var maxDelayMs = 5000;
+        var currentDelayMs = baseDelayMs;
+        var iteration = 0;
+
+        while ((DateTime.UtcNow - startTime).TotalSeconds < timeoutSeconds && iteration < maxIterations)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            iteration++;
+            // Get current run status
+            var run = await _assistantsClient.GetRunAsync(threadId, runId, cancellationToken);
+            var status = run.Value.Status;
+
+            var elapsedSeconds = (int)(DateTime.UtcNow - startTime).TotalSeconds;
+            _logger.LogDebug("Run {RunId} status: {Status} (iteration {Iteration}, elapsed {Elapsed}s/{Timeout}s)",
+                runId, status, iteration, elapsedSeconds, timeoutSeconds);
+
+            // Warn if run is taking too long
+            if (iteration == 10)
+            {
+                _logger.LogWarning("Run {RunId} still processing after {Iteration} iterations", runId, iteration);
+            }
+
+            if (status == RunStatus.Completed)
+            {
+                // Run completed successfully - extract Pennie's response
+                var messages = await _assistantsClient.GetMessagesAsync(threadId, cancellationToken: cancellationToken);
+                var latestMessage = messages.Value.Data.FirstOrDefault(m => m.Role == MessageRole.Assistant);
+
+                if (latestMessage != null)
+                {
+                    var responseText = latestMessage.ContentItems.OfType<MessageTextContent>().FirstOrDefault()?.Text ?? "";
+                    _logger.LogInformation("Pennie response: {Response}", responseText);
+                }
+
+                return;
+            }
+            else if (status == RunStatus.RequiresAction)
+            {
+                // CRITICAL: Handle function calls - reset backoff since we're actively processing
+                currentDelayMs = baseDelayMs;
+
+                _logger.LogInformation("Run requires action - processing function calls");
+
+                var requiredAction = run.Value.RequiredAction;
+                if (requiredAction is SubmitToolOutputsAction submitToolOutputsAction)
+                {
+                    var toolOutputs = new List<ToolOutput>();
+
+                    foreach (var functionCall in submitToolOutputsAction.ToolCalls.OfType<RequiredFunctionToolCall>())
+                    {
+                        _logger.LogInformation(
+                            "Processing function call: {FunctionName} with arguments: {Arguments}",
+                            functionCall.Name, functionCall.Arguments);
+
+                        // Call the backend function
+                        var output = await CallBackendFunctionAsync(
+                            functionCall.Name,
+                            functionCall.Arguments,
+                            cancellationToken);
+
+                        toolOutputs.Add(new ToolOutput(functionCall.Id, output));
+                    }
+
+                    // Submit tool outputs back to Pennie
+                    await _assistantsClient.SubmitToolOutputsToRunAsync(
+                        threadId,
+                        runId,
+                        toolOutputs,
+                        cancellationToken);
+
+                    _logger.LogInformation("Submitted {Count} tool outputs to run {RunId}", toolOutputs.Count, runId);
+                }
+            }
+            else if (status == RunStatus.Failed || status == RunStatus.Cancelled || status == RunStatus.Expired)
+            {
+                _logger.LogError("Run {RunId} ended with status: {Status}", runId, status);
+                return;
+            }
+
+            // Exponential backoff: wait before next status check
+            await Task.Delay(currentDelayMs, cancellationToken);
+            currentDelayMs = Math.Min(currentDelayMs * 2, maxDelayMs);
+        }
+
+        _logger.LogWarning(
+            "Run {RunId} did not complete: timeout={Timeout}s, iterations={Iteration}/{MaxIterations}",
+            runId, timeoutSeconds, iteration, maxIterations);
+    }
+
+    /// <summary>
+    /// Call a backend function and return the result.
+    /// Validates function name against allowlist to prevent URL injection.
+    /// </summary>
+    private async Task<string> CallBackendFunctionAsync(
+        string functionName,
+        string argumentsJson,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Validate function name against allowlist to prevent URL injection
+            if (!AllowedFunctions.Contains(functionName))
+            {
+                _logger.LogError("Rejected unknown function: {FunctionName}", functionName);
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = $"Unknown function: {functionName}"
+                });
+            }
+
+            _logger.LogInformation("Calling backend function: {FunctionName}", functionName);
+
+            // Build URL for backend function
+            var url = $"{_backendUrl}/api/{functionName}";
+
+            // Parse arguments
+            var arguments = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
+
+            // Call backend based on HTTP method (GET for parameterless functions, POST for others)
+            HttpResponseMessage response;
+            if (GetFunctions.Contains(functionName))
+            {
+                // GET request (no body)
+                response = await _httpClient.GetAsync(url, cancellationToken);
+            }
+            else
+            {
+                // POST request with JSON body
+                var content = new StringContent(argumentsJson, Encoding.UTF8, "application/json");
+                response = await _httpClient.PostAsync(url, content, cancellationToken);
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Backend function {FunctionName} returned: {Response}",
+                functionName, responseBody.Length > 200 ? responseBody[..200] + "..." : responseBody);
+
+            return responseBody;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling backend function: {FunctionName}", functionName);
+
+            // Return error as JSON for Pennie to handle
+            return JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = ex.Message
+            });
         }
     }
 
@@ -85,29 +352,44 @@ public class PennieAgentClient : IPennieAgentClient
         {
             _logger.LogInformation("Requesting meeting summary for {MeetingId}", meetingId);
 
-            // TODO: Implement Azure AI Foundry Agent API call
-            // This would request Pennie to generate a summary of:
-            // - All work items created
-            // - Key decisions made
-            // - Outstanding questions
-
-            var agentEndpoint = _configuration["PENNIE_AGENT_ENDPOINT"];
-            if (string.IsNullOrEmpty(agentEndpoint))
+            // Get thread for this meeting
+            var cacheKey = $"meeting_thread:{meetingId}";
+            if (!_meetingThreadCache.TryGetValue(cacheKey, out string? threadId) || threadId == null)
             {
-                return "Meeting summary generation not configured.";
+                return "No conversation found for this meeting.";
             }
 
-            var response = await _httpClient.GetAsync(
-                $"{agentEndpoint}/summary/{meetingId}",
+            // Add summary request message
+            await _assistantsClient.CreateMessageAsync(
+                threadId,
+                MessageRole.User,
+                "Please provide a summary of this meeting including: " +
+                "1. All work items created with their IDs and links, " +
+                "2. Key decisions made, " +
+                "3. Outstanding questions or ambiguities.",
+                cancellationToken: cancellationToken);
+
+            // Create run to generate summary
+            var run = await _assistantsClient.CreateRunAsync(
+                threadId,
+                new CreateRunOptions(_assistantId),
                 cancellationToken);
 
-            response.EnsureSuccessStatusCode();
+            // Process run (handle any function calls)
+            await ProcessRunAsync(threadId, run.Value.Id, cancellationToken);
 
-            var summary = await response.Content.ReadAsStringAsync(cancellationToken);
+            // Get Pennie's summary response
+            var messages = await _assistantsClient.GetMessagesAsync(threadId, cancellationToken: cancellationToken);
+            var summaryMessage = messages.Value.Data.FirstOrDefault(m => m.Role == MessageRole.Assistant);
 
-            _logger.LogInformation("Received meeting summary from Pennie");
+            if (summaryMessage != null)
+            {
+                var summary = summaryMessage.ContentItems.OfType<MessageTextContent>().FirstOrDefault()?.Text ?? "";
+                _logger.LogInformation("Generated meeting summary ({Length} chars)", summary.Length);
+                return summary;
+            }
 
-            return summary;
+            return "Unable to generate meeting summary.";
         }
         catch (Exception ex)
         {
@@ -136,5 +418,61 @@ public class PennieAgentClient : IPennieAgentClient
             _logger.LogError(ex, "Error notifying work item creation");
             return Task.CompletedTask;
         }
+    }
+
+    /// <inheritdoc/>
+    public Task CleanupMeetingAsync(string meetingId)
+    {
+        try
+        {
+            var cacheKey = $"meeting_thread:{meetingId}";
+            if (_meetingThreadCache.TryGetValue(cacheKey, out string? threadId))
+            {
+                _meetingThreadCache.Remove(cacheKey);
+                _logger.LogInformation(
+                    "Cleaned up meeting {MeetingId} (thread {ThreadId})",
+                    meetingId, threadId);
+            }
+            else
+            {
+                _logger.LogDebug("No thread found for meeting {MeetingId} during cleanup", meetingId);
+            }
+
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cleaning up meeting {MeetingId}", meetingId);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// Dispose of managed resources.
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Dispose pattern implementation.
+    /// </summary>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (disposing)
+        {
+            _cleanupTimer?.Dispose();
+            _threadCreationLock.Dispose();
+            _logger.LogInformation("PennieAgentClient disposed");
+        }
+
+        _disposed = true;
     }
 }
