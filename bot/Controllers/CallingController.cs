@@ -36,10 +36,19 @@ public class CallingController : ControllerBase
     /// POST /api/calling
     /// </summary>
     [HttpPost]
+    [RequestSizeLimit(10_485_760)] // 10MB limit to prevent DoS attacks
     public async Task<IActionResult> HandleNotification()
     {
         try
         {
+            // Validate content type
+            if (Request.ContentType != null &&
+                !Request.ContentType.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Invalid content type: {ContentType}", Request.ContentType);
+                return BadRequest(new { error = "Content-Type must be application/json" });
+            }
+
             // Read the request body
             using var reader = new StreamReader(Request.Body);
             var body = await reader.ReadToEndAsync();
@@ -68,6 +77,7 @@ public class CallingController : ControllerBase
     /// POST /api/calling/media
     /// </summary>
     [HttpPost("media")]
+    [RequestSizeLimit(10_485_760)] // 10MB limit to prevent DoS attacks
     public async Task<IActionResult> HandleMediaNotification()
     {
         try

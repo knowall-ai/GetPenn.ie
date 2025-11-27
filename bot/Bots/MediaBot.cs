@@ -287,26 +287,43 @@ public class MediaBot : ActivityHandler
             // Generate meeting ID and store mapping
             var conversationId = turnContext.Activity.Conversation.Id;
             var meetingId = $"meeting_{Guid.NewGuid():N}";
-            _conversationToMeetingMap[conversationId] = meetingId;
+
+            // Use TryAdd for thread-safe operation - prevents duplicate entries if same conversation processed concurrently
+            if (!_conversationToMeetingMap.TryAdd(conversationId, meetingId))
+            {
+                _logger.LogWarning("Conversation {ConversationId} already has a meeting mapped, skipping duplicate join",
+                    conversationId);
+                return;
+            }
 
             _logger.LogInformation(
                 "Detected meeting context. MeetingId={MeetingId}, JoinUrl={JoinUrl}",
                 meetingId, meetingJoinUrl);
 
-            // Start transcription service
-            await _speechService.StartTranscriptionAsync(
-                meetingId,
-                async result => await OnTranscriptReceivedAsync(result, turnContext),
-                cancellationToken);
+            // First, try to join the meeting. Only start transcription if join succeeds.
+            // This prevents orphaned transcription sessions when join fails.
+            try
+            {
+                await _callService.JoinMeetingAsync(
+                    meetingJoinUrl,
+                    meetingId,
+                    async audioData => await OnAudioReceivedAsync(meetingId, audioData),
+                    cancellationToken);
 
-            // Join the meeting for audio capture
-            await _callService.JoinMeetingAsync(
-                meetingJoinUrl,
-                meetingId,
-                async audioData => await OnAudioReceivedAsync(meetingId, audioData),
-                cancellationToken);
+                // Meeting join succeeded - now start transcription
+                await _speechService.StartTranscriptionAsync(
+                    meetingId,
+                    async result => await OnTranscriptReceivedAsync(result, turnContext),
+                    cancellationToken);
 
-            _logger.LogInformation("Successfully joined meeting {MeetingId} for audio capture", meetingId);
+                _logger.LogInformation("Successfully joined meeting {MeetingId} for audio capture", meetingId);
+            }
+            catch
+            {
+                // Clean up mapping on any failure to prevent orphaned entries
+                _conversationToMeetingMap.TryRemove(conversationId, out _);
+                throw;
+            }
         }
         catch (NotImplementedException)
         {
