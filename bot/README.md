@@ -133,35 +133,113 @@ curl https://<vm-ip>/health
 
 Expected response: `200 OK`
 
-## Graph Communications SDK Integration
+## Real-time Media Platform SDK Integration
 
-**Note**: The current implementation contains placeholder code for Graph Communications Media Bot.
+The bot uses `Microsoft.Skype.Bots.Media` for ApplicationHostedMedia mode to receive RTP audio streams.
 
-Full integration requires:
+**IMPORTANT**: `MediaPlatform` is a **static class**. Do not use `new MediaPlatform()`.
 
-1. **Create Call**:
-   ```csharp
-   var call = await graphClient.Communications.Calls
-       .Request()
-       .AddAsync(new Call { ... });
-   ```
+### Architecture
 
-2. **Subscribe to Audio**:
-   ```csharp
-   call.AudioSocket.Receive += (sender, args) =>
-   {
-       // Process RTP audio frames
-       var audioData = args.Buffer.Data;
-       await _speechService.ProcessAudioAsync(meetingId, audioData);
-   };
-   ```
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ MediaPlatformService (initialization at startup)                    │
+│   MediaPlatform.Initialize(settings)  ← Static method               │
+└─────────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ GraphCallService (when joining meeting)                             │
+│   1. Create AudioSocket(audioSettings)                              │
+│   2. MediaPlatform.CreateMediaConfiguration(audioSocket) → JObject  │
+│   3. AppHostedMediaConfig.Blob = json.ToString()                    │
+└─────────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Graph API Communications.Calls.Request().AddAsync(call)             │
+│   call.MediaConfig = appHostedMediaConfig                           │
+└─────────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ RTP Audio Streams (50 frames/sec, 20ms each)                        │
+│   AudioSocket.AudioMediaReceived event fires                        │
+│   → SpeechTranscriptionService for diarization                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
-3. **Configure Media Platform**:
-   - Requires Media Platform SDK
-   - Windows Server only
-   - Separate media endpoint (separate from bot messaging endpoint)
+### Key Code Patterns
 
-See [Microsoft Graph Communications SDK documentation](https://docs.microsoft.com/en-us/graph/api/resources/communications-api-overview) for details.
+**1. Initialize Media Platform (at startup)**:
+```csharp
+var instanceSettings = new MediaPlatformInstanceSettings
+{
+    CertificateThumbprint = "ABDA24AC...",  // From Windows cert store
+    ServiceFqdn = "pennie-prod-xxx.uksouth.cloudapp.azure.com",
+    InstancePublicPort = 8445,
+    InstanceInternalPort = 8445,
+    InstancePublicIPAddress = IPAddress.Parse("x.x.x.x")
+};
+
+var settings = new MediaPlatformSettings
+{
+    ApplicationId = "your-app-id",
+    MediaPlatformInstanceSettings = instanceSettings
+};
+
+MediaPlatform.Initialize(settings);  // Static method - NOT new MediaPlatform()
+```
+
+**2. Create Media Configuration Blob (when joining meeting)**:
+```csharp
+var audioSettings = new AudioSocketSettings
+{
+    StreamDirections = StreamDirection.Recvonly,
+    SupportedAudioFormat = AudioFormat.Pcm16K,
+    ReceiveUnmixedMeetingAudio = true
+};
+
+var audioSocket = new AudioSocket(audioSettings);  // Single argument
+JObject mediaConfig = MediaPlatform.CreateMediaConfiguration(audioSocket);
+string blob = mediaConfig.ToString(Newtonsoft.Json.Formatting.None);
+
+var appHostedMediaConfig = new AppHostedMediaConfig
+{
+    OdataType = "#microsoft.graph.appHostedMediaConfig",
+    Blob = blob  // SDK-generated blob - do NOT create custom JSON
+};
+```
+
+**3. Handle Audio Events**:
+```csharp
+audioSocket.AudioMediaReceived += async (sender, args) =>
+{
+    var buffer = args.Buffer;
+    if (buffer.Data != IntPtr.Zero && buffer.Length > 0)
+    {
+        var audioData = new byte[buffer.Length];
+        Marshal.Copy(buffer.Data, audioData, 0, (int)buffer.Length);
+        await _speechService.ProcessAudioAsync(meetingId, audioData);
+    }
+};
+```
+
+**4. Shutdown (at application shutdown)**:
+```csharp
+MediaPlatform.Shutdown();  // Static method
+```
+
+### Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| Platform | Windows Server only (native DLLs) |
+| NuGet Package | `Microsoft.Skype.Bots.Media` 1.31.0.225-preview |
+| Certificate | SSL certificate in Windows cert store (LocalMachine\My) |
+| Ports | TCP 8445 (signaling), UDP 20000-20100 (media) |
+| Azure AD | `Calls.AccessMedia.All` permission with admin consent |
+
+For common errors and troubleshooting, see [docs/TROUBLESHOOTING.adoc](../docs/TROUBLESHOOTING.adoc).
+
+See [Microsoft Graph Communications Samples](https://github.com/microsoftgraph/microsoft-graph-comms-samples) for more examples.
 
 ## Logging
 

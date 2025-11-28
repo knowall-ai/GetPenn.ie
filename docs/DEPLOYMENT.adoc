@@ -401,6 +401,182 @@ The Teams bot includes all critical components:
 3. **Function Call Handler**: Intercepts Pennie's `requires_action` and calls backend
 4. **Service Wiring**: All components connected via dependency injection
 
+=== Real-time Media Platform Requirements (ApplicationHostedMedia)
+
+To receive live audio streams from Teams meetings, the bot requires ApplicationHostedMedia mode with the Real-time Media Platform SDK.
+
+==== ServiceHostedMedia vs ApplicationHostedMedia
+
+[cols="1,2,2"]
+|===
+|Mode |Description |Use Case
+
+|**ServiceHostedMedia** (current)
+|Microsoft hosts media infrastructure; bot joins but receives NO audio
+|Meeting presence only
+
+|**ApplicationHostedMedia** (target)
+|Bot hosts media; receives RTP audio streams at 50 frames/sec
+|Real-time transcription
+|===
+
+==== SSL Certificate Requirements
+
+The Real-time Media Platform requires an SSL certificate for DTLS encryption:
+
+* **SAN**: Must match VM's public FQDN
+* **Store**: Windows `LocalMachine\My` certificate store
+* **Key**: Must include private key
+* **Type**: Not self-signed for production
+
+**Current Certificate**:
+[source]
+----
+Subject: CN=pennie-prod-mmdxqm3w7kjwm.uksouth.cloudapp.azure.com
+Thumbprint: ABDA24ACBBBC8F64E56EAC59525D7DC37146B857
+----
+
+**Verify Certificate** (on VM):
+[source,powershell]
+----
+Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -like "*pennie*" }
+----
+
+==== Network Ports (UDP for RTP Streams)
+
+Add these NSG rules for media traffic:
+
+[cols="1,1,2"]
+|===
+|Port |Protocol |Purpose
+
+|443
+|TCP
+|HTTPS for bot API
+
+|9441
+|TCP
+|Call signaling
+
+|8445
+|TCP
+|Media platform internal
+
+|20000-20100
+|UDP
+|**RTP media streams**
+|===
+
+**Add UDP Rule** (Azure CLI):
+[source,bash]
+----
+az network nsg rule create \
+  --resource-group TMinus15Agents \
+  --nsg-name pennie-vm-nsg \
+  --name AllowMediaRTP \
+  --priority 300 \
+  --direction Inbound \
+  --protocol UDP \
+  --destination-port-range 20000-20100 \
+  --access Allow
+----
+
+==== Media Platform Configuration
+
+Add to `appsettings.json` on VM:
+[source,json]
+----
+{
+  "MediaPlatform": {
+    "ServiceFqdn": "pennie-prod-mmdxqm3w7kjwm.uksouth.cloudapp.azure.com",
+    "CertificateThumbprint": "ABDA24ACBBBC8F64E56EAC59525D7DC37146B857",
+    "MediaInstanceExternalPort": 20000,
+    "CallSignalingPort": 9441,
+    "InstancePublicPort": 8445,
+    "UseApplicationHostedMedia": true
+  }
+}
+----
+
+==== Required NuGet Packages
+
+[source,xml]
+----
+<!-- Graph Communications Stateful SDK (NOT REST client) -->
+<PackageReference Include="Microsoft.Graph.Communications.Client" Version="1.2.0.15382" />
+<PackageReference Include="Microsoft.Graph.Communications.Calls.Media" Version="1.2.0.15382" />
+
+<!-- Real-time Media Platform (Windows-only native DLLs) -->
+<PackageReference Include="Microsoft.Skype.Bots.Media" Version="1.31.0.225-preview" />
+----
+
+**IMPORTANT**: `Microsoft.Skype.Bots.Media` contains Windows-native DLLs and only runs on Windows Server.
+
+==== C# Code Example (MediaPlatformService.cs)
+
+**IMPORTANT**: `MediaPlatform` is a **static class**. Do not use `new MediaPlatform()`.
+
+[source,csharp]
+----
+// Initialization (at app startup)
+var instanceSettings = new MediaPlatformInstanceSettings
+{
+    CertificateThumbprint = "ABDA24AC...",  // From Windows cert store
+    ServiceFqdn = "pennie-prod-xxx.uksouth.cloudapp.azure.com",
+    InstancePublicPort = 8445,
+    InstanceInternalPort = 8445,
+    InstancePublicIPAddress = IPAddress.Parse("x.x.x.x")
+};
+
+var settings = new MediaPlatformSettings
+{
+    ApplicationId = "your-app-id",
+    MediaPlatformInstanceSettings = instanceSettings
+};
+
+MediaPlatform.Initialize(settings);  // Static method
+
+// Creating media config blob (when joining meeting)
+var audioSettings = new AudioSocketSettings
+{
+    StreamDirections = StreamDirection.Recvonly,
+    SupportedAudioFormat = AudioFormat.Pcm16K,
+    ReceiveUnmixedMeetingAudio = true
+};
+var audioSocket = new AudioSocket(audioSettings);  // Single argument
+JObject mediaConfig = MediaPlatform.CreateMediaConfiguration(audioSocket);
+string blob = mediaConfig.ToString();  // Use this for AppHostedMediaConfig.Blob
+
+// Shutdown (at app shutdown)
+MediaPlatform.Shutdown();  // Static method
+----
+
+==== Troubleshooting ApplicationHostedMedia
+
+|===
+|Error |Cause |Solution
+
+|Graph API Error 9999
+|Invalid AppHostedMediaConfig.Blob
+|Use SDK-generated blob via `MediaPlatform.CreateMediaConfiguration(audioSocket)`
+
+|"Cannot create instance of static class"
+|Tried `new MediaPlatform()`
+|Use `MediaPlatform.Initialize(settings)` - it's a static class
+
+|No audio received
+|UDP ports blocked
+|Open 20000-20100 UDP in NSG
+
+|Certificate not found
+|Wrong thumbprint/store
+|Check `LocalMachine\My` store, use thumbprint not X509Certificate2
+
+|"Media platform not initialized"
+|SDK not started
+|Ensure `MediaPlatform.Initialize()` called in Program.cs before GraphCallService
+|===
+
 === Architecture Note: Function Calling Pattern
 
 OpenAI Assistants use a **function calling pattern**, not HTTP tools:
@@ -511,6 +687,76 @@ mstsc /v:<vm-fqdn>
 
 **Why Manual?**
 These values come from `.env` which is not committed to Git. The deployment script fetches Teams credentials from Key Vault automatically, but these environment-specific values must be set once manually.
+
+=== Deploy Teams App Package
+
+The Teams app package (manifest) must be published to your organization's app catalog.
+
+==== Create the Package
+
+[source,bash]
+----
+# Navigate to manifest directory
+cd bot/teams-manifest
+
+# Create zip package from manifest and icons
+zip pennie-app-v1.1.0.zip manifest.json color.png outline.png
+----
+
+Or use the deployment script:
+
+[source,bash]
+----
+./scripts/deploy-teams-app.sh --create
+----
+
+==== Deploy via Script (Automated)
+
+[source,bash]
+----
+./scripts/deploy-teams-app.sh
+----
+
+**Prerequisites**:
+* Azure CLI logged in (`az login`)
+* One of these permissions:
+  - `AppCatalog.ReadWrite.All` (Application permission with admin consent)
+  - Teams Administrator role
+
+**Common Issues**: The script may fail with HTTP 403 if your user lacks Teams Administrator permissions. See Troubleshooting section.
+
+==== Deploy Manually (Alternative)
+
+If the automated script fails, upload manually:
+
+**Option 1 - Teams Admin Center** (Recommended for org-wide deployment):
+
+1. Go to: https://admin.teams.microsoft.com
+2. Navigate to: **Teams apps** → **Manage apps**
+3. Click: **Upload new app**
+4. Select: `bot/teams-manifest/pennie-app-v1.1.0.zip`
+5. Approve the app for your organization
+
+**Option 2 - Teams Client**:
+
+1. Open Microsoft Teams
+2. Go to: **Apps** → **Manage your apps**
+3. Click: **Upload a custom app** → **Upload for [Your Org]**
+4. Select: `bot/teams-manifest/pennie-app-v1.1.0.zip`
+
+==== Teams App Manifest
+
+The manifest (`bot/teams-manifest/manifest.json`) defines:
+
+* **App ID**: `9707c142-2583-4e56-9983-4d913338afb0`
+* **Version**: `1.1.0`
+* **Scopes**: `personal`, `team`, `groupChat`, `meetingChat`
+* **Bot endpoint**: Configured via Bot Framework, not in manifest
+
+**Key v1.1.0 Changes**:
+
+* Added `meetingChat` scope for meeting support
+* Updated to manifest schema v1.17
 
 === Configure Teams App (Manual)
 
@@ -877,6 +1123,81 @@ Located at: `scripts/deploy-agent.sh`
 [source,bash]
 ----
 ./scripts/deploy-agent.sh
+----
+
+=== deploy-teams-app.sh
+
+Located at: `scripts/deploy-teams-app.sh`
+
+**Purpose**: Deploys Teams app package to organization's app catalog
+
+**What It Does**:
+
+1. Creates Teams app package from manifest.json and icons (with `--create` flag)
+2. Gets access token for Microsoft Graph API
+3. Checks if app already exists in catalog
+4. Uploads new app or updates existing app
+5. Provides manual upload instructions on failure
+
+**Usage**:
+
+[source,bash]
+----
+# Deploy existing package
+./scripts/deploy-teams-app.sh
+
+# Create package then deploy
+./scripts/deploy-teams-app.sh --create
+
+# Show help
+./scripts/deploy-teams-app.sh --help
+----
+
+**Required Permissions**:
+
+* `AppCatalog.ReadWrite.All` (Application permission with admin consent), OR
+* Teams Administrator role
+
+**Common Issue**: HTTP 403 Forbidden - Requires Teams Administrator role or manual upload. See Troubleshooting guide.
+
+=== deploy-backend.sh
+
+Located at: `scripts/deploy-backend.sh`
+
+**Purpose**: Deploys Azure Functions backend for Azure DevOps integration
+
+**What It Does**:
+
+1. Loads environment variables from `.env`
+2. Deploys Function App infrastructure via Bicep
+3. Publishes Python functions to Azure
+4. Verifies deployment
+
+**Usage**:
+
+[source,bash]
+----
+./scripts/deploy-backend.sh
+----
+
+=== Utility Scripts
+
+**bot-health.sh**: Check bot health status
+[source,bash]
+----
+./scripts/bot-health.sh
+----
+
+**bot-logs.sh**: View bot logs from VM
+[source,bash]
+----
+./scripts/bot-logs.sh [lines]  # Default: 50 lines
+----
+
+**bot-restart.sh**: Restart bot service on VM
+[source,bash]
+----
+./scripts/bot-restart.sh
 ----
 
 == Appendix B: Manual Deployment Steps

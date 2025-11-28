@@ -32,6 +32,83 @@ public class CallingController : ControllerBase
     }
 
     /// <summary>
+    /// Join a Teams meeting by Meeting ID and Passcode.
+    /// POST /api/calling/join
+    /// </summary>
+    [HttpPost("join")]
+    public async Task<IActionResult> JoinMeeting([FromBody] JoinMeetingRequest request)
+    {
+        if (string.IsNullOrEmpty(request.MeetingId) || string.IsNullOrEmpty(request.Passcode))
+        {
+            return BadRequest(new { error = "MeetingId and Passcode are required" });
+        }
+
+        try
+        {
+            _logger.LogInformation(
+                "Received join request for meeting {MeetingId}",
+                request.MeetingId);
+
+            // Generate a unique internal ID for this meeting session
+            var internalMeetingId = $"meeting-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
+
+            // Audio callback for transcription (placeholder for now)
+            Func<byte[], Task> audioCallback = async (audioData) =>
+            {
+                _logger.LogDebug("Received audio frame, length={Length}", audioData.Length);
+                await Task.CompletedTask;
+            };
+
+            await _callService.JoinMeetingByIdAsync(
+                request.MeetingId,
+                request.Passcode,
+                internalMeetingId,
+                audioCallback);
+
+            return Ok(new
+            {
+                success = true,
+                internalMeetingId,
+                message = $"Joining meeting {request.MeetingId}",
+                timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to join meeting {MeetingId}", request.MeetingId);
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Leave a Teams meeting.
+    /// POST /api/calling/leave
+    /// </summary>
+    [HttpPost("leave")]
+    public async Task<IActionResult> LeaveMeeting([FromBody] LeaveMeetingRequest request)
+    {
+        if (string.IsNullOrEmpty(request.InternalMeetingId))
+        {
+            return BadRequest(new { error = "InternalMeetingId is required" });
+        }
+
+        try
+        {
+            _logger.LogInformation("Leaving meeting {InternalMeetingId}", request.InternalMeetingId);
+            await _callService.LeaveMeetingAsync(request.InternalMeetingId);
+            return Ok(new { success = true, message = "Left meeting" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to leave meeting");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    public record JoinMeetingRequest(string MeetingId, string Passcode);
+    public record LeaveMeetingRequest(string InternalMeetingId);
+
+    /// <summary>
     /// Receives call state notifications from Graph Communications SDK.
     /// POST /api/calling
     /// </summary>

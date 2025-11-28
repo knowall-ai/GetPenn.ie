@@ -46,8 +46,29 @@
 | **SingleTenant Teams bot - messages not reaching bot endpoint**
 | Direct Line works but Teams messages never arrive. **Fix**: (1) Add Bot Framework redirect URI (CRITICAL): `az ad app update --id {app-id} --web-redirect-uris "https://token.botframework.com/.auth/web/redirect"`, (2) Add identifier URI: `az ad app update --id {app-id} --identifier-uris "api://botid-{app-id}"`, (3) Add `webApplicationInfo` to manifest.json: `{"id": "{app-id}", "resource": "api://botid-{app-id}"}`, (4) Regenerate app secret after switching to SingleTenant: `az ad app credential reset --id {app-id}`, (5) Re-upload Teams app and fully restart Teams client.
 
+| **Teams App Graph API upload/update fails with 403 Forbidden**
+| When publishing or updating Teams app via Graph API, returns "User not authorized to perform this operation". **Root cause**: Microsoft Graph API restricts Teams app catalog operations. App ownership is tied to the uploader. **Key limitations**: (1) Service principals can only update apps they uploaded, (2) Apps uploaded manually via Teams Admin Center are owned by the admin user, not a service principal, (3) Azure CLI tokens don't include `AppCatalog.*` scopes. **Solution**: Manage Teams apps via Teams Admin Center: https://admin.teams.microsoft.com > Teams apps > Manage apps. Upload new versions manually when needed. **Package location**: `bot/teams-manifest/pennie-app-v1.1.0.zip`.
+
 | **MultiTenant bot creation deprecated**
 | `az bot create --app-type MultiTenant` fails with deprecation error. **Fix**: Use `--app-type SingleTenant` with `--msi-resource-id` for managed identity, or use `--app-type UserAssignedMSI`. SingleTenant requires extra configuration (identifier URI, webApplicationInfo in manifest).
+
+| **CS0712: Cannot create an instance of the static class 'MediaPlatform'**
+| Using `new MediaPlatform()` in code. `MediaPlatform` is a **static class** in `Microsoft.Skype.Bots.Media`. **Fix**: Use `MediaPlatform.Initialize(settings)` instead of instantiation. For shutdown, use `MediaPlatform.Shutdown()` instead of instance methods.
+
+| **Graph API error 9999 when joining call with ApplicationHostedMedia**
+| Using custom JSON for `AppHostedMediaConfig.Blob` instead of SDK-generated blob. The blob contains binary-encoded configuration (audio socket bindings, certificate fingerprints, media session config). **Fix**: Use `JObject mediaConfig = MediaPlatform.CreateMediaConfiguration(audioSocket); string blob = mediaConfig.ToString();` to generate the correctly formatted blob.
+
+| **AudioSocket constructor error: does not contain a constructor that takes 2 arguments**
+| Passing logger as second argument to `AudioSocket` constructor. The SDK only accepts `AudioSocketSettings`. **Fix**: Use `var audioSocket = new AudioSocket(audioSettings);` with a single argument. The SDK handles its own internal logging.
+
+| **MediaPlatform "needs a system with at least 2 cores" error**
+| VM has insufficient physical cores. Standard_D2s_v3 has 2 vCPUs but only 1 physical core (hyperthreaded). MediaPlatform SDK requires 2+ physical cores. **Fix**: Upgrade VM to Standard_D4s_v3 (4 vCPUs = 2 physical cores, ~£140/month): `az vm deallocate -g TMinus15Agents -n pennie-vm-prod && az vm resize -g TMinus15Agents -n pennie-vm-prod --size Standard_D4s_v3 && az vm start -g TMinus15Agents -n pennie-vm-prod`. Enable ApplicationHostedMedia in Key Vault: `az keyvault secret set --vault-name pennie-kv-mmdxqm3w7kjwm --name "MediaPlatform--UseApplicationHostedMedia" --value "true"`.
+
+| **AudioSocket CallId error: "Value cannot be null or empty"**
+| AudioSocketSettings.CallId is required by AudioSocket constructor but not being set. **Fix**: Set CallId when creating AudioSocketSettings: `var settings = new AudioSocketSettings { CallId = callId ?? Guid.NewGuid().ToString(), StreamDirections = StreamDirection.Recvonly, SupportedAudioFormat = AudioFormat.Pcm16K, ReceiveUnmixedMeetingAudio = true };`
+
+| **ApplicationHostedMedia call terminates immediately after "establishing"**
+| Missing network rules for media streams. ApplicationHostedMedia requires specific ports. **Fix**: Add Azure NSG rules: `az network nsg rule create -g TMinus15Agents --nsg-name pennie-nsg-prod -n AllowMediaSignaling --priority 130 --direction Inbound --access Allow --protocol Tcp --destination-port-ranges 8445` and `az network nsg rule create -g TMinus15Agents --nsg-name pennie-nsg-prod -n AllowMediaRTP --priority 140 --direction Inbound --access Allow --protocol Udp --destination-port-ranges "20000-20100"`. Add Windows Firewall rules on VM: `New-NetFirewallRule -DisplayName "MediaPlatform Signaling" -Direction Inbound -Protocol TCP -LocalPort 8445 -Action Allow` and `New-NetFirewallRule -DisplayName "MediaPlatform RTP" -Direction Inbound -Protocol UDP -LocalPort 20000-20100 -Action Allow`.
 
 | **SingleTenant bot auth mismatch**
 | Bot Service is SingleTenant but App Registration is MultiTenant (or vice versa). Causes silent failures. **Verify**: Bot Service: `az bot show --query properties.msaAppType`, App Registration: `az ad app show --query signInAudience`. Both must match: SingleTenant = `AzureADMyOrg`, MultiTenant = `AzureADMultipleOrgs`.
@@ -135,6 +156,42 @@ Invoke-WebRequest -Uri "http://localhost:5000/health" -UseBasicParsing
 
 # Start service if stopped
 Start-Service -Name PennieBot
+----
+
+== ApplicationHostedMedia Requirements
+
+For real-time audio capture from Teams meetings, ApplicationHostedMedia mode has specific requirements:
+
+**VM Requirements**:
+
+- *Physical Cores*: 2+ (Standard_D4s_v3 or larger)
+- *OS*: Windows Server 2019/2022 (MediaPlatform SDK is Windows-only)
+- *Certificate*: SSL certificate with private key in Windows certificate store
+
+**Network Ports** (Azure NSG + Windows Firewall):
+
+- TCP 8445: Media signaling
+- UDP 20000-20100: RTP media streams
+
+**Graph API Permissions** (with admin consent):
+
+- `Calls.AccessMedia.All` (a7a681dc-756e-4909-b988-f160edc6655f)
+- `Calls.JoinGroupCall.All` (f6b49018-60ab-4f81-83bd-22caeabfed2d)
+- `OnlineMeetings.ReadWrite.All` (b8bb2037-6e08-44ac-a4ea-4674e010e2a4)
+
+**Key Vault Configuration**:
+[source,bash]
+----
+az keyvault secret set --vault-name pennie-kv-mmdxqm3w7kjwm \
+  --name "MediaPlatform--UseApplicationHostedMedia" --value "true"
+az keyvault secret set --vault-name pennie-kv-mmdxqm3w7kjwm \
+  --name "MediaPlatform--ServiceFqdn" --value "pennie-prod-mmdxqm3w7kjwm.uksouth.cloudapp.azure.com"
+az keyvault secret set --vault-name pennie-kv-mmdxqm3w7kjwm \
+  --name "MediaPlatform--CertificateThumbprint" --value "<certificate-thumbprint>"
+az keyvault secret set --vault-name pennie-kv-mmdxqm3w7kjwm \
+  --name "MediaPlatform--MediaInstanceExternalPort" --value "20000"
+az keyvault secret set --vault-name pennie-kv-mmdxqm3w7kjwm \
+  --name "MediaPlatform--InstancePublicPort" --value "8445"
 ----
 
 == AI Foundry Agent API Reference

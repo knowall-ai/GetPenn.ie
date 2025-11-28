@@ -25,6 +25,21 @@ public interface IGraphCallService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Join a Teams meeting using meeting ID and passcode.
+    /// </summary>
+    /// <param name="meetingIdNumber">Meeting ID number (e.g., "396 240 783 591 15")</param>
+    /// <param name="passcode">Meeting passcode</param>
+    /// <param name="meetingId">Unique meeting identifier for tracking</param>
+    /// <param name="audioDataCallback">Callback to receive audio frames</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task JoinMeetingByIdAsync(
+        string meetingIdNumber,
+        string passcode,
+        string meetingId,
+        Func<byte[], Task> audioDataCallback,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Leave the current meeting and stop audio capture.
     /// </summary>
     /// <param name="meetingId">Meeting identifier</param>

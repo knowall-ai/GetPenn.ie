@@ -14,11 +14,19 @@
     <PackageReference Include="Microsoft.Bot.Builder" Version="4.21.2" />
     <PackageReference Include="Microsoft.Bot.Builder.Integration.AspNet.Core" Version="4.21.2" />
 
-    <!-- Graph Communications SDK -->
+    <!-- Graph Communications SDK (Stateful Client for ApplicationHostedMedia) -->
     <!-- Note: Latest available version is 1.2.0.15382 as of Oct 2025 -->
+    <PackageReference Include="Microsoft.Graph.Communications.Client" Version="1.2.0.15382" />
     <PackageReference Include="Microsoft.Graph.Communications.Calls" Version="1.2.0.15382" />
     <PackageReference Include="Microsoft.Graph.Communications.Calls.Media" Version="1.2.0.15382" />
     <PackageReference Include="Microsoft.Graph.Communications.Common" Version="1.2.0.15382" />
+
+    <!-- Real-time Media Platform SDK (Windows-only, for RTP audio handling) -->
+    <!-- Note: Version must match Microsoft.Graph.Communications.Calls.Media dependency -->
+    <PackageReference Include="Microsoft.Skype.Bots.Media" Version="1.31.0.225-preview" />
+
+    <!-- Microsoft Graph API -->
+    <PackageReference Include="Microsoft.Graph" Version="5.92.0" />
 
     <!-- Azure SDKs -->
     <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />

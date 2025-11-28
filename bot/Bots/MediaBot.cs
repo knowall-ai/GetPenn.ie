@@ -54,12 +54,20 @@ public class MediaBot : ActivityHandler
             return;
         }
 
+        // Check for join meeting command
+        if (text.Contains("join meeting") || text.Contains("join my meeting"))
+        {
+            await HandleJoinMeetingRequestAsync(turnContext, turnContext.Activity.Text ?? "", cancellationToken);
+            return;
+        }
+
         // Check for help command
         if (text.Contains("help") || text == "?")
         {
             var helpText = "Hi! I'm Pennie the Prepper. Here's what I can do:\n\n" +
                           "- Ask me: **\"What projects do we have in DevOps?\"**\n" +
-                          "- I'll list all your Azure DevOps projects\n\n" +
+                          "- I'll list all your Azure DevOps projects\n" +
+                          "- Say: **\"Join meeting ID: xxx passcode: yyy\"** to join a Teams meeting\n\n" +
                           "More features coming soon!";
             await turnContext.SendActivityAsync(MessageFactory.Text(helpText), cancellationToken);
             return;
@@ -68,6 +76,7 @@ public class MediaBot : ActivityHandler
         // Default response
         var responseText = "I didn't understand that. Try asking:\n" +
                           "- \"What projects do we have in DevOps?\"\n" +
+                          "- \"Join meeting ID: xxx passcode: yyy\"\n" +
                           "- \"Help\"";
         await turnContext.SendActivityAsync(MessageFactory.Text(responseText), cancellationToken);
     }
@@ -147,6 +156,162 @@ public class MediaBot : ActivityHandler
                 MessageFactory.Text("Sorry, I received an unexpected response from the backend. Please try again later."),
                 cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Handle a request to join a Teams meeting by ID and passcode.
+    /// </summary>
+    private async Task HandleJoinMeetingRequestAsync(
+        ITurnContext turnContext,
+        string originalText,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogInformation("Processing join meeting request: {Text}", originalText);
+
+            // Parse meeting ID and passcode from the message
+            // Expected formats:
+            // - "join meeting ID: 396 240 783 591 15 passcode: tj3HN9jw"
+            // - "join meeting 396 240 783 591 15 tj3HN9jw"
+            // - "join meeting id 396240783591 passcode tj3HN9jw"
+
+            var meetingId = ExtractMeetingId(originalText);
+            var passcode = ExtractPasscode(originalText);
+
+            if (string.IsNullOrEmpty(meetingId))
+            {
+                await turnContext.SendActivityAsync(
+                    MessageFactory.Text("I couldn't find a meeting ID. Please provide it like:\n" +
+                                       "\"Join meeting ID: 396 240 783 591 15 passcode: tj3HN9jw\""),
+                    cancellationToken);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(passcode))
+            {
+                await turnContext.SendActivityAsync(
+                    MessageFactory.Text($"Found meeting ID: {meetingId}\n" +
+                                       "Please also provide the passcode:\n" +
+                                       "\"Join meeting ID: xxx passcode: yyy\""),
+                    cancellationToken);
+                return;
+            }
+
+            _logger.LogInformation("Attempting to join meeting. ID={MeetingId}, Passcode={Passcode}",
+                meetingId, passcode);
+
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text($"🎯 Attempting to join meeting...\n" +
+                                   $"Meeting ID: {meetingId}\n" +
+                                   $"Passcode: {passcode}"),
+                cancellationToken);
+
+            // Generate internal meeting tracking ID
+            var internalMeetingId = $"meeting_{Guid.NewGuid():N}";
+            var conversationId = turnContext.Activity.Conversation.Id;
+
+            // Store the mapping
+            _conversationToMeetingMap[conversationId] = internalMeetingId;
+
+            // Join the meeting
+            await _callService.JoinMeetingByIdAsync(
+                meetingId,
+                passcode,
+                internalMeetingId,
+                async audioData => await OnAudioReceivedAsync(internalMeetingId, audioData),
+                cancellationToken);
+
+            // Start transcription after successfully joining
+            await _speechService.StartTranscriptionAsync(
+                internalMeetingId,
+                async result => await OnTranscriptReceivedAsync(result, turnContext),
+                cancellationToken);
+
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text("✅ Successfully joined the meeting! I'm now listening and will transcribe the conversation."),
+                cancellationToken);
+
+            _logger.LogInformation("Successfully joined meeting {MeetingId}", meetingId);
+        }
+        catch (NotImplementedException)
+        {
+            _logger.LogWarning("Meeting join not available - requires Windows Server deployment with Graph Communications SDK");
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text("❌ Meeting join is not available. This feature requires the bot to be running on Windows Server with Graph Communications SDK."),
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to join meeting");
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text($"❌ Failed to join meeting: {ex.Message}"),
+                cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Extract meeting ID from a message. Handles formats like "396 240 783 591 15" or "39624078359115".
+    /// </summary>
+    private static string? ExtractMeetingId(string text)
+    {
+        // Pattern 1: "id:" or "id :" followed by digits and spaces
+        var idPattern = new System.Text.RegularExpressions.Regex(
+            @"id\s*:?\s*([\d\s]+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var match = idPattern.Match(text);
+        if (match.Success)
+        {
+            var id = match.Groups[1].Value.Trim();
+            // Stop at "passcode" or end of digits
+            var passcodeIndex = id.IndexOf("passcode", StringComparison.OrdinalIgnoreCase);
+            if (passcodeIndex > 0)
+            {
+                id = id.Substring(0, passcodeIndex).Trim();
+            }
+            // Remove any non-digit/space chars at the end
+            id = System.Text.RegularExpressions.Regex.Replace(id, @"[^\d\s]+$", "").Trim();
+            if (!string.IsNullOrEmpty(id))
+            {
+                return id;
+            }
+        }
+
+        // Pattern 2: Look for a sequence of numbers that could be a meeting ID (10+ digits)
+        var numberPattern = new System.Text.RegularExpressions.Regex(@"(\d[\d\s]{9,})");
+        match = numberPattern.Match(text);
+        if (match.Success)
+        {
+            return match.Groups[1].Value.Trim();
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extract passcode from a message.
+    /// </summary>
+    private static string? ExtractPasscode(string text)
+    {
+        // Pattern 1: "passcode:" or "passcode :" followed by alphanumeric
+        var passcodePattern = new System.Text.RegularExpressions.Regex(
+            @"passcode\s*:?\s*([a-zA-Z0-9]+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var match = passcodePattern.Match(text);
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+
+        // Pattern 2: Look for alphanumeric string after the meeting ID (8+ chars)
+        var lastWordPattern = new System.Text.RegularExpressions.Regex(@"\s([a-zA-Z][a-zA-Z0-9]{5,})$");
+        match = lastWordPattern.Match(text.Trim());
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+
+        return null;
     }
 
     /// <summary>
