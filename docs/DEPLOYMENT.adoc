@@ -281,6 +281,8 @@ This script:
    * `Calls.AccessMedia.All` - Access media streams in calls
    * `Calls.JoinGroupCall.All` - Join group calls and meetings
    * `OnlineMeetings.ReadWrite.All` - Read and create online meetings
+   * `OnlineMeetings.Read.All` - Read meeting details (for meeting ID/passcode lookup)
+   * `Chat.Read.All` - Read chat info (for meeting panel integration)
 3. Generates client secret (2-year expiration)
 4. Stores credentials in Azure Key Vault
 5. Updates `.env` file
@@ -303,6 +305,36 @@ Admin consent for Graph API permissions **cannot be automated** and must be gran
 
 IMPORTANT: You must be a Global Administrator or Privileged Role Administrator to grant admin consent.
 
+=== Adding Permissions via CLI
+
+If you need to add permissions to an existing bot app registration:
+
+[source,bash]
+----
+# Bot App ID (from Key Vault)
+APP_ID="your-bot-app-id"
+
+# Microsoft Graph resource ID
+MS_GRAPH="00000003-0000-0000-c000-000000000000"
+
+# Permission IDs (Application type - Role)
+# OnlineMeetings.Read.All - for meeting ID/passcode lookup
+ONLINE_MEETINGS_READ="c1684f21-1984-47fa-9d61-2dc8c296bb70"
+# Chat.Read.All - for reading chat/meeting info
+CHAT_READ="6b7d71aa-70aa-4810-a8d9-5d9fb2830017"
+
+# Add permissions
+az ad app permission add \
+  --id "$APP_ID" \
+  --api "$MS_GRAPH" \
+  --api-permissions "$ONLINE_MEETINGS_READ=Role" "$CHAT_READ=Role"
+
+# Grant admin consent
+az ad app permission admin-consent --id "$APP_ID"
+----
+
+NOTE: Admin consent requires Global Administrator or Application Administrator role.
+
 === Verify Permissions
 
 After granting consent, verify in Azure Portal:
@@ -322,7 +354,7 @@ If the automated script fails, you can create the app registration manually:
 
 2. **Add API Permissions**:
    - API Permissions > Add permission > Microsoft Graph > Application permissions
-   - Add: `Calls.AccessMedia.All`, `Calls.JoinGroupCall.All`, `OnlineMeetings.ReadWrite.All`
+   - Add: `Calls.AccessMedia.All`, `Calls.JoinGroupCall.All`, `OnlineMeetings.ReadWrite.All`, `OnlineMeetings.Read.All`, `Chat.Read.All`
    - Grant admin consent
 
 3. **Create Client Secret**:

@@ -132,6 +132,11 @@ public class GraphCallService : IGraphCallService, IDisposable
     /// <summary>
     /// Join a Teams meeting and start audio capture.
     /// Uses Graph API /communications/calls to join as an application.
+    ///
+    /// IMPORTANT: Uses OrganizerMeetingInfo with ChatInfo, which is the correct approach
+    /// for joining meetings via Graph API. TokenMeetingInfo is NOT designed to be manually
+    /// constructed - it's only meant to be received from incoming call notifications.
+    /// See: https://github.com/microsoftgraph/microsoft-graph-comms-samples
     /// </summary>
     public async Task JoinMeetingAsync(
         string meetingJoinUrl,
@@ -153,8 +158,14 @@ public class GraphCallService : IGraphCallService, IDisposable
             // Parse the meeting join URL to extract meeting info
             var joinInfo = ParseMeetingJoinUrl(meetingJoinUrl);
             _logger.LogInformation(
-                "Parsed meeting info: ThreadId={ThreadId}, TenantId={TenantId}",
-                joinInfo.ThreadId, joinInfo.TenantId);
+                "Parsed meeting info: ThreadId={ThreadId}, TenantId={TenantId}, OrganizerId={OrganizerId}",
+                joinInfo.ThreadId, joinInfo.TenantId, joinInfo.OrganizerId);
+
+            // Use OrganizerMeetingInfo with ChatInfo - this is the recommended approach
+            // OrganizerMeetingInfo requires the actual organizer's Azure AD Object ID (not the bot's app ID)
+            _logger.LogInformation(
+                "Using OrganizerMeetingInfo approach. Meeting tenant: {MeetingTenant}, Bot tenant: {BotTenant}",
+                joinInfo.TenantId ?? "(unknown)", _tenantId ?? "(unknown)");
 
             // Store the callback for when audio arrives
             _audioCallbacks[meetingId] = audioDataCallback;
@@ -170,21 +181,48 @@ public class GraphCallService : IGraphCallService, IDisposable
             // Use the new method that returns both config and socket
             var (mediaConfig, audioSocket) = CreateMediaConfigWithSocket();
 
+            // Use OrganizerMeetingInfo with the organizer ID from the join URL context
+            // The Oid in the context is the organizer's Azure AD Object ID
+            var tenantId = joinInfo.TenantId ?? _tenantId ?? "";
+            var organizerId = joinInfo.OrganizerId;
+
+            // If we don't have an organizer ID from the URL, try to look it up
+            if (string.IsNullOrEmpty(organizerId))
+            {
+                _logger.LogInformation("No organizer ID in URL context, attempting lookup...");
+                organizerId = await LookupMeetingOrganizerAsync(meetingJoinUrl, joinInfo.ThreadId, cancellationToken);
+            }
+
+            if (string.IsNullOrEmpty(organizerId))
+            {
+                _logger.LogWarning("Could not determine organizer ID. Meeting join may fail.");
+                throw new InvalidOperationException(
+                    "Cannot join meeting: Unable to determine the meeting organizer. " +
+                    "The meeting join URL must include the organizer ID (Oid) in the context parameter.");
+            }
+
+            _logger.LogInformation(
+                "Creating call with OrganizerMeetingInfo, tenant={TenantId}, organizer={OrganizerId}",
+                tenantId, organizerId);
+
             var call = new Call
             {
                 Direction = CallDirection.Outgoing,
                 CallbackUri = callbackUrl,
-                TenantId = joinInfo.TenantId ?? _tenantId,
+                TenantId = tenantId,
                 MediaConfig = mediaConfig,
                 RequestedModalities = new List<Modality?>
                 {
                     Modality.Audio
                 },
+                // ChatInfo identifies the meeting thread
                 ChatInfo = new ChatInfo
                 {
+                    OdataType = "#microsoft.graph.chatInfo",
                     ThreadId = joinInfo.ThreadId,
                     MessageId = joinInfo.MessageId
                 },
+                // OrganizerMeetingInfo with the actual organizer's AAD Object ID
                 MeetingInfo = new OrganizerMeetingInfo
                 {
                     OdataType = "#microsoft.graph.organizerMeetingInfo",
@@ -192,12 +230,16 @@ public class GraphCallService : IGraphCallService, IDisposable
                     {
                         User = new Identity
                         {
-                            Id = joinInfo.OrganizerId,
+                            Id = organizerId,
                             AdditionalData = new Dictionary<string, object>
                             {
-                                { "tenantId", joinInfo.TenantId ?? _tenantId ?? "" }
+                                { "tenantId", tenantId }
                             }
                         }
+                    },
+                    AdditionalData = new Dictionary<string, object>
+                    {
+                        { "allowConversationWithoutHost", true }
                     }
                 }
             };
@@ -219,11 +261,10 @@ public class GraphCallService : IGraphCallService, IDisposable
             _activeCalls[meetingId] = callId;
             _callIdToMeetingId[callId] = meetingId;
 
-            // Store the AudioSocket for this call - it must remain alive!
+            // Register AudioSocket with event handlers for audio reception
             if (audioSocket != null)
             {
-                _audioSockets[callId] = audioSocket;
-                _logger.LogInformation("Stored AudioSocket for call {CallId} - socket will remain alive", callId);
+                RegisterAudioSocket(callId, audioSocket);
             }
 
             _logger.LogInformation(
@@ -232,11 +273,41 @@ public class GraphCallService : IGraphCallService, IDisposable
         }
         catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
         {
+            // Extract detailed error information from ODataError
+            var errorCode = odataEx.Error?.Code ?? "Unknown";
+            var errorMessage = odataEx.Error?.Message ?? "No message";
+            var additionalData = odataEx.Error?.InnerError?.AdditionalData;
+            var innerCode = additionalData != null && additionalData.TryGetValue("code", out var codeVal) ? codeVal?.ToString() : null;
+            var innerMessage = additionalData != null && additionalData.TryGetValue("message", out var msgVal) ? msgVal?.ToString() : null;
+            var requestId = additionalData != null && additionalData.TryGetValue("request-id", out var reqIdVal) ? reqIdVal?.ToString() : null;
+            var date = additionalData != null && additionalData.TryGetValue("date", out var dateVal) ? dateVal?.ToString() : null;
+
             _logger.LogError(odataEx,
-                "Graph API error joining meeting {MeetingId}: {Code} - {Message}",
-                meetingId, odataEx.Error?.Code, odataEx.Error?.Message);
-            throw new InvalidOperationException(
-                $"Failed to join meeting: {odataEx.Error?.Code} - {odataEx.Error?.Message}", odataEx);
+                "Graph API error joining meeting {MeetingId}: Code={Code}, Message={Message}, " +
+                "InnerCode={InnerCode}, InnerMessage={InnerMessage}, RequestId={RequestId}, Date={Date}",
+                meetingId, errorCode, errorMessage, innerCode, innerMessage, requestId, date);
+
+            // Log the full error details for debugging
+            if (odataEx.Error?.InnerError?.AdditionalData != null)
+            {
+                foreach (var kvp in odataEx.Error.InnerError.AdditionalData)
+                {
+                    _logger.LogError("  Graph error detail: {Key} = {Value}", kvp.Key, kvp.Value);
+                }
+            }
+
+            // Build a more descriptive error message
+            var detailedMessage = $"Failed to join meeting: {errorCode} - {errorMessage}";
+            if (!string.IsNullOrEmpty(innerCode) || !string.IsNullOrEmpty(innerMessage))
+            {
+                detailedMessage += $" (Inner: {innerCode} - {innerMessage})";
+            }
+            if (!string.IsNullOrEmpty(requestId))
+            {
+                detailedMessage += $" [RequestId: {requestId}]";
+            }
+
+            throw new InvalidOperationException(detailedMessage, odataEx);
         }
         catch (Exception ex)
         {
@@ -313,11 +384,10 @@ public class GraphCallService : IGraphCallService, IDisposable
             _activeCalls[meetingId] = callId;
             _callIdToMeetingId[callId] = meetingId;
 
-            // Store the AudioSocket for this call - it must remain alive!
+            // Register AudioSocket with event handlers for audio reception
             if (audioSocket != null)
             {
-                _audioSockets[callId] = audioSocket;
-                _logger.LogInformation("Stored AudioSocket for call {CallId} - socket will remain alive", callId);
+                RegisterAudioSocket(callId, audioSocket);
             }
 
             _logger.LogInformation(
@@ -602,6 +672,242 @@ public class GraphCallService : IGraphCallService, IDisposable
         {
             _logger.LogError(ex, "Failed to parse meeting URL: {Url}", joinUrl);
             throw new ArgumentException($"Invalid meeting join URL: {joinUrl}", nameof(joinUrl), ex);
+        }
+    }
+
+    /// <summary>
+    /// Look up the meeting organizer's AAD Object ID via Graph API.
+    /// Uses the onlineMeetings endpoint with a filter on joinWebUrl.
+    /// </summary>
+    /// <param name="joinUrl">The Teams meeting join URL</param>
+    /// <param name="threadId">The meeting thread ID (as fallback for chat lookup)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The organizer's AAD Object ID, or null if not found</returns>
+    private async Task<string?> LookupMeetingOrganizerAsync(
+        string joinUrl,
+        string threadId,
+        CancellationToken cancellationToken)
+    {
+        if (_graphClient == null)
+        {
+            _logger.LogWarning("Graph client not available for meeting organizer lookup");
+            return null;
+        }
+
+        try
+        {
+            // Method 1: Try to look up via onlineMeetings endpoint with joinWebUrl filter
+            // This requires OnlineMeetings.Read.All permission
+            _logger.LogInformation("Looking up meeting organizer via onlineMeetings API...");
+
+            // URL-encode the join URL for the filter query
+            var encodedUrl = Uri.EscapeDataString(joinUrl);
+
+            try
+            {
+                // Use the /communications/onlineMeetings endpoint with filter
+                // Note: This may require different permissions or not work for all meeting types
+                var meetings = await _graphClient.Communications.OnlineMeetings
+                    .GetAsync(config =>
+                    {
+                        config.QueryParameters.Filter = $"joinWebUrl eq '{joinUrl}'";
+                        config.QueryParameters.Select = new[] { "id", "subject", "participants" };
+                    }, cancellationToken);
+
+                if (meetings?.Value?.Count > 0)
+                {
+                    var meeting = meetings.Value[0];
+                    var organizerId = meeting.Participants?.Organizer?.Identity?.User?.Id;
+
+                    if (!string.IsNullOrEmpty(organizerId))
+                    {
+                        _logger.LogInformation(
+                            "Found organizer via onlineMeetings API: {OrganizerId} (meeting: {Subject})",
+                            organizerId, meeting.Subject);
+                        return organizerId;
+                    }
+                }
+
+                _logger.LogInformation("No meeting found via onlineMeetings API filter");
+            }
+            catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
+            {
+                _logger.LogWarning(
+                    "OnlineMeetings API lookup failed (may lack permission): {Code} - {Message}",
+                    odataEx.Error?.Code, odataEx.Error?.Message);
+            }
+
+            // Method 2: Try to look up via resource account calendar events
+            // This requires Calendars.Read permission (which we have)
+            var resourceAccountUserId = _configuration["ResourceAccount:UserId"];
+            if (!string.IsNullOrEmpty(resourceAccountUserId) && !string.IsNullOrEmpty(threadId))
+            {
+                _logger.LogInformation("Attempting calendar lookup for thread: {ThreadId}", threadId);
+
+                try
+                {
+                    var now = DateTime.UtcNow;
+                    var windowStart = now.AddHours(-2);  // Look back 2 hours
+                    var windowEnd = now.AddHours(24);    // Look ahead 24 hours
+
+                    var calendarView = await _graphClient.Users[resourceAccountUserId].Calendar.CalendarView
+                        .GetAsync(config =>
+                        {
+                            config.QueryParameters.StartDateTime = windowStart.ToString("o");
+                            config.QueryParameters.EndDateTime = windowEnd.ToString("o");
+                            config.QueryParameters.Select = new[]
+                            {
+                                "id", "subject", "start", "end", "isOnlineMeeting",
+                                "onlineMeeting", "onlineMeetingUrl"
+                            };
+                        }, cancellationToken);
+
+                    var events = calendarView?.Value ?? new List<Event>();
+                    _logger.LogInformation("Found {Count} calendar events to search for matching meeting", events.Count);
+
+                    // Find the event that matches our thread ID
+                    foreach (var evt in events)
+                    {
+                        if (evt.IsOnlineMeeting != true) continue;
+
+                        var calendarJoinUrl = evt.OnlineMeeting?.JoinUrl ?? evt.OnlineMeetingUrl;
+                        if (string.IsNullOrEmpty(calendarJoinUrl)) continue;
+
+                        // Check if this join URL contains our thread ID
+                        // The thread ID is URL-encoded in the join URL
+                        var urlEncodedThreadId = System.Web.HttpUtility.UrlEncode(threadId);
+                        if (calendarJoinUrl.Contains(threadId) || calendarJoinUrl.Contains(urlEncodedThreadId))
+                        {
+                            _logger.LogInformation(
+                                "Found matching calendar event: {Subject} with join URL: {Url}",
+                                evt.Subject, calendarJoinUrl);
+
+                            // Parse the calendar's join URL to get the organizer ID
+                            var calendarJoinInfo = ParseMeetingJoinUrl(calendarJoinUrl);
+                            if (!string.IsNullOrEmpty(calendarJoinInfo.OrganizerId))
+                            {
+                                _logger.LogInformation(
+                                    "Found organizer ID from calendar event: {OrganizerId}",
+                                    calendarJoinInfo.OrganizerId);
+                                return calendarJoinInfo.OrganizerId;
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Calendar join URL doesn't contain organizer ID (Oid)");
+                            }
+                        }
+                    }
+
+                    _logger.LogInformation("No matching calendar event found for thread: {ThreadId}", threadId);
+                }
+                catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
+                {
+                    _logger.LogWarning(
+                        "Calendar lookup failed: {Code} - {Message}",
+                        odataEx.Error?.Code, odataEx.Error?.Message);
+                }
+            }
+            else
+            {
+                _logger.LogDebug("Calendar lookup skipped: ResourceAccount:UserId not configured or no thread ID");
+            }
+
+            // Method 3: Try to look up via chat if we have a thread ID
+            // This requires Chat.Read permission
+            if (!string.IsNullOrEmpty(threadId) && threadId.Contains("@thread"))
+            {
+                _logger.LogInformation("Attempting chat lookup for thread: {ThreadId}", threadId);
+
+                try
+                {
+                    var chat = await _graphClient.Chats[threadId]
+                        .GetAsync(config =>
+                        {
+                            config.QueryParameters.Select = new[] { "id", "onlineMeetingInfo" };
+                        }, cancellationToken);
+
+                    // The chat's OnlineMeetingInfo might contain the organizer
+                    if (chat?.OnlineMeetingInfo != null)
+                    {
+                        _logger.LogInformation("Found chat with onlineMeetingInfo, but organizer ID extraction not available via this method");
+                        // Note: OnlineMeetingInfo on Chat doesn't directly expose organizer ID
+                        // But it confirms we have the right meeting
+                    }
+                }
+                catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
+                {
+                    _logger.LogWarning(
+                        "Chat lookup failed (may lack permission): {Code} - {Message}",
+                        odataEx.Error?.Code, odataEx.Error?.Message);
+                }
+            }
+
+            // Method 4: For ad-hoc calls not in any calendar, try using the bot's app ID as fallback
+            // This is a last resort for group calls where someone added Pennie directly
+            // The bot's service principal has Calls.JoinGroupCall.All permission
+            if (!string.IsNullOrEmpty(_appId))
+            {
+                _logger.LogWarning(
+                    "Could not find organizer via calendar or API lookups. " +
+                    "Trying bot app ID as fallback organizer (for ad-hoc calls): {AppId}", _appId);
+                return _appId;
+            }
+
+            _logger.LogWarning(
+                "Could not determine organizer ID via Graph API and no fallback available. " +
+                "Ensure ResourceAccount:UserId is configured or the meeting is accessible.");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error looking up meeting organizer via Graph API");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Create a meeting token from the join URL for use with TokenMeetingInfo.
+    /// According to Microsoft's graph-comms-samples, the token uses URL-safe Base64 encoding.
+    /// HttpServerUtility.UrlTokenEncode is equivalent to Base64Url with a trailing digit for padding count.
+    /// See: https://github.com/microsoftgraph/microsoft-graph-comms-samples
+    /// NOTE: This method is kept for backwards compatibility but TokenMeetingInfo is not recommended.
+    /// Use OrganizerMeetingInfo with ChatInfo instead.
+    /// </summary>
+    private string CreateMeetingToken(string joinUrl)
+    {
+        try
+        {
+            // URL-safe Base64 encoding as used in Microsoft's samples:
+            // 1. Convert to bytes
+            // 2. Base64 encode
+            // 3. Replace + with -, / with _
+            // 4. Remove trailing = padding and append a digit indicating count of removed padding
+            var bytes = System.Text.Encoding.UTF8.GetBytes(joinUrl);
+            var base64 = Convert.ToBase64String(bytes);
+
+            // Count and remove padding
+            var paddingCount = 0;
+            while (base64.EndsWith("="))
+            {
+                base64 = base64.Substring(0, base64.Length - 1);
+                paddingCount++;
+            }
+
+            // Replace URL-unsafe characters
+            var urlSafeBase64 = base64.Replace('+', '-').Replace('/', '_');
+
+            // Append padding count digit (as UrlTokenEncode does)
+            var token = urlSafeBase64 + paddingCount.ToString();
+
+            _logger.LogInformation("Created meeting token from URL: {TokenLength} chars (URL-safe Base64)", token.Length);
+            _logger.LogDebug("Meeting token (URL-safe Base64): {Token}", token);
+
+            return token;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create meeting token from URL: {Url}", joinUrl);
+            throw;
         }
     }
 

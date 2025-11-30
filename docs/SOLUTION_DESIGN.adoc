@@ -519,11 +519,68 @@ MeetingTranscriber Output:
 ** `Calls.AccessMedia.All`
 ** `Calls.JoinGroupCall.All`
 ** `OnlineMeetings.ReadWrite.All`
+** `Calendars.Read` (for resource account calendar monitoring)
 
 **Bot Framework Registration**:
 
 * Messaging endpoint: `https://<vm-public-ip>/api/messages`
 * App ID and secret stored in Key Vault
+
+
+=== Resource Account for Meeting Invites
+
+**Purpose**: Allow users to invite Pennie to meetings like a regular colleague by adding `pennie@knowall.ai` as an attendee.
+
+**How It Works**:
+
+1. Create a Microsoft 365 Resource Account linked to the bot's App ID
+2. Users invite `pennie@knowall.ai` when scheduling meetings
+3. Bot monitors the resource account's calendar via Graph API
+4. When meetings start, bot automatically joins
+
+**Setup Script**: `./scripts/setup-resource-account.sh`
+
+[source,bash]
+----
+# Create resource account for Pennie
+./scripts/setup-resource-account.sh pennie@knowall.ai
+----
+
+**Manual Setup (M365 Admin Center)**:
+
+1. Go to https://admin.microsoft.com
+2. Navigate to **Teams & Groups** → **Resource accounts**
+3. Click **Add**
+4. Configure:
+** Display name: `Pennie the Prepper`
+** Username: `pennie` (domain: `knowall.ai`)
+** Resource account type: Auto attendant
+5. Assign **Microsoft Teams Phone Resource Account** license (free)
+6. Link to Bot App ID: `9707c142-2583-4e56-9983-4d913338afb0`
+
+**Required Graph Permissions**:
+
+* `Calendars.Read` - Read resource account calendar
+* `OnlineMeetings.ReadWrite.All` - Join meetings
+
+**Configuration** (appsettings.json):
+
+[source,json]
+----
+{
+  "ResourceAccount": {
+    "Email": "pennie@knowall.ai",
+    "UserId": "<object-id-from-m365-admin>"
+  }
+}
+----
+
+**User Experience**:
+
+* Schedule meeting in Outlook/Teams
+* Add `pennie@knowall.ai` as attendee
+* Pennie joins automatically when meeting starts
+* No manual steps required during the meeting
 
 
 == Security & Compliance

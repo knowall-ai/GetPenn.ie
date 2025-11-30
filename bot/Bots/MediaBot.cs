@@ -46,6 +46,9 @@ public class MediaBot : ActivityHandler
         var text = turnContext.Activity.Text?.ToLowerInvariant() ?? "";
         _logger.LogInformation("Received message: {Text}", turnContext.Activity.Text);
 
+        // Log channel data for debugging meeting context
+        LogChannelDataForDebugging(turnContext);
+
         // Check for project-related queries
         if (text.Contains("what projects") || text.Contains("devops projects") ||
             text.Contains("list projects") || text.Contains("show projects"))
@@ -54,7 +57,15 @@ public class MediaBot : ActivityHandler
             return;
         }
 
-        // Check for join meeting command
+        // Check for simple join commands (like "join", "come join", "join us")
+        // These can auto-join if we're in a meeting context
+        if (IsSimpleJoinCommand(text))
+        {
+            await HandleSimpleJoinCommandAsync(turnContext, cancellationToken);
+            return;
+        }
+
+        // Check for join meeting command with ID/passcode
         if (text.Contains("join meeting") || text.Contains("join my meeting"))
         {
             await HandleJoinMeetingRequestAsync(turnContext, turnContext.Activity.Text ?? "", cancellationToken);
@@ -538,5 +549,243 @@ public class MediaBot : ActivityHandler
         {
             _logger.LogError(ex, "Error processing transcript for meeting {MeetingId}", result.MeetingId);
         }
+    }
+
+    /// <summary>
+    /// Check if the text is a simple join command (without explicit meeting ID).
+    /// </summary>
+    private static bool IsSimpleJoinCommand(string text)
+    {
+        // Remove bot mention from text for cleaner matching
+        var cleanText = System.Text.RegularExpressions.Regex.Replace(text, @"<at>.*?</at>", "").Trim();
+
+        // Check for simple join patterns
+        var joinPatterns = new[]
+        {
+            "join",
+            "come join",
+            "join us",
+            "join the meeting",
+            "join the call",
+            "join this meeting",
+            "join this call",
+            "please join",
+            "can you join"
+        };
+
+        foreach (var pattern in joinPatterns)
+        {
+            if (cleanText.Contains(pattern))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Handle a simple join command by detecting meeting context and auto-joining.
+    /// </summary>
+    private async Task HandleSimpleJoinCommandAsync(
+        ITurnContext turnContext,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Processing simple join command");
+
+        // Try to extract meeting context from channel data
+        var meetingContext = ExtractMeetingContext(turnContext);
+
+        if (meetingContext == null)
+        {
+            _logger.LogInformation("No meeting context found - asking user for meeting details");
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text("I'd love to join, but I can't detect the meeting context from here.\n\n" +
+                                   "To join a meeting, please provide the meeting details like:\n" +
+                                   "\"Join meeting ID: 396 240 783 591 15 passcode: tj3HN9jw\"\n\n" +
+                                   "Or add me as a participant through the meeting's People panel."),
+                cancellationToken);
+            return;
+        }
+
+        _logger.LogInformation("Meeting context found: {MeetingId}, JoinUrl: {JoinUrl}",
+            meetingContext.MeetingId, meetingContext.JoinUrl ?? "(not available)");
+
+        await turnContext.SendActivityAsync(
+            MessageFactory.Text("I detected this meeting! Let me join..."),
+            cancellationToken);
+
+        // Try to join the meeting
+        try
+        {
+            var internalMeetingId = $"meeting_{Guid.NewGuid():N}";
+            var conversationId = turnContext.Activity.Conversation.Id;
+
+            // Store the mapping
+            if (!_conversationToMeetingMap.TryAdd(conversationId, internalMeetingId))
+            {
+                await turnContext.SendActivityAsync(
+                    MessageFactory.Text("I'm already in this meeting!"),
+                    cancellationToken);
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(meetingContext.JoinUrl))
+            {
+                // Join via URL
+                await _callService.JoinMeetingAsync(
+                    meetingContext.JoinUrl,
+                    internalMeetingId,
+                    async audioData => await OnAudioReceivedAsync(internalMeetingId, audioData),
+                    cancellationToken);
+            }
+            else if (!string.IsNullOrEmpty(meetingContext.MeetingId))
+            {
+                // Join via meeting ID (need passcode too, but may not have it)
+                await turnContext.SendActivityAsync(
+                    MessageFactory.Text($"I found the meeting ID ({meetingContext.MeetingId}), but I need the passcode to join.\n" +
+                                       "Please say: \"Join meeting ID: {meetingId} passcode: xxx\""),
+                    cancellationToken);
+                _conversationToMeetingMap.TryRemove(conversationId, out _);
+                return;
+            }
+            else
+            {
+                await turnContext.SendActivityAsync(
+                    MessageFactory.Text("I can see we're in a meeting, but I couldn't find a way to join.\n" +
+                                       "Please add me as a participant through the meeting's People panel."),
+                    cancellationToken);
+                _conversationToMeetingMap.TryRemove(conversationId, out _);
+                return;
+            }
+
+            // Start transcription after successfully joining
+            await _speechService.StartTranscriptionAsync(
+                internalMeetingId,
+                async result => await OnTranscriptReceivedAsync(result, turnContext),
+                cancellationToken);
+
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text("I've joined the meeting! I'm now listening and will transcribe the conversation."),
+                cancellationToken);
+        }
+        catch (NotImplementedException)
+        {
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text("Meeting join is not available. This feature requires the bot to be running on Windows Server."),
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to join meeting from simple command");
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text($"Failed to join the meeting: {ex.Message}"),
+                cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Extract meeting context from Teams channel data.
+    /// </summary>
+    private MeetingContext? ExtractMeetingContext(ITurnContext turnContext)
+    {
+        try
+        {
+            var channelData = turnContext.Activity.ChannelData;
+            if (channelData == null)
+            {
+                return null;
+            }
+
+            var channelDataJson = JsonSerializer.Serialize(channelData);
+            _logger.LogDebug("Extracting meeting context from: {ChannelData}", channelDataJson);
+
+            using var doc = JsonDocument.Parse(channelDataJson);
+            var root = doc.RootElement;
+
+            var context = new MeetingContext();
+
+            // Check for meeting object (contains meeting info when in a meeting)
+            if (root.TryGetProperty("meeting", out var meeting))
+            {
+                if (meeting.TryGetProperty("id", out var meetingIdProp))
+                {
+                    context.MeetingId = meetingIdProp.GetString();
+                }
+                if (meeting.TryGetProperty("joinUrl", out var joinUrlProp))
+                {
+                    context.JoinUrl = joinUrlProp.GetString();
+                }
+            }
+
+            // Check for meetingInfo (alternative location)
+            if (root.TryGetProperty("meetingInfo", out var meetingInfo))
+            {
+                if (meetingInfo.TryGetProperty("id", out var meetingIdProp))
+                {
+                    context.MeetingId ??= meetingIdProp.GetString();
+                }
+            }
+
+            // Check conversation type - meeting chats have specific types
+            if (root.TryGetProperty("channel", out var channel))
+            {
+                if (channel.TryGetProperty("id", out var channelIdProp))
+                {
+                    context.ChannelId = channelIdProp.GetString();
+                }
+            }
+
+            // If we have any meeting info, return the context
+            if (!string.IsNullOrEmpty(context.MeetingId) || !string.IsNullOrEmpty(context.JoinUrl))
+            {
+                return context;
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error extracting meeting context");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Log channel data for debugging purposes.
+    /// </summary>
+    private void LogChannelDataForDebugging(ITurnContext turnContext)
+    {
+        try
+        {
+            var channelData = turnContext.Activity.ChannelData;
+            if (channelData == null)
+            {
+                _logger.LogDebug("No channel data available");
+                return;
+            }
+
+            var channelDataJson = JsonSerializer.Serialize(channelData, new JsonSerializerOptions { WriteIndented = false });
+            _logger.LogInformation("Channel data: {ChannelData}", channelDataJson);
+
+            // Also log conversation info
+            var conversation = turnContext.Activity.Conversation;
+            _logger.LogInformation("Conversation: Id={Id}, Type={Type}, IsGroup={IsGroup}",
+                conversation?.Id, conversation?.ConversationType, conversation?.IsGroup);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error logging channel data");
+        }
+    }
+
+    /// <summary>
+    /// Helper class to hold meeting context information.
+    /// </summary>
+    private class MeetingContext
+    {
+        public string? MeetingId { get; set; }
+        public string? JoinUrl { get; set; }
+        public string? ChannelId { get; set; }
     }
 }
