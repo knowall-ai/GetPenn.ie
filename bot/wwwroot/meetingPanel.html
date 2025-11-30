@@ -132,6 +132,16 @@
         .action-btn.secondary:hover {
             background: var(--border-color);
         }
+        .action-btn.danger {
+            background: var(--error-color);
+            color: white;
+        }
+        .action-btn.danger:hover {
+            background: #b71c1c;
+        }
+        body.dark-theme .action-btn.danger:hover {
+            background: #ff1744;
+        }
         .info-box {
             background: var(--bg-info);
             border-radius: 6px;
@@ -268,9 +278,6 @@
             </button>
         </div>
 
-        <button id="leaveBtn" class="action-btn secondary" style="display: none;">
-            Request Pennie to Leave
-        </button>
 
         <div id="joinError" class="error-text" style="display: none;"></div>
 
@@ -293,7 +300,6 @@
         const statusIndicator = document.getElementById('statusIndicator');
         const statusText = document.getElementById('statusText');
         const joinBtn = document.getElementById('joinBtn');
-        const leaveBtn = document.getElementById('leaveBtn');
         const logEl = document.getElementById('log');
         const configDisplay = document.getElementById('configDisplay');
         const noConfigWarning = document.getElementById('noConfigWarning');
@@ -303,6 +309,7 @@
         let meetingContext = null;
         let isJoined = false;
         let joinUrl = null;  // Will be populated by getMeetingDetailsVerbose()
+        let currentMeetingId = null;  // Track the internal meeting ID for leave
 
         // Read configuration from URL parameters (set by config page)
         const urlParams = new URLSearchParams(window.location.search);
@@ -453,8 +460,46 @@
             }
         }
 
-        // One-click join using joinUrl from getMeetingDetailsVerbose()
+        // One-click join/leave toggle using joinUrl from getMeetingDetailsVerbose()
         joinBtn.addEventListener('click', async () => {
+            // If already joined, handle leave
+            if (isJoined) {
+                joinBtn.disabled = true;
+                joinBtn.textContent = 'Leaving...';
+                log('Requesting Pennie to leave...');
+                updateStatus('idle', 'Leaving...');
+
+                try {
+                    const response = await fetch('/api/meeting/leave', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            meetingId: currentMeetingId || meetingContext?.meeting?.id || 'unknown'
+                        })
+                    });
+
+                    if (response.ok) {
+                        isJoined = false;
+                        currentMeetingId = null;
+                        log('Pennie left the meeting');
+                        updateStatus('idle', 'Click to add Pennie');
+                        joinBtn.textContent = 'Add Pennie to Meeting';
+                        joinBtn.classList.remove('danger');
+                        joinBtn.classList.add('primary');
+                    } else {
+                        log('Leave request failed');
+                        joinBtn.textContent = 'Remove Pennie from Meeting';
+                    }
+                } catch (error) {
+                    log('Leave request failed: ' + error.message);
+                    joinBtn.textContent = 'Remove Pennie from Meeting';
+                } finally {
+                    joinBtn.disabled = false;
+                }
+                return;
+            }
+
+            // Handle join
             if (!joinUrl) {
                 joinError.textContent = 'No meeting URL available. Please use manual entry.';
                 joinError.style.display = 'block';
@@ -489,10 +534,13 @@
 
                 if (response.ok && result.success) {
                     isJoined = true;
+                    currentMeetingId = result.internalMeetingId;
                     log('Pennie joined the meeting');
                     updateStatus('listening', 'Listening to meeting');
-                    joinBtn.style.display = 'none';
-                    leaveBtn.style.display = 'block';
+                    joinBtn.textContent = 'Remove Pennie from Meeting';
+                    joinBtn.classList.remove('primary');
+                    joinBtn.classList.add('danger');
+                    joinBtn.disabled = false;
                 } else {
                     const errorMsg = result.error || 'Unknown error';
                     log('Join failed: ' + errorMsg);
@@ -507,7 +555,11 @@
                 updateStatus('idle', 'Request failed');
             } finally {
                 joinBtn.disabled = false;
-                joinBtn.textContent = 'Add Pennie to Meeting';
+                if (!isJoined) {
+                    joinBtn.textContent = 'Add Pennie to Meeting';
+                    joinBtn.classList.remove('danger');
+                    joinBtn.classList.add('primary');
+                }
             }
         });
 
@@ -550,10 +602,16 @@
 
                 if (response.ok && result.success) {
                     isJoined = true;
+                    currentMeetingId = result.internalMeetingId;
                     log('Pennie joined the meeting');
                     updateStatus('listening', 'Listening to meeting');
+                    // Hide manual entry form and show toggle button
                     manualEntryForm.style.display = 'none';
-                    leaveBtn.style.display = 'block';
+                    joinBtn.style.display = 'block';
+                    joinBtn.textContent = 'Remove Pennie from Meeting';
+                    joinBtn.classList.remove('primary');
+                    joinBtn.classList.add('danger');
+                    joinBtn.disabled = false;
                 } else {
                     const errorMsg = result.error || 'Unknown error';
                     log('Join failed: ' + errorMsg);
@@ -569,43 +627,6 @@
             } finally {
                 joinByIdBtn.disabled = false;
                 joinByIdBtn.textContent = 'Join with Meeting Number';
-            }
-        });
-
-        leaveBtn.addEventListener('click', async () => {
-            leaveBtn.disabled = true;
-            log('Requesting Pennie to leave...');
-
-            try {
-                const response = await fetch('/api/meeting/leave', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        meetingId: meetingContext?.meeting?.id || 'unknown'
-                    })
-                });
-
-                if (response.ok) {
-                    isJoined = false;
-                    log('Pennie left the meeting');
-                    leaveBtn.style.display = 'none';
-
-                    // Show appropriate join method
-                    if (joinUrl) {
-                        joinBtn.style.display = 'block';
-                        joinBtn.disabled = false;
-                        updateStatus('idle', 'Click to add Pennie');
-                    } else {
-                        manualEntryForm.style.display = 'block';
-                        updateStatus('idle', 'Enter meeting number to join');
-                    }
-                } else {
-                    log('Leave failed');
-                    leaveBtn.disabled = false;
-                }
-            } catch (error) {
-                log('Request failed: ' + error.message);
-                leaveBtn.disabled = false;
             }
         });
 

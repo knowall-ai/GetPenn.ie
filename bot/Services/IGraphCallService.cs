@@ -70,4 +70,12 @@ public interface IGraphCallService
     /// </summary>
     /// <param name="notificationBody">Raw JSON notification body</param>
     Task ProcessMediaNotificationAsync(string notificationBody);
+
+    /// <summary>
+    /// Send a message to the meeting chat.
+    /// </summary>
+    /// <param name="threadId">The chat thread ID (e.g., 19:meeting_xxx@thread.v2)</param>
+    /// <param name="message">The message text to send</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task SendChatMessageAsync(string threadId, string message, CancellationToken cancellationToken = default);
 }

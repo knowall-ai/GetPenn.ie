@@ -270,6 +270,15 @@ public class GraphCallService : IGraphCallService, IDisposable
             _logger.LogInformation(
                 "Successfully joined meeting {MeetingId} with call ID {CallId}. State: {State}",
                 meetingId, callId, createdCall.State);
+
+            // Send a chat message to announce Pennie has joined
+            if (!string.IsNullOrEmpty(joinInfo.ThreadId))
+            {
+                await SendChatMessageAsync(
+                    joinInfo.ThreadId,
+                    "Hi! I'm Pennie the Prepper. I'm now listening to this meeting and will help capture requirements for your Azure DevOps backlog.",
+                    cancellationToken);
+            }
         }
         catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
         {
@@ -393,6 +402,20 @@ public class GraphCallService : IGraphCallService, IDisposable
             _logger.LogInformation(
                 "Successfully joined meeting by ID {MeetingNumber} with call ID {CallId}. State: {State}",
                 meetingIdNumber, callId, createdCall.State);
+
+            // Send a chat message to announce Pennie has joined (if we can get the thread ID from the response)
+            var threadId = createdCall.ChatInfo?.ThreadId;
+            if (!string.IsNullOrEmpty(threadId))
+            {
+                await SendChatMessageAsync(
+                    threadId,
+                    "Hi! I'm Pennie the Prepper. I'm now listening to this meeting and will help capture requirements for your Azure DevOps backlog.",
+                    cancellationToken);
+            }
+            else
+            {
+                _logger.LogInformation("No thread ID in call response - skipping chat notification");
+            }
         }
         catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
         {
@@ -600,6 +623,56 @@ public class GraphCallService : IGraphCallService, IDisposable
         {
             _logger.LogError(ex, "Error processing media notification");
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Send a message to the meeting chat.
+    /// Uses the Microsoft Graph API POST /chats/{chatId}/messages endpoint.
+    /// </summary>
+    public async Task SendChatMessageAsync(string threadId, string message, CancellationToken cancellationToken = default)
+    {
+        if (_graphClient == null)
+        {
+            _logger.LogWarning("Cannot send chat message: Graph client not initialized");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(threadId))
+        {
+            _logger.LogWarning("Cannot send chat message: Thread ID is empty");
+            return;
+        }
+
+        try
+        {
+            _logger.LogInformation("Sending chat message to thread {ThreadId}", threadId);
+
+            var chatMessage = new ChatMessage
+            {
+                Body = new ItemBody
+                {
+                    ContentType = BodyType.Text,
+                    Content = message
+                }
+            };
+
+            await _graphClient.Chats[threadId].Messages
+                .PostAsync(chatMessage, cancellationToken: cancellationToken);
+
+            _logger.LogInformation("Successfully sent chat message to meeting");
+        }
+        catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
+        {
+            // Log but don't throw - chat message is optional, don't fail the meeting join
+            _logger.LogWarning(
+                "Failed to send chat message (Graph error): {Code} - {Message}",
+                odataEx.Error?.Code, odataEx.Error?.Message);
+        }
+        catch (Exception ex)
+        {
+            // Log but don't throw - chat message is optional
+            _logger.LogWarning(ex, "Failed to send chat message to thread {ThreadId}", threadId);
         }
     }
 
