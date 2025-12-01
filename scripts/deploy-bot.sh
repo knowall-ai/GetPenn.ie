@@ -119,16 +119,17 @@ echo ""
 echo "🔐 Configuring Key Vault in appsettings.json..."
 APPSETTINGS="$PUBLISH_DIR/appsettings.json"
 
-# Cross-platform JSON update (works without jq)
-# Check if AZURE_KEY_VAULT_NAME already exists in the file
+# Cross-platform JSON update using portable cp/sed/mv pattern
+# Note: sed -i behaves differently on macOS vs Linux, so we use temp file approach
+APPSETTINGS_TMP="$APPSETTINGS.tmp"
 if grep -q '"AZURE_KEY_VAULT_NAME"' "$APPSETTINGS"; then
     # Update existing key
-    sed -i.bak "s|\"AZURE_KEY_VAULT_NAME\":.*|\"AZURE_KEY_VAULT_NAME\": \"$AZURE_KEY_VAULT_NAME\",|" "$APPSETTINGS"
+    sed "s|\"AZURE_KEY_VAULT_NAME\":.*|\"AZURE_KEY_VAULT_NAME\": \"$AZURE_KEY_VAULT_NAME\",|" "$APPSETTINGS" > "$APPSETTINGS_TMP"
 else
     # Add key after opening brace (insert as first property)
-    sed -i.bak "s|^{|{\n  \"AZURE_KEY_VAULT_NAME\": \"$AZURE_KEY_VAULT_NAME\",|" "$APPSETTINGS"
+    sed "s|^{|{\n  \"AZURE_KEY_VAULT_NAME\": \"$AZURE_KEY_VAULT_NAME\",|" "$APPSETTINGS" > "$APPSETTINGS_TMP"
 fi
-rm -f "$APPSETTINGS.bak"
+mv "$APPSETTINGS_TMP" "$APPSETTINGS"
 
 echo "✅ Key Vault configured: $AZURE_KEY_VAULT_NAME"
 echo "   Bot will load MicrosoftAppId and MicrosoftAppPassword from Key Vault at startup"

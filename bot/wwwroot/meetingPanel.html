@@ -822,11 +822,13 @@
         let lastTranscriptIndex = 0;
 
         // Session storage keys for state persistence across pane switches
-        const STORAGE_KEY_TRANSCRIPTS = 'pennie_transcripts';
-        const STORAGE_KEY_LAST_INDEX = 'pennie_lastTranscriptIndex';
-        const STORAGE_KEY_MEETING_ID = 'pennie_currentMeetingId';
-        const STORAGE_KEY_TEAMS_MEETING_ID = 'pennie_teamsMeetingId';  // Teams SDK meeting ID for cross-meeting check
-        const STORAGE_KEY_IS_JOINED = 'pennie_isJoined';
+        // Using unique namespace to prevent collision with other Teams apps
+        const STORAGE_PREFIX = 'com.knowall.pennie.';
+        const STORAGE_KEY_TRANSCRIPTS = STORAGE_PREFIX + 'transcripts';
+        const STORAGE_KEY_LAST_INDEX = STORAGE_PREFIX + 'lastTranscriptIndex';
+        const STORAGE_KEY_MEETING_ID = STORAGE_PREFIX + 'currentMeetingId';
+        const STORAGE_KEY_TEAMS_MEETING_ID = STORAGE_PREFIX + 'teamsMeetingId';  // Teams SDK meeting ID for cross-meeting check
+        const STORAGE_KEY_IS_JOINED = STORAGE_PREFIX + 'isJoined';
 
         // Validate transcript object has expected string properties (XSS protection)
         function isValidTranscript(t) {
@@ -974,6 +976,16 @@
             sessionStorage.removeItem(STORAGE_KEY_IS_JOINED);
         }
 
+        // Lightweight function to save just the transcript index (performance optimization)
+        // Called frequently during polling - avoids redundant full saveState() calls
+        function saveTranscriptIndex() {
+            try {
+                sessionStorage.setItem(STORAGE_KEY_LAST_INDEX, lastTranscriptIndex.toString());
+            } catch (error) {
+                console.warn('Failed to save transcript index:', error);
+            }
+        }
+
         function startTranscriptPolling() {
             if (transcriptPollInterval) return;
             if (!currentMeetingId) return;
@@ -1005,8 +1017,8 @@
                     });
 
                     lastTranscriptIndex = data.lastIndex;
-                    // Save updated index for persistence
-                    saveState();
+                    // Save updated index only (lightweight, not full state)
+                    saveTranscriptIndex();
                 }
             } catch (error) {
                 console.error('Error polling transcripts:', error);
@@ -1046,15 +1058,21 @@
             sessionStorage.setItem(STORAGE_KEY_LAST_INDEX, '0');
         }
 
-        // Save state and optionally leave meeting when app is unloaded (panel switch or close)
-        window.addEventListener('beforeunload', () => {
-            // Always try to save state for panel switch recovery
-            console.log('beforeunload - saving state:', { isJoined, currentMeetingId });
-            saveState();
+        // Handle visibility changes - fetch new transcripts when tab becomes visible
+        // This catches transcripts received while the panel was hidden
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && isJoined && currentMeetingId) {
+                console.log('Tab became visible - polling for new transcripts');
+                pollTranscripts();
+            }
+        });
 
-            // Only send leave beacon if actually leaving (closing tab/removing app)
-            // Note: Panel switches also trigger beforeunload, so we DON'T auto-leave
-            // The user must click "Remove Pennie from Meeting" to make her leave
+        // Save state when app is unloaded (panel switch or close)
+        // Note: beforeunload is unreliable - state is proactively saved via saveTranscript()
+        // This is a redundant safeguard, not the primary mechanism
+        window.addEventListener('beforeunload', () => {
+            console.log('beforeunload - saving state (redundant safeguard):', { isJoined, currentMeetingId });
+            saveState();
         });
 
         init();
