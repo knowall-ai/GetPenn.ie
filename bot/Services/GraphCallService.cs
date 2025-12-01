@@ -585,29 +585,82 @@ public class GraphCallService : IGraphCallService, IDisposable
                             "Notification for meeting {MeetingId}, call {CallId}",
                             meetingId, callId);
 
-                        // Check for state changes
-                        if (notification.TryGetProperty("resourceData", out var resourceData)
-                            && resourceData.TryGetProperty("state", out var state)
-                            && state.GetString() == "terminated")
+                        // Check for resourceData and handle both Object and Array types
+                        if (notification.TryGetProperty("resourceData", out var resourceData))
                         {
-                            var callState = state.GetString();
-                            _logger.LogInformation("Call state changed to: {State}", callState);
+                            // Log the resourceData type for debugging
+                            _logger.LogDebug(
+                                "ResourceData type: {Type} for changeType: {ChangeType}, resource: {Resource}",
+                                resourceData.ValueKind, changeType, resourceUrl);
 
-                            // Log termination reason if available (critical for diagnostics)
-                            if (resourceData.TryGetProperty("resultInfo", out var resultInfo))
+                            // Handle different resourceData types
+                            if (resourceData.ValueKind == JsonValueKind.Object)
                             {
-                                var code = resultInfo.TryGetProperty("code", out var c) ? c.GetInt32() : 0;
-                                var subCode = resultInfo.TryGetProperty("subcode", out var sc) ? sc.GetInt32() : 0;
-                                var message = resultInfo.TryGetProperty("message", out var m) ? m.GetString() : "unknown";
-                                _logger.LogWarning("Call result info - Code: {Code}, SubCode: {SubCode}, Message: {Message}",
-                                    code, subCode, message);
-                            }
+                                // Object format: typically for call state changes
+                                if (resourceData.TryGetProperty("state", out var state)
+                                    && state.GetString() == "terminated")
+                                {
+                                    var callState = state.GetString();
+                                    _logger.LogInformation("Call state changed to: {State}", callState);
 
-                            // Handle terminated state
-                            _logger.LogInformation("Call {CallId} terminated, cleaning up", callId);
-                            _activeCalls.TryRemove(meetingId, out _);
-                            _callIdToMeetingId.TryRemove(callId, out _);
-                            _audioCallbacks.TryRemove(meetingId, out _);
+                                    // Log termination reason if available (critical for diagnostics)
+                                    if (resourceData.TryGetProperty("resultInfo", out var resultInfo))
+                                    {
+                                        var code = resultInfo.TryGetProperty("code", out var c) ? c.GetInt32() : 0;
+                                        var subCode = resultInfo.TryGetProperty("subcode", out var sc) ? sc.GetInt32() : 0;
+                                        var message = resultInfo.TryGetProperty("message", out var m) ? m.GetString() : "unknown";
+                                        _logger.LogWarning("Call result info - Code: {Code}, SubCode: {SubCode}, Message: {Message}",
+                                            code, subCode, message);
+                                    }
+
+                                    // Handle terminated state
+                                    _logger.LogInformation("Call {CallId} terminated, cleaning up", callId);
+                                    _activeCalls.TryRemove(meetingId, out _);
+                                    _callIdToMeetingId.TryRemove(callId, out _);
+                                    _audioCallbacks.TryRemove(meetingId, out _);
+                                }
+                            }
+                            else if (resourceData.ValueKind == JsonValueKind.Array)
+                            {
+                                // Array format: typically for participant updates
+                                _logger.LogInformation(
+                                    "Received participant notification (array) with {Count} items for call {CallId}",
+                                    resourceData.GetArrayLength(), callId);
+
+                                // Log the first few items for debugging (avoid flooding logs)
+                                var itemCount = 0;
+                                foreach (var item in resourceData.EnumerateArray())
+                                {
+                                    if (itemCount < 3)
+                                    {
+                                        _logger.LogDebug(
+                                            "Participant item {Index}: Type={Type}",
+                                            itemCount, item.ValueKind);
+                                    }
+                                    itemCount++;
+                                }
+
+                                // Trigger participant refresh to update MSI-to-name mappings
+                                // This is non-blocking and will happen in the background
+                                _ = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        await RefreshParticipantsAsync(callId);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogWarning(ex, "Error refreshing participants after notification");
+                                    }
+                                });
+                            }
+                            else
+                            {
+                                // Unexpected format - log it for debugging
+                                _logger.LogWarning(
+                                    "Unexpected resourceData format: {Type} for changeType: {ChangeType}, resource: {Resource}",
+                                    resourceData.ValueKind, changeType, resourceUrl);
+                            }
                         }
                     }
                 }
