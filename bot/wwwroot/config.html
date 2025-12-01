@@ -222,11 +222,13 @@
                     epicSelect.innerHTML = '<option value="">None (no parent epic)</option>';
                     if (data.workItems && data.workItems.length > 0) {
                         data.workItems.forEach(epic => {
+                            const id = epic.id || 0;
+                            if (!id) return; // Skip invalid items
                             const option = document.createElement('option');
-                            option.value = epic.id;
+                            option.value = id;
                             // Title is nested under fields["System.Title"] in Azure DevOps API response
                             const title = epic.fields && epic.fields["System.Title"] ? epic.fields["System.Title"] : "Untitled";
-                            option.textContent = `#${epic.id}: ${title}`;
+                            option.textContent = `#${id}: ${title}`;
                             option.dataset.title = title;
                             epicSelect.appendChild(option);
                         });
