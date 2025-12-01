@@ -267,10 +267,20 @@ public class MediaBot : ActivityHandler
     private static string? ExtractMeetingId(string text)
     {
         // Pattern 1: "id:" or "id :" followed by digits and spaces
+        var regexTimeout = TimeSpan.FromMilliseconds(100);
         var idPattern = new System.Text.RegularExpressions.Regex(
             @"id\s*:?\s*([\d\s]+)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        var match = idPattern.Match(text);
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+            regexTimeout);
+        System.Text.RegularExpressions.Match match;
+        try
+        {
+            match = idPattern.Match(text);
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            return null; // Input too complex, reject
+        }
         if (match.Success)
         {
             var id = match.Groups[1].Value.Trim();
@@ -288,12 +298,22 @@ public class MediaBot : ActivityHandler
             }
         }
 
-        // Pattern 2: Look for a sequence of numbers that could be a meeting ID (10+ digits)
-        var numberPattern = new System.Text.RegularExpressions.Regex(@"(\d[\d\s]{9,})");
-        match = numberPattern.Match(text);
-        if (match.Success)
+        // Pattern 2: Look for a sequence of numbers that could be a meeting ID (10-30 digits)
+        var numberPattern = new System.Text.RegularExpressions.Regex(
+            @"(\d[\d\s]{9,30})",
+            System.Text.RegularExpressions.RegexOptions.None,
+            regexTimeout);
+        try
         {
-            return match.Groups[1].Value.Trim();
+            match = numberPattern.Match(text);
+            if (match.Success)
+            {
+                return match.Groups[1].Value.Trim();
+            }
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            return null; // Input too complex, reject
         }
 
         return null;
@@ -720,9 +740,9 @@ public class MediaBot : ActivityHandler
 
             // Check for meetingInfo (alternative location)
             if (root.TryGetProperty("meetingInfo", out var meetingInfo) &&
-                meetingInfo.TryGetProperty("id", out var meetingIdProp))
+                meetingInfo.TryGetProperty("id", out var meetingInfoIdProp))
             {
-                context.MeetingId ??= meetingIdProp.GetString();
+                context.MeetingId ??= meetingInfoIdProp.GetString();
             }
 
             // Check conversation type - meeting chats have specific types

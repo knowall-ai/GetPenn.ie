@@ -36,10 +36,8 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
         else
         {
             _logger.LogInformation(
-                "STARTUP: Speech config loaded - Region={Region}, KeyLength={KeyLength}, KeyPrefix={KeyPrefix}",
-                speechRegion,
-                speechKey.Length,
-                speechKey.Length >= 4 ? speechKey.Substring(0, 4) + "..." : "(short)");
+                "STARTUP: Speech config loaded - Region={Region}, KeyConfigured=true",
+                speechRegion);
         }
     }
 
@@ -49,70 +47,55 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
         Func<TranscriptionResult, Task> transcriptionCallback,
         CancellationToken cancellationToken = default)
     {
+        // Input validation
+        if (string.IsNullOrWhiteSpace(meetingId))
+        {
+            throw new ArgumentException("Meeting ID cannot be null or empty", nameof(meetingId));
+        }
+        if (transcriptionCallback == null)
+        {
+            throw new ArgumentNullException(nameof(transcriptionCallback));
+        }
+
         try
         {
-            _logger.LogWarning("DIAG-1: Entered StartTranscriptionAsync for {MeetingId}", meetingId);
+            _logger.LogInformation("Starting transcription for meeting {MeetingId}", meetingId);
 
             // Create Speech configuration (uses dashes for Key Vault compatibility)
             var speechKey = _configuration["AZURE-SPEECH-KEY"]
                 ?? throw new InvalidOperationException("AZURE-SPEECH-KEY not configured");
             var speechRegion = _configuration["AZURE-LOCATION"] ?? "uksouth";
 
-            // Log key info for debugging (first 4 chars only for security)
-            _logger.LogInformation(
-                "Using Speech Services in region {Region}, key length={KeyLength}, starts with={KeyPrefix}",
-                speechRegion,
-                speechKey.Length,
-                speechKey.Length >= 4 ? speechKey.Substring(0, 4) + "..." : "(short)");
+            // Get speech language from configuration, default to en-GB for UK users
+            var speechLanguage = _configuration["SpeechRecognitionLanguage"] ?? "en-GB";
 
-            _logger.LogWarning("DIAG-2: Creating SpeechConfig for region {Region}", speechRegion);
-            SpeechConfig config;
-            try
-            {
-                config = SpeechConfig.FromSubscription(speechKey, speechRegion);
-                _logger.LogWarning("DIAG-3: SpeechConfig created successfully");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "DIAG-ERR: SpeechConfig.FromSubscription failed. Key length={KeyLength}, Region={Region}",
-                    speechKey.Length, speechRegion);
-                throw;
-            }
-            config.SpeechRecognitionLanguage = "en-GB"; // British English for UK users
+            _logger.LogDebug("Creating SpeechConfig for region {Region}, language {Language}", speechRegion, speechLanguage);
+            var config = SpeechConfig.FromSubscription(speechKey, speechRegion);
+            config.SpeechRecognitionLanguage = speechLanguage;
 
             // Enable detailed results for confidence scores
             config.SetProperty(PropertyId.SpeechServiceResponse_RequestWordLevelTimestamps, "true");
             config.OutputFormat = OutputFormat.Detailed;
 
-            // Create push audio stream for Teams audio
-            // Teams sends 16kHz, 16-bit, mono PCM audio
-            _logger.LogWarning("DIAG-4: Creating PushAudioInputStream (16kHz, 16-bit, mono)");
+            // Create push audio stream for Teams audio (16kHz, 16-bit, mono PCM)
             var audioFormat = AudioStreamFormat.GetWaveFormatPCM(16000, 16, 1);
             var audioStream = AudioInputStream.CreatePushStream(audioFormat);
             _audioStreams[meetingId] = (PushAudioInputStream)audioStream;
-            _logger.LogWarning("DIAG-5: PushAudioInputStream created and stored for {MeetingId}", meetingId);
 
             var audioConfig = AudioConfig.FromStreamInput(audioStream);
-            _logger.LogWarning("DIAG-6: AudioConfig created from stream input");
 
             // Use SpeechRecognizer for continuous recognition
             // This is simpler than ConversationTranscriber since we get unmixed audio per participant
-            _logger.LogWarning("DIAG-7: Creating SpeechRecognizer for meeting {MeetingId}...", meetingId);
             var recognizer = new SpeechRecognizer(config, audioConfig);
-            _logger.LogWarning("DIAG-8: SpeechRecognizer CREATED for meeting {MeetingId}", meetingId);
 
-            // Subscribe to recognition events - log each subscription
-            _logger.LogWarning("DIAG-9: Subscribing to Speech SDK events for meeting {MeetingId}...", meetingId);
-
+            // Subscribe to recognition events
             recognizer.Recognizing += (s, e) =>
             {
-                _logger.LogWarning("DIAG-EVENT-RECOGNIZING: Text={Text}", e.Result.Text ?? "(empty)");
+                _logger.LogDebug("Recognizing: {Text}", e.Result.Text ?? "(empty)");
             };
 
             recognizer.Recognized += async (s, e) =>
             {
-                _logger.LogWarning("DIAG-EVENT-RECOGNIZED: Reason={Reason} Text={Text}",
-                    e.Result.Reason, e.Result.Text ?? "(empty)");
                 if (e.Result.Reason == ResultReason.RecognizedSpeech && !string.IsNullOrEmpty(e.Result.Text))
                 {
                     // Extract confidence score from detailed results
@@ -177,34 +160,39 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
 
             recognizer.Canceled += (s, e) =>
             {
-                _logger.LogWarning(
-                    "DIAG-EVENT-CANCELED: Reason={Reason}, ErrorCode={ErrorCode}, ErrorDetails={ErrorDetails}",
-                    e.Reason, e.ErrorCode, e.ErrorDetails ?? "(none)");
+                if (e.Reason == CancellationReason.Error)
+                {
+                    _logger.LogError(
+                        "Speech recognition canceled with error: Code={ErrorCode}, Details={ErrorDetails}",
+                        e.ErrorCode, e.ErrorDetails ?? "(none)");
+                }
+                else
+                {
+                    _logger.LogDebug("Speech recognition canceled: Reason={Reason}", e.Reason);
+                }
             };
 
             recognizer.SessionStarted += (s, e) =>
             {
-                _logger.LogWarning("DIAG-EVENT-SESSION-STARTED: SessionId={SessionId} for meeting {MeetingId}",
-                    e.SessionId, meetingId);
+                _logger.LogInformation("Speech session started for meeting {MeetingId}, SessionId={SessionId}",
+                    meetingId, e.SessionId);
             };
 
             recognizer.SessionStopped += (s, e) =>
             {
-                _logger.LogWarning("DIAG-EVENT-SESSION-STOPPED: SessionId={SessionId} for meeting {MeetingId}",
-                    e.SessionId, meetingId);
+                _logger.LogInformation("Speech session stopped for meeting {MeetingId}, SessionId={SessionId}",
+                    meetingId, e.SessionId);
             };
 
             recognizer.SpeechStartDetected += (s, e) =>
             {
-                _logger.LogWarning("DIAG-EVENT-SPEECH-START: Offset={Offset}", e.Offset);
+                _logger.LogDebug("Speech start detected at offset {Offset}", e.Offset);
             };
 
             recognizer.SpeechEndDetected += (s, e) =>
             {
-                _logger.LogWarning("DIAG-EVENT-SPEECH-END: Offset={Offset}", e.Offset);
+                _logger.LogDebug("Speech end detected at offset {Offset}", e.Offset);
             };
-
-            _logger.LogWarning("DIAG-10: All Speech SDK events subscribed for meeting {MeetingId}", meetingId);
 
             // Initialize transcript list for this meeting
             lock (_lock)
@@ -214,22 +202,10 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
 
             // Store recognizer for later stop
             _recognizers[meetingId] = recognizer;
-            _logger.LogWarning("DIAG-11: Recognizer stored for {MeetingId}", meetingId);
 
             // Start continuous recognition
-            _logger.LogWarning("DIAG-12: Calling StartContinuousRecognitionAsync for meeting {MeetingId}...", meetingId);
-            try
-            {
-                await recognizer.StartContinuousRecognitionAsync();
-                _logger.LogWarning("DIAG-13: StartContinuousRecognitionAsync COMPLETED for meeting {MeetingId}", meetingId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "DIAG-ERR: StartContinuousRecognitionAsync FAILED for meeting {MeetingId}: {Message}", meetingId, ex.Message);
-                throw;
-            }
-
-            _logger.LogWarning("DIAG-14: Transcription started successfully for meeting {MeetingId}", meetingId);
+            await recognizer.StartContinuousRecognitionAsync();
+            _logger.LogInformation("Transcription started successfully for meeting {MeetingId}", meetingId);
         }
         catch (Exception ex)
         {
@@ -241,21 +217,58 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
     /// <inheritdoc/>
     public async Task StopTranscriptionAsync(string meetingId)
     {
+        // Input validation
+        if (string.IsNullOrWhiteSpace(meetingId))
+        {
+            throw new ArgumentException("Meeting ID cannot be null or empty", nameof(meetingId));
+        }
+
         try
         {
             _logger.LogInformation("Stopping transcription for meeting {MeetingId}", meetingId);
 
+            // Stop and dispose recognizer
             if (_recognizers.TryGetValue(meetingId, out var recognizer))
             {
-                await recognizer.StopContinuousRecognitionAsync();
-                recognizer.Dispose();
-                _recognizers.Remove(meetingId);
+                try
+                {
+                    await recognizer.StopContinuousRecognitionAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error stopping continuous recognition for meeting {MeetingId}", meetingId);
+                }
+                finally
+                {
+                    recognizer.Dispose();
+                    _recognizers.Remove(meetingId);
+                }
             }
 
+            // Close and dispose audio stream
             if (_audioStreams.TryGetValue(meetingId, out var audioStream))
             {
-                audioStream.Close();
-                _audioStreams.Remove(meetingId);
+                try
+                {
+                    audioStream.Close();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error closing audio stream for meeting {MeetingId}", meetingId);
+                }
+                finally
+                {
+                    _audioStreams.Remove(meetingId);
+                }
+            }
+
+            // Clean up tracking dictionaries
+            lock (_lock)
+            {
+                _transcripts.Remove(meetingId);
+                _currentSpeakers.Remove(meetingId);
+                _audioBytesWritten.Remove(meetingId);
+                _lastAudioLogTime.Remove(meetingId);
             }
 
             _logger.LogInformation("Transcription stopped for meeting {MeetingId}", meetingId);
