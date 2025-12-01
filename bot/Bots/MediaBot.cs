@@ -19,6 +19,7 @@ public class MediaBot : ActivityHandler
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ConcurrentDictionary<string, string> _conversationToMeetingMap = new(); // conversation ID -> meeting ID
+    private readonly SemaphoreSlim _joinMeetingSemaphore = new(1, 1); // Prevents race condition in meeting join
 
     public MediaBot(
         ILogger<MediaBot> logger,
@@ -292,7 +293,7 @@ public class MediaBot : ActivityHandler
             }
             // Remove any non-digit/space chars at the end
             id = System.Text.RegularExpressions.Regex.Replace(id, @"[^\d\s]+$", "").Trim();
-            if (!string.IsNullOrEmpty(id))
+            if (IsValidMeetingIdFormat(id))
             {
                 return id;
             }
@@ -308,7 +309,11 @@ public class MediaBot : ActivityHandler
             match = numberPattern.Match(text);
             if (match.Success)
             {
-                return match.Groups[1].Value.Trim();
+                var id = match.Groups[1].Value.Trim();
+                if (IsValidMeetingIdFormat(id))
+                {
+                    return id;
+                }
             }
         }
         catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
@@ -317,6 +322,29 @@ public class MediaBot : ActivityHandler
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Validate that a meeting ID has the correct format (10-15 digits when spaces are removed).
+    /// </summary>
+    private static bool IsValidMeetingIdFormat(string? meetingId)
+    {
+        if (string.IsNullOrWhiteSpace(meetingId))
+        {
+            return false;
+        }
+
+        // Remove spaces and validate digit count
+        var digitsOnly = meetingId.Replace(" ", "");
+
+        // Teams meeting IDs are typically 10-15 digits
+        if (digitsOnly.Length < 10 || digitsOnly.Length > 15)
+        {
+            return false;
+        }
+
+        // Ensure all characters are digits
+        return digitsOnly.All(char.IsDigit);
     }
 
     /// <summary>
@@ -439,6 +467,8 @@ public class MediaBot : ActivityHandler
         ITurnContext turnContext,
         CancellationToken cancellationToken)
     {
+        // Use semaphore to prevent race condition when multiple events trigger join simultaneously
+        await _joinMeetingSemaphore.WaitAsync(cancellationToken);
         try
         {
             // Extract meeting information from channel data
@@ -523,13 +553,23 @@ public class MediaBot : ActivityHandler
         }
         catch (NotImplementedException)
         {
-            // Expected when running outside Windows VM
+            // Expected when running outside Windows VM - notify user
             _logger.LogWarning("Meeting audio join not available - Graph Communications SDK requires Windows Server deployment");
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text("I'm unable to capture meeting audio. This feature requires the bot to be running on Windows Server with Graph Communications SDK."),
+                cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to join meeting for audio capture");
-            // Don't throw - bot should continue to work for chat even if audio fails
+            // Notify user of audio join failure - don't throw so bot continues for chat
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text("I wasn't able to join for audio capture, but I can still chat! To try again, say \"join\"."),
+                cancellationToken);
+        }
+        finally
+        {
+            _joinMeetingSemaphore.Release();
         }
     }
 

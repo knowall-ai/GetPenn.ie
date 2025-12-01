@@ -235,6 +235,14 @@ Start-Process -FilePath vc_redist.x64.exe -ArgumentList "/install", "/quiet", "/
 * Handles multiple speakers with distinct attribution
 * Outputs structured transcript with timestamps and speaker labels
 
+**Audio Requirements**:
+
+* **Microphone volume**: Must be adequate (RMS > 100 in audio analysis logs)
+* RMS ~15-50 = near silence (will not produce transcription)
+* RMS ~100-300 = normal speech (good transcription)
+* RMS >500 = loud speech
+* Ensure microphone is not muted and correct device is selected in Teams
+
 **Limitations**:
 
 * When speakers overlap (talk simultaneously), audio is clubbed as single speaker

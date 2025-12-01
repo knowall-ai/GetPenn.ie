@@ -82,6 +82,9 @@
 | **Speech transcription receives zero-filled audio buffers (all zeros)**
 | With `ReceiveUnmixedMeetingAudio = true`, audio data is in `buffer.UnmixedAudioBuffers`, NOT in `buffer.Data`. The `buffer.Data` property is empty/zeros when using unmixed mode. **Root cause**: Code was reading `buffer.Data` but unmixed per-speaker audio is delivered in `buffer.UnmixedAudioBuffers` array. Each `UnmixedAudioBuffer` contains: `Data` (IntPtr), `Length` (Int64), `ActiveSpeakerId` (UInt32). **Fix**: Iterate through `buffer.UnmixedAudioBuffers` instead of reading `buffer.Data` directly: `foreach (var unmixedBuffer in buffer.UnmixedAudioBuffers) { var audioData = new byte[unmixedBuffer.Length]; Marshal.Copy(unmixedBuffer.Data, audioData, 0, (int)unmixedBuffer.Length); }`. **Diagnostic symptoms**: AUDIO-ANALYSIS logs show `LastRMS=0, MaxSample=0, NonZero=0/320` despite frames being received. Speech SDK `SessionStarted` fires but `SpeechStartDetected` never fires. **Reference**: https://microsoftgraph.github.io/microsoft-graph-comms-samples/docs/bot_media/Microsoft.Skype.Bots.Media.UnmixedAudioBuffer.html
 
+| **Audio receiving but no transcription output**
+| Audio packets forwarded to Speech Services but no transcription results returned. **Diagnostic**: Check AUDIO-ANALYSIS logs for RMS values: `LastRMS=15-50` indicates very quiet/silent audio. **Root cause**: Microphone volume too low or muted in Teams settings. Azure Speech Services requires adequate audio signal strength (RMS > 100) to detect speech. **Fix**: Increase microphone volume in Windows Sound Settings or Teams device settings. **RMS reference values**: RMS ~15-50 = near silence, RMS ~100-300 = normal speech, RMS >500 = loud speech. Also ensure: (1) correct microphone selected in Teams, (2) microphone not muted, (3) no background noise suppression reducing legitimate speech.
+
 |===
 
 == Current Status
