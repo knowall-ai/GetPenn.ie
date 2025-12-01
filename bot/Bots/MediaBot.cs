@@ -719,21 +719,17 @@ public class MediaBot : ActivityHandler
             }
 
             // Check for meetingInfo (alternative location)
-            if (root.TryGetProperty("meetingInfo", out var meetingInfo))
+            if (root.TryGetProperty("meetingInfo", out var meetingInfo) &&
+                meetingInfo.TryGetProperty("id", out var meetingIdProp))
             {
-                if (meetingInfo.TryGetProperty("id", out var meetingIdProp))
-                {
-                    context.MeetingId ??= meetingIdProp.GetString();
-                }
+                context.MeetingId ??= meetingIdProp.GetString();
             }
 
             // Check conversation type - meeting chats have specific types
-            if (root.TryGetProperty("channel", out var channel))
+            if (root.TryGetProperty("channel", out var channel) &&
+                channel.TryGetProperty("id", out var channelIdProp))
             {
-                if (channel.TryGetProperty("id", out var channelIdProp))
-                {
-                    context.ChannelId = channelIdProp.GetString();
-                }
+                context.ChannelId = channelIdProp.GetString();
             }
 
             // If we have any meeting info, return the context
