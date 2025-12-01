@@ -107,7 +107,7 @@ public class MeetingController : ControllerBase
                             transcriptionResult.Timestamp.ToString("HH:mm:ss"),
                             transcriptionResult.Text);
 
-                        // TODO: Send transcription to Pennie AI agent for processing
+                        // TODO(#29): Send transcription to Pennie AI agent for processing
                         await Task.CompletedTask;
                     },
                     HttpContext.RequestAborted);
@@ -236,7 +236,7 @@ public class MeetingController : ControllerBase
                             transcriptionResult.Timestamp.ToString("HH:mm:ss"),
                             transcriptionResult.Text);
 
-                        // TODO: Send transcription to Pennie AI agent for processing
+                        // TODO(#29): Send transcription to Pennie AI agent for processing
                         await Task.CompletedTask;
                     },
                     HttpContext.RequestAborted);
