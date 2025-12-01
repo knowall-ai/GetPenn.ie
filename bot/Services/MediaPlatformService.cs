@@ -216,12 +216,28 @@ public class MediaPlatformService : IMediaPlatformService
                 return;
             }
 
-            // Extract audio data from the buffer
-            if (buffer.Data != IntPtr.Zero && buffer.Length > 0)
+            // With ReceiveUnmixedMeetingAudio=true, audio is in UnmixedAudioBuffers (per-speaker)
+            // buffer.Data is empty/zeros in unmixed mode
+            var unmixedBuffers = buffer.UnmixedAudioBuffers;
+
+            if (unmixedBuffers != null && unmixedBuffers.Length > 0)
+            {
+                // Process each speaker's audio separately
+                foreach (var unmixedBuffer in unmixedBuffers)
+                {
+                    if (unmixedBuffer.Length > 0)
+                    {
+                        var audioData = new byte[unmixedBuffer.Length];
+                        Marshal.Copy(unmixedBuffer.Data, audioData, 0, (int)unmixedBuffer.Length);
+                        await callback(audioData);
+                    }
+                }
+            }
+            // Fallback: try mixed buffer if no unmixed buffers
+            else if (buffer.Data != IntPtr.Zero && buffer.Length > 0)
             {
                 var audioData = new byte[buffer.Length];
                 Marshal.Copy(buffer.Data, audioData, 0, (int)buffer.Length);
-
                 await callback(audioData);
             }
         }

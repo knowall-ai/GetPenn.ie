@@ -79,6 +79,9 @@
 | **Pennie app not found when searching in meeting Apps panel**
 | When searching "pennie" in the meeting Apps panel, it shows "No results found". **Fix**: Click **"Get more apps"** button at the bottom of the search results - this opens the full app catalog where Pennie will be visible. The built-in search only shows a subset of installed apps. Alternatively, pre-pin Pennie to the meeting before it starts via the meeting details page.
 
+| **Speech transcription receives zero-filled audio buffers (all zeros)**
+| With `ReceiveUnmixedMeetingAudio = true`, audio data is in `buffer.UnmixedAudioBuffers`, NOT in `buffer.Data`. The `buffer.Data` property is empty/zeros when using unmixed mode. **Root cause**: Code was reading `buffer.Data` but unmixed per-speaker audio is delivered in `buffer.UnmixedAudioBuffers` array. Each `UnmixedAudioBuffer` contains: `Data` (IntPtr), `Length` (Int64), `ActiveSpeakerId` (UInt32). **Fix**: Iterate through `buffer.UnmixedAudioBuffers` instead of reading `buffer.Data` directly: `foreach (var unmixedBuffer in buffer.UnmixedAudioBuffers) { var audioData = new byte[unmixedBuffer.Length]; Marshal.Copy(unmixedBuffer.Data, audioData, 0, (int)unmixedBuffer.Length); }`. **Diagnostic symptoms**: AUDIO-ANALYSIS logs show `LastRMS=0, MaxSample=0, NonZero=0/320` despite frames being received. Speech SDK `SessionStarted` fires but `SpeechStartDetected` never fires. **Reference**: https://microsoftgraph.github.io/microsoft-graph-comms-samples/docs/bot_media/Microsoft.Skype.Bots.Media.UnmixedAudioBuffer.html
+
 |===
 
 == Current Status

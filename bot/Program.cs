@@ -48,10 +48,6 @@ builder.Services.AddSingleton<ISpeechTranscriptionService, SpeechTranscriptionSe
 // Online Meeting Service - looks up meeting join URLs from Teams SDK meeting IDs
 builder.Services.AddSingleton<IOnlineMeetingService, OnlineMeetingService>();
 
-// Calendar Monitoring - monitors resource account calendar and auto-joins meetings
-builder.Services.AddSingleton<ICalendarMonitoringService, CalendarMonitoringService>();
-builder.Services.AddHostedService(sp => (CalendarMonitoringService)sp.GetRequiredService<ICalendarMonitoringService>());
-
 // Only register PennieAgentClient if AI Foundry is configured
 // This is optional - the bot can still handle simple queries via HTTP client
 var aiFoundryEndpoint = builder.Configuration["AZURE_AI_FOUNDRY_ENDPOINT"];

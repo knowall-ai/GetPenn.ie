@@ -961,6 +961,17 @@ Expected secrets:
 * **Bot Integration**: 100% deployed with Key Vault integration
 * **Overall MVP**: 100% complete
 
+=== Recent Deployments
+
+**November 30, 2025** - Bot v20251130144502:
+
+* Fixed malformed JavaScript in meetingPanel.html
+* Added SendChatMessageAsync method to IGraphCallService interface
+* Implemented SendChatMessageAsync in GraphCallService.cs using Graph API
+* Added chat notification when Pennie joins meetings (sends "Hi! I'm Pennie the Prepper..." message)
+* Deployment Status: ✅ Successful (Service Running, Health Check Passed)
+* Deployed to: https://172.166.237.134/
+
 === Next Steps
 
 1. **Test in Teams**: Send "What projects do we have in DevOps?" to the bot
@@ -1257,6 +1268,36 @@ If automation fails, deploy components manually:
 6. Enable system-assigned managed identity
 7. Configure networking with public IP
 8. After creation, install dependencies via RDP
+
+== Deployment History
+
+=== 2025-11-30 - Thread ID Logging Improvements
+
+**Version**: 20251130151730
+
+**Changes**:
+* Enhanced chat message logging to show both URL-based and Graph response-based thread IDs
+* Added fallback logic to use Graph response thread ID if URL parsing fails
+* Added warning log when no thread ID is available for troubleshooting
+* Improved observability for Teams meeting chat integration
+
+**Deployment Method**: `./scripts/deploy-bot.sh`
+
+**Status**: Successfully deployed and running
+* Health check: PASSED (https://172.166.237.134/health)
+* Service status: Running
+* Bot responding correctly to Teams messages
+
+**Modified Files**:
+* `bot/Controllers/MeetingController.cs` - Thread ID logging enhancements
+* `bot/Services/GraphCallService.cs` - Improved fallback logic
+
+**Verification Steps**:
+1. Service restarted successfully
+2. Health endpoint responding
+3. Root endpoint serving bot info page
+4. Calendar monitoring service active
+5. Graph Communications SDK initialized
 
 == Support
 

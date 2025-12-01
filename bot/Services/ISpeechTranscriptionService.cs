@@ -28,6 +28,23 @@ public interface ISpeechTranscriptionService
     /// <param name="meetingId">Meeting identifier</param>
     /// <param name="audioData">Raw audio bytes (16kHz, mono, 16-bit PCM)</param>
     Task ProcessAudioAsync(string meetingId, byte[] audioData);
+
+    /// <summary>
+    /// Get transcripts for a meeting since a specific index.
+    /// </summary>
+    /// <param name="meetingId">Meeting identifier</param>
+    /// <param name="sinceIndex">Return transcripts after this index (0 for all)</param>
+    /// <returns>List of transcription results with their indices</returns>
+    IReadOnlyList<IndexedTranscriptionResult> GetTranscripts(string meetingId, int sinceIndex = 0);
+}
+
+/// <summary>
+/// Transcription result with index for polling.
+/// </summary>
+public class IndexedTranscriptionResult
+{
+    public int Index { get; set; }
+    public TranscriptionResult Result { get; set; } = new();
 }
 
 /// <summary>

@@ -66,7 +66,7 @@
             color: var(--text-primary);
         }
         .container {
-            max-width: 300px;
+            width: 100%;
             margin: 0 auto;
         }
         h3 {
@@ -100,9 +100,6 @@
             color: var(--text-secondary);
             font-size: 14px;
             line-height: 1.5;
-        }
-        #statusText {
-            margin: 0 0 8px 0;
         }
         .action-btn {
             width: 100%;
@@ -237,14 +234,91 @@
             background: #3d2800;
             color: var(--warning-color);
         }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 12px;
+        }
+        .tab {
+            padding: 8px 16px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            color: var(--text-secondary);
+            font-size: 13px;
+            border-bottom: 2px solid transparent;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .tab:hover {
+            color: var(--text-primary);
+        }
+        .tab.active {
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .transcript-container {
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            padding: 8px;
+            height: 300px;
+            overflow-y: auto;
+        }
+        .transcript-entry {
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .transcript-entry:last-child {
+            border-bottom: none;
+        }
+        .transcript-speaker {
+            font-weight: 600;
+            color: var(--accent-color);
+            font-size: 12px;
+        }
+        .transcript-time {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-left: 8px;
+        }
+        .transcript-text {
+            margin-top: 2px;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .transcript-empty {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 40px 20px;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <p id="statusText"><span class="status-indicator" id="statusIndicator"></span> Initializing...</p>
+        <div class="info-box">
+            <strong>Pennie will:</strong><br>
+            - Listen to the meeting audio<br>
+            - Identify who's speaking<br>
+            - Create DevOps work items<br>
+            - Post summaries to chat
+        </div>
 
-        <!-- Configuration display (project/epic from config page) -->
-        <div id="configDisplay" class="config-display" style="display: none;">
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" data-tab="control">Control</button>
+            <button class="tab" data-tab="transcript">Transcript</button>
+        </div>
+
+        <!-- Control Tab -->
+        <div id="control-tab" class="tab-content active">
+            <!-- Configuration display (project/epic from config page) -->
+            <div id="configDisplay" class="config-display" style="display: none;">
             <div class="label">Azure DevOps Project</div>
             <div class="value" id="configProject">-</div>
             <div class="divider"></div>
@@ -281,24 +355,24 @@
 
         <div id="joinError" class="error-text" style="display: none;"></div>
 
-        <div class="info-box">
-            <strong>Pennie will:</strong><br>
-            - Listen to the meeting audio<br>
-            - Identify who's speaking<br>
-            - Create DevOps work items<br>
-            - Post summaries to chat
+            <div class="log" id="log">
+                <div class="log-entry">
+                    <span class="log-time">--:--</span> Waiting for meeting context...
+                </div>
+            </div>
         </div>
 
-        <div class="log" id="log">
-            <div class="log-entry">
-                <span class="log-time">--:--</span> Waiting for meeting context...
+        <!-- Transcript Tab -->
+        <div id="transcript-tab" class="tab-content">
+            <div id="transcriptContainer" class="transcript-container">
+                <div class="transcript-empty" id="transcriptEmpty">
+                    Pennie must be in the meeting to transcribe. Transcriptions will appear here when people speak.
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        const statusIndicator = document.getElementById('statusIndicator');
-        const statusText = document.getElementById('statusText');
         const joinBtn = document.getElementById('joinBtn');
         const logEl = document.getElementById('log');
         const configDisplay = document.getElementById('configDisplay');
@@ -332,9 +406,9 @@
             logEl.scrollTop = logEl.scrollHeight;
         }
 
+        // Status display removed - keeping function stub to avoid errors
         function updateStatus(state, text) {
-            statusIndicator.className = 'status-indicator ' + state;
-            statusText.textContent = text;
+            // No-op - status display removed
         }
 
         // Display configuration
@@ -411,6 +485,69 @@
             }
         }
 
+        // Auto-join meeting when panel opens
+        async function autoJoinMeeting() {
+            if (!joinUrl) {
+                log('No join URL available');
+                return;
+            }
+
+            if (!selectedProject) {
+                joinError.textContent = 'No project configured. Remove this tab and add Pennie again to select a project.';
+                joinError.style.display = 'block';
+                return;
+            }
+
+            joinError.style.display = 'none';
+            joinBtn.disabled = true;
+            joinBtn.textContent = 'Joining...';
+            log('Auto-joining meeting...');
+            updateStatus('idle', 'Joining...');
+
+            try {
+                const response = await fetch('/api/meeting/join', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        joinUrl: joinUrl,
+                        devOpsProject: selectedProject,
+                        devOpsEpicId: selectedEpic
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    isJoined = true;
+                    currentMeetingId = result.internalMeetingId;
+                    log('Pennie joined the meeting');
+                    updateStatus('listening', '');
+                    joinBtn.textContent = 'Remove Pennie from Meeting';
+                    joinBtn.classList.remove('primary');
+                    joinBtn.classList.add('danger');
+                    joinBtn.disabled = false;
+                    // Start transcript polling
+                    clearTranscripts();
+                    startTranscriptPolling();
+                } else {
+                    const errorMsg = result.error || 'Unknown error';
+                    log('Join failed: ' + errorMsg);
+                    joinError.textContent = errorMsg;
+                    joinError.style.display = 'block';
+                    updateStatus('idle', 'Join failed');
+                    joinBtn.textContent = 'Add Pennie to Meeting';
+                    joinBtn.disabled = false;
+                }
+            } catch (error) {
+                log('Request failed: ' + error.message);
+                joinError.textContent = 'Request failed: ' + error.message;
+                joinError.style.display = 'block';
+                updateStatus('idle', 'Request failed');
+                joinBtn.textContent = 'Add Pennie to Meeting';
+                joinBtn.disabled = false;
+            }
+        }
+
         async function init() {
             try {
                 await microsoftTeams.app.initialize();
@@ -438,10 +575,8 @@
                     joinUrl = await tryGetMeetingJoinUrl();
 
                     if (joinUrl) {
-                        // Success - enable one-click join
-                        updateStatus('idle', 'Click to add Pennie');
-                        joinBtn.disabled = false;
-                        joinBtn.textContent = 'Add Pennie to Meeting';
+                        // Auto-join the meeting
+                        await autoJoinMeeting();
                     } else {
                         // Fallback to manual entry
                         showManualEntryForm();
@@ -466,7 +601,9 @@
             if (isJoined) {
                 joinBtn.disabled = true;
                 joinBtn.textContent = 'Leaving...';
-                log('Requesting Pennie to leave...');
+                const meetingIdToLeave = currentMeetingId || 'unknown';
+                log('Requesting Pennie to leave meeting: ' + meetingIdToLeave);
+                console.log('Leave request - meetingId:', meetingIdToLeave);
                 updateStatus('idle', 'Leaving...');
 
                 try {
@@ -474,23 +611,32 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            meetingId: currentMeetingId || meetingContext?.meeting?.id || 'unknown'
+                            meetingId: meetingIdToLeave
                         })
                     });
 
-                    if (response.ok) {
+                    const result = await response.json();
+                    console.log('Leave response:', result);
+
+                    if (response.ok && result.success) {
                         isJoined = false;
                         currentMeetingId = null;
+                        stopTranscriptPolling();
                         log('Pennie left the meeting');
-                        updateStatus('idle', 'Click to add Pennie');
+                        if (!result.wasInMeeting) {
+                            log('(Meeting was already inactive)');
+                        }
+                        updateStatus('idle', 'Pennie left');
                         joinBtn.textContent = 'Add Pennie to Meeting';
                         joinBtn.classList.remove('danger');
                         joinBtn.classList.add('primary');
                     } else {
-                        log('Leave request failed');
+                        const errorMsg = result.error || 'Unknown error';
+                        log('Leave request failed: ' + errorMsg);
                         joinBtn.textContent = 'Remove Pennie from Meeting';
                     }
                 } catch (error) {
+                    console.error('Leave error:', error);
                     log('Leave request failed: ' + error.message);
                     joinBtn.textContent = 'Remove Pennie from Meeting';
                 } finally {
@@ -536,11 +682,14 @@
                     isJoined = true;
                     currentMeetingId = result.internalMeetingId;
                     log('Pennie joined the meeting');
-                    updateStatus('listening', 'Listening to meeting');
+                    updateStatus('listening', '');
                     joinBtn.textContent = 'Remove Pennie from Meeting';
                     joinBtn.classList.remove('primary');
                     joinBtn.classList.add('danger');
                     joinBtn.disabled = false;
+                    // Start transcript polling
+                    clearTranscripts();
+                    startTranscriptPolling();
                 } else {
                     const errorMsg = result.error || 'Unknown error';
                     log('Join failed: ' + errorMsg);
@@ -604,7 +753,7 @@
                     isJoined = true;
                     currentMeetingId = result.internalMeetingId;
                     log('Pennie joined the meeting');
-                    updateStatus('listening', 'Listening to meeting');
+                    updateStatus('listening', '');
                     // Hide manual entry form and show toggle button
                     manualEntryForm.style.display = 'none';
                     joinBtn.style.display = 'block';
@@ -612,6 +761,9 @@
                     joinBtn.classList.remove('primary');
                     joinBtn.classList.add('danger');
                     joinBtn.disabled = false;
+                    // Start transcript polling
+                    clearTranscripts();
+                    startTranscriptPolling();
                 } else {
                     const errorMsg = result.error || 'Unknown error';
                     log('Join failed: ' + errorMsg);
@@ -627,6 +779,103 @@
             } finally {
                 joinByIdBtn.disabled = false;
                 joinByIdBtn.textContent = 'Join with Meeting Number';
+            }
+        });
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Update tab buttons
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                // Update tab content
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                const targetId = tab.dataset.tab + '-tab';
+                document.getElementById(targetId).classList.add('active');
+
+                // Start polling transcripts when transcript tab is active
+                if (tab.dataset.tab === 'transcript' && isJoined) {
+                    startTranscriptPolling();
+                }
+            });
+        });
+
+        // Transcript polling
+        const transcriptContainer = document.getElementById('transcriptContainer');
+        const transcriptEmpty = document.getElementById('transcriptEmpty');
+        let transcriptPollInterval = null;
+        let lastTranscriptIndex = 0;
+
+        function startTranscriptPolling() {
+            if (transcriptPollInterval) return;
+            if (!currentMeetingId) return;
+
+            transcriptPollInterval = setInterval(pollTranscripts, 2000);
+            pollTranscripts(); // Immediate first poll
+        }
+
+        function stopTranscriptPolling() {
+            if (transcriptPollInterval) {
+                clearInterval(transcriptPollInterval);
+                transcriptPollInterval = null;
+            }
+        }
+
+        async function pollTranscripts() {
+            if (!currentMeetingId) return;
+
+            try {
+                const response = await fetch(`/api/meeting/transcripts?meetingId=${encodeURIComponent(currentMeetingId)}&sinceIndex=${lastTranscriptIndex}`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                if (data.success && data.transcripts && data.transcripts.length > 0) {
+                    transcriptEmpty.style.display = 'none';
+
+                    data.transcripts.forEach(t => {
+                        addTranscriptEntry(t.speaker, t.timestamp, t.text);
+                    });
+
+                    lastTranscriptIndex = data.lastIndex;
+                }
+            } catch (error) {
+                console.error('Error polling transcripts:', error);
+            }
+        }
+
+        function addTranscriptEntry(speaker, timestamp, text) {
+            const entry = document.createElement('div');
+            entry.className = 'transcript-entry';
+            entry.innerHTML = `
+                <span class="transcript-speaker">${escapeHtml(speaker)}</span>
+                <span class="transcript-time">${timestamp}</span>
+                <div class="transcript-text">${escapeHtml(text)}</div>
+            `;
+            transcriptContainer.appendChild(entry);
+            transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function clearTranscripts() {
+            transcriptContainer.innerHTML = '';
+            transcriptContainer.appendChild(transcriptEmpty);
+            transcriptEmpty.style.display = 'block';
+            lastTranscriptIndex = 0;
+        }
+
+        // Auto-leave meeting when app is removed/closed
+        window.addEventListener('beforeunload', () => {
+            if (isJoined && currentMeetingId) {
+                // Use GET endpoint for more reliable sendBeacon (POST with JSON can be unreliable)
+                const leaveUrl = `/api/meeting/leave?meetingId=${encodeURIComponent(currentMeetingId)}`;
+                navigator.sendBeacon(leaveUrl);
+                console.log('Sent leave beacon for meeting:', currentMeetingId);
             }
         });
 

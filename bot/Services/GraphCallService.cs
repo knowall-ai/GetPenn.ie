@@ -272,12 +272,25 @@ public class GraphCallService : IGraphCallService, IDisposable
                 meetingId, callId, createdCall.State);
 
             // Send a chat message to announce Pennie has joined
-            if (!string.IsNullOrEmpty(joinInfo.ThreadId))
+            // Try threadId from URL first, then fall back to Graph response
+            var threadId = !string.IsNullOrEmpty(joinInfo.ThreadId)
+                ? joinInfo.ThreadId
+                : createdCall.ChatInfo?.ThreadId;
+
+            _logger.LogInformation(
+                "Chat notification: URL ThreadId={UrlThreadId}, Graph ThreadId={GraphThreadId}, Using={FinalThreadId}",
+                joinInfo.ThreadId ?? "(empty)", createdCall.ChatInfo?.ThreadId ?? "(null)", threadId ?? "(none)");
+
+            if (!string.IsNullOrEmpty(threadId))
             {
                 await SendChatMessageAsync(
-                    joinInfo.ThreadId,
+                    threadId,
                     "Hi! I'm Pennie the Prepper. I'm now listening to this meeting and will help capture requirements for your Azure DevOps backlog.",
                     cancellationToken);
+            }
+            else
+            {
+                _logger.LogWarning("Cannot send chat notification: No thread ID available from URL or Graph response");
             }
         }
         catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
@@ -439,7 +452,8 @@ public class GraphCallService : IGraphCallService, IDisposable
     {
         try
         {
-            _logger.LogInformation("Leaving meeting {MeetingId}", meetingId);
+            _logger.LogInformation("Leaving meeting {MeetingId}. Active calls: {ActiveCalls}",
+                meetingId, string.Join(", ", _activeCalls.Keys));
 
             // Remove callbacks
             _audioCallbacks.TryRemove(meetingId, out _);
@@ -448,14 +462,24 @@ public class GraphCallService : IGraphCallService, IDisposable
             {
                 _callIdToMeetingId.TryRemove(callId, out _);
 
+                // Clean up audio socket
+                UnregisterAudioSocket(callId);
+
                 // Hang up the call via Graph API
                 if (_graphClient != null)
                 {
                     try
                     {
+                        _logger.LogInformation("Hanging up call {CallId} via Graph API...", callId);
                         await _graphClient.Communications.Calls[callId]
                             .DeleteAsync();
                         _logger.LogInformation("Successfully hung up call {CallId}", callId);
+                    }
+                    catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
+                    {
+                        _logger.LogWarning(
+                            "Graph API error hanging up call {CallId}: {Code} - {Message}",
+                            callId, odataEx.Error?.Code, odataEx.Error?.Message);
                     }
                     catch (Exception ex)
                     {
@@ -464,6 +488,12 @@ public class GraphCallService : IGraphCallService, IDisposable
                 }
 
                 _logger.LogInformation("Cleaned up call {CallId} for meeting {MeetingId}", callId, meetingId);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Meeting {MeetingId} not found in active calls. Cannot leave. Active meetings: {ActiveMeetings}",
+                    meetingId, string.Join(", ", _activeCalls.Keys));
             }
 
             await Task.CompletedTask;
@@ -1132,6 +1162,10 @@ public class GraphCallService : IGraphCallService, IDisposable
         _audioSockets[callId] = socket;
         _logger.LogInformation("Registered audio socket for call {CallId}", callId);
 
+        // Track audio frame count for logging
+        var frameCount = 0;
+        var lastLogTime = DateTime.UtcNow;
+
         // Subscribe to audio events
         socket.AudioMediaReceived += async (sender, args) =>
         {
@@ -1139,7 +1173,47 @@ public class GraphCallService : IGraphCallService, IDisposable
             {
                 // Extract audio data from the buffer
                 var buffer = args.Buffer;
-                if (buffer?.Data != null && buffer.Length > 0)
+                frameCount++;
+                var now = DateTime.UtcNow;
+
+                // With ReceiveUnmixedMeetingAudio=true, audio is in UnmixedAudioBuffers (per-speaker)
+                // buffer.Data is empty/zeros in unmixed mode
+                var unmixedBuffers = buffer.UnmixedAudioBuffers;
+
+                // Log audio reception every 5 seconds (avoid flooding logs at 50 fps)
+                if ((now - lastLogTime).TotalSeconds >= 5)
+                {
+                    _logger.LogInformation(
+                        "AUDIO: Received {FrameCount} frames in last 5s for call {CallId} (unmixed buffers: {UnmixedCount})",
+                        frameCount, callId, unmixedBuffers?.Length ?? 0);
+                    frameCount = 0;
+                    lastLogTime = now;
+                }
+
+                // Process unmixed audio buffers (one per active speaker)
+                if (unmixedBuffers != null && unmixedBuffers.Length > 0)
+                {
+                    foreach (var unmixedBuffer in unmixedBuffers)
+                    {
+                        if (unmixedBuffer.Length > 0)
+                        {
+                            var audioData = new byte[unmixedBuffer.Length];
+                            Marshal.Copy(unmixedBuffer.Data, audioData, 0, (int)unmixedBuffer.Length);
+
+                            // Log speaker info occasionally
+                            if ((now - lastLogTime).TotalSeconds < 0.1) // Only on first frame after log
+                            {
+                                _logger.LogDebug(
+                                    "UNMIXED-AUDIO: Speaker={SpeakerId}, Length={Length} for call {CallId}",
+                                    unmixedBuffer.ActiveSpeakerId, unmixedBuffer.Length, callId);
+                            }
+
+                            await HandleAudioFrameAsync(callId, audioData);
+                        }
+                    }
+                }
+                // Fallback: If no unmixed buffers, try the mixed buffer (shouldn't happen)
+                else if (buffer?.Data != null && buffer.Data != IntPtr.Zero && buffer.Length > 0)
                 {
                     var audioData = new byte[buffer.Length];
                     Marshal.Copy(buffer.Data, audioData, 0, (int)buffer.Length);

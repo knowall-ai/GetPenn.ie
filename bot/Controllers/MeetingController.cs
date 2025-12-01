@@ -13,15 +13,18 @@ public class MeetingController : ControllerBase
 {
     private readonly IGraphCallService _callService;
     private readonly IOnlineMeetingService _meetingService;
+    private readonly ISpeechTranscriptionService _transcriptionService;
     private readonly ILogger<MeetingController> _logger;
 
     public MeetingController(
         IGraphCallService callService,
         IOnlineMeetingService meetingService,
+        ISpeechTranscriptionService transcriptionService,
         ILogger<MeetingController> logger)
     {
         _callService = callService;
         _meetingService = meetingService;
+        _transcriptionService = transcriptionService;
         _logger = logger;
     }
 
@@ -87,26 +90,70 @@ public class MeetingController : ControllerBase
             // Generate internal meeting ID
             var internalMeetingId = $"api-join-{Guid.NewGuid():N}";
 
-            // Join the meeting
+            // Try to start transcription for this meeting (optional - continue without if Speech not configured)
+            var transcriptionEnabled = false;
+            try
+            {
+                _logger.LogInformation("Starting transcription service for meeting {MeetingId}", internalMeetingId);
+                await _transcriptionService.StartTranscriptionAsync(
+                    internalMeetingId,
+                    async transcriptionResult =>
+                    {
+                        // Transcription callback - log the results and eventually send to Pennie AI
+                        _logger.LogInformation(
+                            "TRANSCRIPT [{MeetingId}] {Speaker} @ {Timestamp}: {Text}",
+                            transcriptionResult.MeetingId,
+                            transcriptionResult.Speaker,
+                            transcriptionResult.Timestamp.ToString("HH:mm:ss"),
+                            transcriptionResult.Text);
+
+                        // TODO: Send transcription to Pennie AI agent for processing
+                        await Task.CompletedTask;
+                    },
+                    HttpContext.RequestAborted);
+                transcriptionEnabled = true;
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("AZURE-SPEECH-KEY"))
+            {
+                _logger.LogWarning("Transcription disabled: AZURE-SPEECH-KEY not configured. Meeting will join without transcription.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to start transcription service, continuing without: {Message}", ex.Message);
+            }
+
+            // Join the meeting and wire up audio to transcription service (if enabled)
+            var audioForwardCount = 0;
             await _callService.JoinMeetingAsync(
                 joinUrl,
                 internalMeetingId,
                 async audioData =>
                 {
-                    // Audio callback - will be connected to speech services
-                    _logger.LogDebug("Received {Bytes} bytes of audio for meeting {MeetingId}",
-                        audioData.Length, internalMeetingId);
-                    await Task.CompletedTask;
+                    if (transcriptionEnabled)
+                    {
+                        // Forward audio to Speech Services for transcription
+                        audioForwardCount++;
+                        if (audioForwardCount == 1 || audioForwardCount % 250 == 0) // Log first and every 5 seconds at 50fps
+                        {
+                            _logger.LogInformation("AUDIO->SPEECH: Forwarded {Count} audio packets to Speech Services for meeting {MeetingId}",
+                                audioForwardCount, internalMeetingId);
+                        }
+                        await _transcriptionService.ProcessAudioAsync(internalMeetingId, audioData);
+                    }
                 },
                 HttpContext.RequestAborted);
 
-            _logger.LogInformation("Successfully initiated meeting join for: {MeetingId}", internalMeetingId);
+            _logger.LogInformation("Successfully initiated meeting join for: {MeetingId} (transcription={Transcription})",
+                internalMeetingId, transcriptionEnabled ? "enabled" : "disabled");
 
             return Ok(new
             {
                 success = true,
-                message = "Pennie is joining the meeting",
-                internalMeetingId = internalMeetingId
+                message = transcriptionEnabled
+                    ? "Pennie is joining the meeting with transcription"
+                    : "Pennie is joining the meeting",
+                internalMeetingId = internalMeetingId,
+                transcriptionEnabled = transcriptionEnabled
             });
         }
         catch (Exception ex)
@@ -173,26 +220,71 @@ public class MeetingController : ControllerBase
             // Generate internal meeting ID
             var internalMeetingId = $"api-join-{Guid.NewGuid():N}";
 
+            // Try to start transcription for this meeting (optional - continue without if Speech not configured)
+            var transcriptionEnabled = false;
+            try
+            {
+                _logger.LogInformation("Starting transcription service for meeting {MeetingId}", internalMeetingId);
+                await _transcriptionService.StartTranscriptionAsync(
+                    internalMeetingId,
+                    async transcriptionResult =>
+                    {
+                        // Transcription callback - log the results and eventually send to Pennie AI
+                        _logger.LogInformation(
+                            "TRANSCRIPT [{MeetingId}] {Speaker} @ {Timestamp}: {Text}",
+                            transcriptionResult.MeetingId,
+                            transcriptionResult.Speaker,
+                            transcriptionResult.Timestamp.ToString("HH:mm:ss"),
+                            transcriptionResult.Text);
+
+                        // TODO: Send transcription to Pennie AI agent for processing
+                        await Task.CompletedTask;
+                    },
+                    HttpContext.RequestAborted);
+                transcriptionEnabled = true;
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("AZURE-SPEECH-KEY"))
+            {
+                _logger.LogWarning("Transcription disabled: AZURE-SPEECH-KEY not configured. Meeting will join without transcription.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to start transcription service, continuing without: {Message}", ex.Message);
+            }
+
             // Join the meeting using meeting ID and passcode
+            var audioForwardCount = 0;
             await _callService.JoinMeetingByIdAsync(
                 request.MeetingNumber,
                 request.Passcode ?? "",
                 internalMeetingId,
                 async audioData =>
                 {
-                    _logger.LogDebug("Received {Bytes} bytes of audio for meeting {MeetingId}",
-                        audioData.Length, internalMeetingId);
-                    await Task.CompletedTask;
+                    if (transcriptionEnabled)
+                    {
+                        // Forward audio to Speech Services for transcription
+                        audioForwardCount++;
+                        if (audioForwardCount == 1 || audioForwardCount % 250 == 0)
+                        {
+                            _logger.LogInformation("AUDIO->SPEECH: Forwarded {Count} audio packets to Speech Services for meeting {MeetingId}",
+                                audioForwardCount, internalMeetingId);
+                        }
+                        await _transcriptionService.ProcessAudioAsync(internalMeetingId, audioData);
+                    }
                 },
                 HttpContext.RequestAborted);
 
-            _logger.LogInformation("Successfully initiated meeting join by ID for: {MeetingId}", internalMeetingId);
+            _logger.LogInformation("Successfully initiated meeting join by ID for: {MeetingId} (transcription={Transcription})",
+                internalMeetingId, transcriptionEnabled ? "enabled" : "disabled");
 
             return Ok(new
             {
                 success = true,
-                message = "Pennie is joining the meeting",
-                internalMeetingId = internalMeetingId
+                message = transcriptionEnabled
+                    ? "Pennie is joining the meeting with transcription"
+                    : "Pennie is joining the meeting",
+                internalMeetingId = internalMeetingId,
+                transcriptionEnabled = transcriptionEnabled
             });
         }
         catch (Exception ex)
@@ -219,6 +311,7 @@ public class MeetingController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.MeetingId))
         {
+            _logger.LogWarning("Leave request received with empty meetingId");
             return BadRequest(new { error = "meetingId is required" });
         }
 
@@ -226,13 +319,28 @@ public class MeetingController : ControllerBase
 
         try
         {
+            // Check if meeting exists before trying to leave
+            var wasInMeeting = _callService.IsInMeeting(request.MeetingId);
+            _logger.LogInformation("Meeting {MeetingId} IsInMeeting={IsInMeeting}", request.MeetingId, wasInMeeting);
+
+            // Stop transcription for this meeting
+            try
+            {
+                await _transcriptionService.StopTranscriptionAsync(request.MeetingId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error stopping transcription for meeting {MeetingId}", request.MeetingId);
+            }
+
             await _callService.LeaveMeetingAsync(request.MeetingId);
 
             return Ok(new
             {
                 success = true,
-                message = "Pennie has left the meeting",
-                meetingId = request.MeetingId
+                message = wasInMeeting ? "Pennie has left the meeting" : "Meeting not found (may have already left)",
+                meetingId = request.MeetingId,
+                wasInMeeting = wasInMeeting
             });
         }
         catch (Exception ex)
@@ -243,6 +351,42 @@ public class MeetingController : ControllerBase
                 success = false,
                 error = ex.Message
             });
+        }
+    }
+
+    /// <summary>
+    /// Leave a meeting via GET (for sendBeacon fallback).
+    /// GET /api/meeting/leave?meetingId=xxx
+    /// </summary>
+    [HttpGet("leave")]
+    public async Task<IActionResult> LeaveMeetingGet([FromQuery] string meetingId)
+    {
+        if (string.IsNullOrWhiteSpace(meetingId))
+        {
+            _logger.LogWarning("Leave GET request received with empty meetingId");
+            return BadRequest(new { error = "meetingId query parameter is required" });
+        }
+
+        _logger.LogInformation("Received meeting leave GET request for: {MeetingId}", meetingId);
+
+        try
+        {
+            var wasInMeeting = _callService.IsInMeeting(meetingId);
+
+            try
+            {
+                await _transcriptionService.StopTranscriptionAsync(meetingId);
+            }
+            catch { /* ignore */ }
+
+            await _callService.LeaveMeetingAsync(meetingId);
+
+            return Ok(new { success = true, meetingId, wasInMeeting });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to leave meeting via GET: {MeetingId}", meetingId);
+            return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
 
@@ -259,6 +403,38 @@ public class MeetingController : ControllerBase
             status = "Pennie is running",
             mediaEnabled = true,
             timestamp = DateTime.UtcNow
+        });
+    }
+
+    /// <summary>
+    /// Get transcripts for a meeting.
+    /// GET /api/meeting/transcripts?meetingId=xxx&sinceIndex=0
+    /// </summary>
+    [HttpGet("transcripts")]
+    public IActionResult GetTranscripts([FromQuery] string meetingId, [FromQuery] int sinceIndex = 0)
+    {
+        if (string.IsNullOrWhiteSpace(meetingId))
+        {
+            return BadRequest(new { error = "meetingId is required" });
+        }
+
+        var transcripts = _transcriptionService.GetTranscripts(meetingId, sinceIndex);
+
+        return Ok(new
+        {
+            success = true,
+            meetingId = meetingId,
+            count = transcripts.Count,
+            lastIndex = transcripts.Count > 0 ? transcripts[^1].Index : sinceIndex,
+            transcripts = transcripts.Select(t => new
+            {
+                index = t.Index,
+                speaker = t.Result.Speaker,
+                text = t.Result.Text,
+                timestamp = t.Result.Timestamp.ToString("HH:mm:ss"),
+                confidence = t.Result.Confidence,
+                isFinal = t.Result.IsFinal
+            })
         });
     }
 
