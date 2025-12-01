@@ -208,16 +208,26 @@
             epicSelect.disabled = true;
 
             try {
-                const response = await fetch(`${BACKEND_URL}/read_work_items?project=${encodeURIComponent(projectName)}&type=Epic&depth=1`);
+                // search_work_items is a POST endpoint with JSON body
+                const response = await fetch(`${BACKEND_URL}/search_work_items`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project: projectName,
+                        workItemType: 'Epic'
+                    })
+                });
                 if (response.ok) {
                     const data = await response.json();
                     epicSelect.innerHTML = '<option value="">None (no parent epic)</option>';
-                    if (data.work_items && data.work_items.length > 0) {
-                        data.work_items.forEach(epic => {
+                    if (data.workItems && data.workItems.length > 0) {
+                        data.workItems.forEach(epic => {
                             const option = document.createElement('option');
                             option.value = epic.id;
-                            option.textContent = `#${epic.id}: ${epic.title}`;
-                            option.dataset.title = epic.title;
+                            // Title is nested under fields["System.Title"] in Azure DevOps API response
+                            const title = epic.fields && epic.fields["System.Title"] ? epic.fields["System.Title"] : "Untitled";
+                            option.textContent = `#${epic.id}: ${title}`;
+                            option.dataset.title = title;
                             epicSelect.appendChild(option);
                         });
                     }

@@ -827,10 +827,11 @@ def search_work_items(req: func.HttpRequest) -> func.HttpResponse:
 
         wiql = f"SELECT [System.Id] FROM WorkItems WHERE {' AND '.join(conditions)} ORDER BY [System.ChangedDate] DESC"
 
-        # Execute WIQL query
+        # Execute WIQL query (needs application/json, not application/json-patch+json)
         url = f"https://dev.azure.com/{client.organization}/{project}/_apis/wit/wiql?api-version={client.api_version}"
         query_payload = {"query": wiql}
-        response = requests.post(url, headers=client.headers, json=query_payload)
+        wiql_headers = {**client.headers, "Content-Type": "application/json"}
+        response = requests.post(url, headers=wiql_headers, json=query_payload)
         response.raise_for_status()
         query_result = response.json()
 
