@@ -830,35 +830,65 @@
         const STORAGE_KEY_MEETING_ID = 'pennie_currentMeetingId';
         const STORAGE_KEY_IS_JOINED = 'pennie_isJoined';
 
+        // Validate transcript object has expected string properties (XSS protection)
+        function isValidTranscript(t) {
+            return t &&
+                   typeof t === 'object' &&
+                   typeof t.speaker === 'string' &&
+                   typeof t.timestamp === 'string' &&
+                   typeof t.text === 'string';
+        }
+
         // Restore state from sessionStorage on load
         function restoreState() {
-            const storedMeetingId = sessionStorage.getItem(STORAGE_KEY_MEETING_ID);
-            const storedIsJoined = sessionStorage.getItem(STORAGE_KEY_IS_JOINED) === 'true';
-            const storedLastIndex = parseInt(sessionStorage.getItem(STORAGE_KEY_LAST_INDEX) || '0', 10);
-            const storedTranscripts = JSON.parse(sessionStorage.getItem(STORAGE_KEY_TRANSCRIPTS) || '[]');
+            try {
+                const storedMeetingId = sessionStorage.getItem(STORAGE_KEY_MEETING_ID);
+                const storedIsJoined = sessionStorage.getItem(STORAGE_KEY_IS_JOINED) === 'true';
+                const storedLastIndex = parseInt(sessionStorage.getItem(STORAGE_KEY_LAST_INDEX) || '0', 10);
 
-            if (storedMeetingId && storedIsJoined) {
-                currentMeetingId = storedMeetingId;
-                isJoined = true;
-                lastTranscriptIndex = storedLastIndex;
-
-                // Restore UI state
-                joinBtn.textContent = 'Remove Pennie from Meeting';
-                joinBtn.classList.remove('primary');
-                joinBtn.classList.add('danger');
-                joinBtn.disabled = false;
-                log('Restored session - Pennie is in meeting');
-
-                // Restore transcripts
-                if (storedTranscripts.length > 0) {
-                    transcriptEmpty.style.display = 'none';
-                    storedTranscripts.forEach(t => {
-                        addTranscriptEntry(t.speaker, t.timestamp, t.text, false);
-                    });
+                // Parse with error handling for corrupted storage
+                let storedTranscripts = [];
+                try {
+                    const rawTranscripts = sessionStorage.getItem(STORAGE_KEY_TRANSCRIPTS);
+                    if (rawTranscripts) {
+                        const parsed = JSON.parse(rawTranscripts);
+                        // Validate it's an array and filter to only valid transcript objects
+                        if (Array.isArray(parsed)) {
+                            storedTranscripts = parsed.filter(isValidTranscript);
+                        }
+                    }
+                } catch (parseError) {
+                    console.warn('Failed to parse stored transcripts, clearing corrupted data:', parseError);
+                    sessionStorage.removeItem(STORAGE_KEY_TRANSCRIPTS);
                 }
 
-                // Resume polling
-                startTranscriptPolling();
+                if (storedMeetingId && storedIsJoined) {
+                    currentMeetingId = storedMeetingId;
+                    isJoined = true;
+                    lastTranscriptIndex = storedLastIndex;
+
+                    // Restore UI state
+                    joinBtn.textContent = 'Remove Pennie from Meeting';
+                    joinBtn.classList.remove('primary');
+                    joinBtn.classList.add('danger');
+                    joinBtn.disabled = false;
+                    log('Restored session - Pennie is in meeting');
+
+                    // Restore transcripts (already validated)
+                    if (storedTranscripts.length > 0) {
+                        transcriptEmpty.style.display = 'none';
+                        storedTranscripts.forEach(t => {
+                            addTranscriptEntry(t.speaker, t.timestamp, t.text, false);
+                        });
+                    }
+
+                    // Resume polling
+                    startTranscriptPolling();
+                }
+            } catch (error) {
+                console.error('Error restoring state:', error);
+                // Clear potentially corrupted state
+                clearSavedState();
             }
         }
 
@@ -871,9 +901,24 @@
 
         // Save transcript to sessionStorage
         function saveTranscript(speaker, timestamp, text) {
-            const transcripts = JSON.parse(sessionStorage.getItem(STORAGE_KEY_TRANSCRIPTS) || '[]');
-            transcripts.push({ speaker, timestamp, text });
-            sessionStorage.setItem(STORAGE_KEY_TRANSCRIPTS, JSON.stringify(transcripts));
+            try {
+                let transcripts = [];
+                try {
+                    const raw = sessionStorage.getItem(STORAGE_KEY_TRANSCRIPTS);
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed)) {
+                            transcripts = parsed;
+                        }
+                    }
+                } catch (parseError) {
+                    console.warn('Failed to parse transcripts for save, starting fresh:', parseError);
+                }
+                transcripts.push({ speaker, timestamp, text });
+                sessionStorage.setItem(STORAGE_KEY_TRANSCRIPTS, JSON.stringify(transcripts));
+            } catch (error) {
+                console.error('Failed to save transcript:', error);
+            }
         }
 
         // Clear saved state
