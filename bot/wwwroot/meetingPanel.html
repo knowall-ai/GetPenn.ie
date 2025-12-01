@@ -526,6 +526,8 @@
                     joinBtn.classList.remove('primary');
                     joinBtn.classList.add('danger');
                     joinBtn.disabled = false;
+                    // Save state for persistence across pane switches
+                    saveState();
                     // Start transcript polling
                     clearTranscripts();
                     startTranscriptPolling();
@@ -568,6 +570,15 @@
                 microsoftTeams.app.registerOnThemeChangeHandler((theme) => {
                     applyTheme(theme);
                 });
+
+                // Try to restore previous session (e.g., after switching panes)
+                restoreState();
+
+                // If session was restored, we're done - don't auto-join again
+                if (isJoined) {
+                    log('Session restored from previous pane');
+                    return;
+                }
 
                 // Try to get meeting join URL automatically
                 if (context.meeting?.id) {
@@ -622,6 +633,8 @@
                         isJoined = false;
                         currentMeetingId = null;
                         stopTranscriptPolling();
+                        // Clear saved state when leaving
+                        clearSavedState();
                         log('Pennie left the meeting');
                         if (!result.wasInMeeting) {
                             log('(Meeting was already inactive)');
@@ -687,6 +700,8 @@
                     joinBtn.classList.remove('primary');
                     joinBtn.classList.add('danger');
                     joinBtn.disabled = false;
+                    // Save state for persistence across pane switches
+                    saveState();
                     // Start transcript polling
                     clearTranscripts();
                     startTranscriptPolling();
@@ -761,6 +776,8 @@
                     joinBtn.classList.remove('primary');
                     joinBtn.classList.add('danger');
                     joinBtn.disabled = false;
+                    // Save state for persistence across pane switches
+                    saveState();
                     // Start transcript polling
                     clearTranscripts();
                     startTranscriptPolling();
@@ -807,6 +824,66 @@
         let transcriptPollInterval = null;
         let lastTranscriptIndex = 0;
 
+        // Session storage keys for state persistence across pane switches
+        const STORAGE_KEY_TRANSCRIPTS = 'pennie_transcripts';
+        const STORAGE_KEY_LAST_INDEX = 'pennie_lastTranscriptIndex';
+        const STORAGE_KEY_MEETING_ID = 'pennie_currentMeetingId';
+        const STORAGE_KEY_IS_JOINED = 'pennie_isJoined';
+
+        // Restore state from sessionStorage on load
+        function restoreState() {
+            const storedMeetingId = sessionStorage.getItem(STORAGE_KEY_MEETING_ID);
+            const storedIsJoined = sessionStorage.getItem(STORAGE_KEY_IS_JOINED) === 'true';
+            const storedLastIndex = parseInt(sessionStorage.getItem(STORAGE_KEY_LAST_INDEX) || '0', 10);
+            const storedTranscripts = JSON.parse(sessionStorage.getItem(STORAGE_KEY_TRANSCRIPTS) || '[]');
+
+            if (storedMeetingId && storedIsJoined) {
+                currentMeetingId = storedMeetingId;
+                isJoined = true;
+                lastTranscriptIndex = storedLastIndex;
+
+                // Restore UI state
+                joinBtn.textContent = 'Remove Pennie from Meeting';
+                joinBtn.classList.remove('primary');
+                joinBtn.classList.add('danger');
+                joinBtn.disabled = false;
+                log('Restored session - Pennie is in meeting');
+
+                // Restore transcripts
+                if (storedTranscripts.length > 0) {
+                    transcriptEmpty.style.display = 'none';
+                    storedTranscripts.forEach(t => {
+                        addTranscriptEntry(t.speaker, t.timestamp, t.text, false);
+                    });
+                }
+
+                // Resume polling
+                startTranscriptPolling();
+            }
+        }
+
+        // Save state to sessionStorage
+        function saveState() {
+            sessionStorage.setItem(STORAGE_KEY_MEETING_ID, currentMeetingId || '');
+            sessionStorage.setItem(STORAGE_KEY_IS_JOINED, isJoined.toString());
+            sessionStorage.setItem(STORAGE_KEY_LAST_INDEX, lastTranscriptIndex.toString());
+        }
+
+        // Save transcript to sessionStorage
+        function saveTranscript(speaker, timestamp, text) {
+            const transcripts = JSON.parse(sessionStorage.getItem(STORAGE_KEY_TRANSCRIPTS) || '[]');
+            transcripts.push({ speaker, timestamp, text });
+            sessionStorage.setItem(STORAGE_KEY_TRANSCRIPTS, JSON.stringify(transcripts));
+        }
+
+        // Clear saved state
+        function clearSavedState() {
+            sessionStorage.removeItem(STORAGE_KEY_TRANSCRIPTS);
+            sessionStorage.removeItem(STORAGE_KEY_LAST_INDEX);
+            sessionStorage.removeItem(STORAGE_KEY_MEETING_ID);
+            sessionStorage.removeItem(STORAGE_KEY_IS_JOINED);
+        }
+
         function startTranscriptPolling() {
             if (transcriptPollInterval) return;
             if (!currentMeetingId) return;
@@ -838,13 +915,15 @@
                     });
 
                     lastTranscriptIndex = data.lastIndex;
+                    // Save updated index for persistence
+                    saveState();
                 }
             } catch (error) {
                 console.error('Error polling transcripts:', error);
             }
         }
 
-        function addTranscriptEntry(speaker, timestamp, text) {
+        function addTranscriptEntry(speaker, timestamp, text, save = true) {
             const entry = document.createElement('div');
             entry.className = 'transcript-entry';
             entry.innerHTML = `
@@ -854,6 +933,11 @@
             `;
             transcriptContainer.appendChild(entry);
             transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+
+            // Save to sessionStorage for persistence across pane switches
+            if (save) {
+                saveTranscript(speaker, timestamp, text);
+            }
         }
 
         function escapeHtml(text) {
@@ -867,6 +951,9 @@
             transcriptContainer.appendChild(transcriptEmpty);
             transcriptEmpty.style.display = 'block';
             lastTranscriptIndex = 0;
+            // Clear saved transcripts (but not meeting state - that's cleared on leave)
+            sessionStorage.removeItem(STORAGE_KEY_TRANSCRIPTS);
+            sessionStorage.setItem(STORAGE_KEY_LAST_INDEX, '0');
         }
 
         // Auto-leave meeting when app is removed/closed
