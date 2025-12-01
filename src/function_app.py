@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 app = func.FunctionApp()
 
 
+def escape_wiql(value: Optional[str]) -> str:
+    """Escape a string for safe use in WIQL queries (prevents injection)."""
+    return value.replace("'", "''") if value else ""
+
+
 class AzureDevOpsClient:
     """Client for Azure DevOps REST API with dynamic project support"""
 
@@ -28,9 +33,18 @@ class AzureDevOpsClient:
 
         # Create authorization header
         auth_token = b64encode(f":{pat}".encode()).decode()
+        self._auth_header = f"Basic {auth_token}"
         self.headers = {
-            "Authorization": f"Basic {auth_token}",
+            "Authorization": self._auth_header,
             "Content-Type": "application/json-patch+json",
+            "Accept": "application/json"
+        }
+
+    def get_headers(self, content_type: str = "application/json-patch+json") -> Dict[str, str]:
+        """Get headers with specified content type. Use for WIQL queries which need application/json."""
+        return {
+            "Authorization": self._auth_header,
+            "Content-Type": content_type,
             "Accept": "application/json"
         }
 
@@ -808,29 +822,29 @@ def search_work_items(req: func.HttpRequest) -> func.HttpResponse:
 
         # Build WIQL query
         conditions = []
-        conditions.append(f"[System.TeamProject] = '{project}'")
+        conditions.append(f"[System.TeamProject] = '{escape_wiql(project)}'")
 
         if work_item_type:
-            conditions.append(f"[System.WorkItemType] = '{work_item_type}'")
+            conditions.append(f"[System.WorkItemType] = '{escape_wiql(work_item_type)}'")
 
         if state:
-            conditions.append(f"[System.State] = '{state}'")
+            conditions.append(f"[System.State] = '{escape_wiql(state)}'")
 
         if assigned_to:
-            conditions.append(f"[System.AssignedTo] = '{assigned_to}'")
+            conditions.append(f"[System.AssignedTo] = '{escape_wiql(assigned_to)}'")
 
         if tags:
-            conditions.append(f"[System.Tags] CONTAINS '{tags}'")
+            conditions.append(f"[System.Tags] CONTAINS '{escape_wiql(tags)}'")
 
         if title_contains:
-            conditions.append(f"[System.Title] CONTAINS '{title_contains}'")
+            conditions.append(f"[System.Title] CONTAINS '{escape_wiql(title_contains)}'")
 
         wiql = f"SELECT [System.Id] FROM WorkItems WHERE {' AND '.join(conditions)} ORDER BY [System.ChangedDate] DESC"
 
-        # Execute WIQL query
+        # Execute WIQL query (needs application/json, not application/json-patch+json)
         url = f"https://dev.azure.com/{client.organization}/{project}/_apis/wit/wiql?api-version={client.api_version}"
         query_payload = {"query": wiql}
-        response = requests.post(url, headers=client.headers, json=query_payload)
+        response = requests.post(url, headers=client.get_headers("application/json"), json=query_payload)
         response.raise_for_status()
         query_result = response.json()
 
