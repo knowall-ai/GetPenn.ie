@@ -1,21 +1,20 @@
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
-using Microsoft.CognitiveServices.Speech.Transcription;
-using ConversationTranscriptionResult = Microsoft.CognitiveServices.Speech.Transcription.ConversationTranscriptionResult;
 
 namespace PennieBot.Services;
 
 /// <summary>
-/// Azure Speech Services implementation with MeetingTranscriber for speaker diarization.
+/// Azure Speech Services implementation using SpeechRecognizer for continuous recognition.
+/// Since we receive unmixed audio per participant from Teams, we don't need speaker diarization.
 /// </summary>
 public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposable
 {
-    private const string UnknownSpeakerConstant = "UNKNOWN_SPEAKER";
     private readonly ILogger<SpeechTranscriptionService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly Dictionary<string, ConversationTranscriber> _transcribers = new();
+    private readonly Dictionary<string, SpeechRecognizer> _recognizers = new();
     private readonly Dictionary<string, PushAudioInputStream> _audioStreams = new();
-    private readonly Dictionary<string, string> _speakerIdToNameMap = new();
+    private readonly Dictionary<string, List<TranscriptionResult>> _transcripts = new();
+    private readonly Dictionary<string, string> _currentSpeakers = new(); // meetingId -> speaker name
     private readonly object _lock = new();
     private bool _disposed;
 
@@ -25,49 +24,20 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
     {
         _logger = logger;
         _configuration = configuration;
-    }
 
-    /// <summary>
-    /// Map speaker ID to friendly name.
-    /// </summary>
-    /// <param name="speakerId">Speaker ID from Azure Speech Services</param>
-    /// <returns>Friendly speaker name</returns>
-    private string MapSpeakerIdToName(string speakerId)
-    {
-        // Thread-safe speaker ID mapping to prevent race conditions
-        lock (_lock)
+        // Log Speech configuration at startup to verify Key Vault loading
+        var speechKey = configuration["AZURE-SPEECH-KEY"];
+        var speechRegion = configuration["AZURE-LOCATION"] ?? "uksouth";
+
+        if (string.IsNullOrEmpty(speechKey))
         {
-            // Handle unknown speaker specially to avoid creating multiple "Unknown Speaker N" entries
-            if (speakerId == UnknownSpeakerConstant)
-            {
-                if (!_speakerIdToNameMap.ContainsKey(UnknownSpeakerConstant))
-                {
-                    _speakerIdToNameMap[UnknownSpeakerConstant] = "Unknown Speaker";
-                    _logger.LogWarning("Speaker diarization returned unknown speaker ID");
-                }
-                return _speakerIdToNameMap[UnknownSpeakerConstant];
-            }
-
-            // Check if we have a mapping for this speaker ID
-            if (_speakerIdToNameMap.TryGetValue(speakerId, out var name))
-            {
-                return name;
-            }
-
-            // If no mapping exists, create a friendly speaker label
-            // In production, this would:
-            // 1. Query Teams Graph API to get participant names
-            // 2. Match speaker ID to participant based on join time
-            // 3. Store mapping for reuse during the meeting
-
-            var speakerNumber = _speakerIdToNameMap.Count + 1;
-            var friendlyName = $"Speaker {speakerNumber}";
-
-            _speakerIdToNameMap[speakerId] = friendlyName;
-
-            _logger.LogInformation("Mapped speaker ID {SpeakerId} to {FriendlyName}", speakerId, friendlyName);
-
-            return friendlyName;
+            _logger.LogWarning("STARTUP: AZURE-SPEECH-KEY is NOT configured - transcription will be disabled");
+        }
+        else
+        {
+            _logger.LogInformation(
+                "STARTUP: Speech config loaded - Region={Region}, KeyConfigured=true",
+                speechRegion);
         }
     }
 
@@ -77,60 +47,64 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
         Func<TranscriptionResult, Task> transcriptionCallback,
         CancellationToken cancellationToken = default)
     {
+        // Input validation
+        if (string.IsNullOrWhiteSpace(meetingId))
+        {
+            throw new ArgumentException("Meeting ID cannot be null or empty", nameof(meetingId));
+        }
+        if (transcriptionCallback == null)
+        {
+            throw new ArgumentNullException(nameof(transcriptionCallback));
+        }
+
         try
         {
             _logger.LogInformation("Starting transcription for meeting {MeetingId}", meetingId);
 
-            // Create Speech configuration
-            var speechKey = _configuration["AZURE_SPEECH_KEY"]
-                ?? throw new InvalidOperationException("AZURE_SPEECH_KEY not configured");
-            var speechRegion = _configuration["AZURE_LOCATION"] ?? "uksouth";
+            // Create Speech configuration (uses dashes for Key Vault compatibility)
+            var speechKey = _configuration["AZURE-SPEECH-KEY"]
+                ?? throw new InvalidOperationException("AZURE-SPEECH-KEY not configured");
+            var speechRegion = _configuration["AZURE-LOCATION"] ?? "uksouth";
 
+            // Get speech language from configuration, default to en-GB for UK users
+            var speechLanguage = _configuration["SpeechRecognitionLanguage"] ?? "en-GB";
+
+            _logger.LogDebug("Creating SpeechConfig for region {Region}, language {Language}", speechRegion, speechLanguage);
             var config = SpeechConfig.FromSubscription(speechKey, speechRegion);
-            config.SpeechRecognitionLanguage = "en-US";
+            config.SpeechRecognitionLanguage = speechLanguage;
 
-            // Enable detailed results
+            // Enable detailed results for confidence scores
             config.SetProperty(PropertyId.SpeechServiceResponse_RequestWordLevelTimestamps, "true");
+            config.OutputFormat = OutputFormat.Detailed;
 
-            // Create push audio stream (we'll push RTP audio data to this)
-            var audioFormat = AudioStreamFormat.GetWaveFormatPCM(16000, 16, 1); // 16kHz, 16-bit, mono
+            // Create push audio stream for Teams audio (16kHz, 16-bit, mono PCM)
+            var audioFormat = AudioStreamFormat.GetWaveFormatPCM(16000, 16, 1);
             var audioStream = AudioInputStream.CreatePushStream(audioFormat);
             _audioStreams[meetingId] = (PushAudioInputStream)audioStream;
 
             var audioConfig = AudioConfig.FromStreamInput(audioStream);
 
-            // Create Meeting Transcriber with speaker diarization
-            // Note: MeetingTranscriber API requires Meeting object in newer versions
-            // For now, use ConversationTranscriber as fallback for basic testing
-            var transcriber = new ConversationTranscriber(config, audioConfig);
+            // Use SpeechRecognizer for continuous recognition
+            // This is simpler than ConversationTranscriber since we get unmixed audio per participant
+            var recognizer = new SpeechRecognizer(config, audioConfig);
 
-            // Subscribe to transcription events
-            transcriber.Transcribing += (s, e) =>
+            // Subscribe to recognition events
+            recognizer.Recognizing += (s, e) =>
             {
-                // Interim results
-                _logger.LogDebug("Transcribing (interim): {Text}", e.Result.Text);
+                _logger.LogDebug("Recognizing: {Text}", e.Result.Text ?? "(empty)");
             };
 
-            transcriber.Transcribed += async (s, e) =>
+            recognizer.Recognized += async (s, e) =>
             {
-                if (e.Result.Reason == ResultReason.RecognizedSpeech)
+                if (e.Result.Reason == ResultReason.RecognizedSpeech && !string.IsNullOrEmpty(e.Result.Text))
                 {
-                    // Extract speaker information from conversation transcription result
-                    var conversationResult = e.Result as ConversationTranscriptionResult;
-                    var speakerId = conversationResult?.SpeakerId ?? UnknownSpeakerConstant;
-
-                    // Map speaker ID to friendly name if available
-                    // In production, maintain a mapping of speaker IDs to participant names
-                    var speakerName = MapSpeakerIdToName(speakerId);
-
                     // Extract confidence score from detailed results
-                    var confidence = 1.0;
+                    var confidence = 0.9; // Default confidence
                     try
                     {
                         var detailedResult = e.Result.Properties.GetProperty(PropertyId.SpeechServiceResponse_JsonResult);
                         if (!string.IsNullOrEmpty(detailedResult))
                         {
-                            // Parse JSON to extract confidence score
                             var json = System.Text.Json.JsonDocument.Parse(detailedResult);
                             if (json.RootElement.TryGetProperty("NBest", out var nBest) &&
                                 nBest.GetArrayLength() > 0 &&
@@ -142,12 +116,19 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogDebug(ex, "Could not extract confidence score, using default value");
+                        _logger.LogDebug(ex, "Could not extract confidence score");
+                    }
+
+                    // Get the current speaker from tracked audio
+                    string speaker;
+                    lock (_lock)
+                    {
+                        speaker = _currentSpeakers.TryGetValue(meetingId, out var spkName) ? spkName : "Unknown Speaker";
                     }
 
                     var result = new TranscriptionResult
                     {
-                        Speaker = speakerName,
+                        Speaker = speaker,
                         Timestamp = DateTime.UtcNow,
                         Text = e.Result.Text,
                         Confidence = confidence,
@@ -156,37 +137,74 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
                     };
 
                     _logger.LogInformation(
-                        "Transcribed: {Speaker} ({SpeakerId}) @ {Timestamp}: {Text} (confidence: {Confidence:F2})",
-                        result.Speaker, speakerId, result.Timestamp, result.Text, result.Confidence);
+                        "Transcribed [{MeetingId}] @ {Timestamp}: {Text} (confidence: {Confidence:F2})",
+                        meetingId, result.Timestamp.ToString("HH:mm:ss"), result.Text, result.Confidence);
+
+                    // Store transcript for API access
+                    lock (_lock)
+                    {
+                        if (_transcripts.TryGetValue(meetingId, out var transcripts))
+                        {
+                            transcripts.Add(result);
+                        }
+                    }
 
                     // Callback to send to Pennie AI agent
                     await transcriptionCallback(result);
                 }
+                else if (e.Result.Reason == ResultReason.NoMatch)
+                {
+                    _logger.LogDebug("No speech recognized in audio segment");
+                }
             };
 
-            transcriber.Canceled += (s, e) =>
+            recognizer.Canceled += (s, e) =>
             {
-                _logger.LogError(
-                    "Transcription canceled: {Reason} - {ErrorDetails}",
-                    e.Reason, e.ErrorDetails);
+                if (e.Reason == CancellationReason.Error)
+                {
+                    _logger.LogError(
+                        "Speech recognition canceled with error: Code={ErrorCode}, Details={ErrorDetails}",
+                        e.ErrorCode, e.ErrorDetails ?? "(none)");
+                }
+                else
+                {
+                    _logger.LogDebug("Speech recognition canceled: Reason={Reason}", e.Reason);
+                }
             };
 
-            transcriber.SessionStarted += (s, e) =>
+            recognizer.SessionStarted += (s, e) =>
             {
-                _logger.LogInformation("Transcription session started for meeting {MeetingId}", meetingId);
+                _logger.LogInformation("Speech session started for meeting {MeetingId}, SessionId={SessionId}",
+                    meetingId, e.SessionId);
             };
 
-            transcriber.SessionStopped += (s, e) =>
+            recognizer.SessionStopped += (s, e) =>
             {
-                _logger.LogInformation("Transcription session stopped for meeting {MeetingId}", meetingId);
+                _logger.LogInformation("Speech session stopped for meeting {MeetingId}, SessionId={SessionId}",
+                    meetingId, e.SessionId);
             };
 
-            // Store transcriber for later stop
-            _transcribers[meetingId] = transcriber;
+            recognizer.SpeechStartDetected += (s, e) =>
+            {
+                _logger.LogDebug("Speech start detected at offset {Offset}", e.Offset);
+            };
 
-            // Start transcription
-            await transcriber.StartTranscribingAsync();
+            recognizer.SpeechEndDetected += (s, e) =>
+            {
+                _logger.LogDebug("Speech end detected at offset {Offset}", e.Offset);
+            };
 
+            // Initialize transcript list for this meeting
+            lock (_lock)
+            {
+                _transcripts[meetingId] = new List<TranscriptionResult>();
+            }
+
+            // Store recognizer for later stop
+            _recognizers[meetingId] = recognizer;
+
+            // Start continuous recognition
+            await recognizer.StartContinuousRecognitionAsync();
             _logger.LogInformation("Transcription started successfully for meeting {MeetingId}", meetingId);
         }
         catch (Exception ex)
@@ -199,21 +217,58 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
     /// <inheritdoc/>
     public async Task StopTranscriptionAsync(string meetingId)
     {
+        // Input validation
+        if (string.IsNullOrWhiteSpace(meetingId))
+        {
+            throw new ArgumentException("Meeting ID cannot be null or empty", nameof(meetingId));
+        }
+
         try
         {
             _logger.LogInformation("Stopping transcription for meeting {MeetingId}", meetingId);
 
-            if (_transcribers.TryGetValue(meetingId, out var transcriber))
+            // Stop and dispose recognizer
+            if (_recognizers.TryGetValue(meetingId, out var recognizer))
             {
-                await transcriber.StopTranscribingAsync();
-                transcriber.Dispose();
-                _transcribers.Remove(meetingId);
+                try
+                {
+                    await recognizer.StopContinuousRecognitionAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error stopping continuous recognition for meeting {MeetingId}", meetingId);
+                }
+                finally
+                {
+                    recognizer.Dispose();
+                    _recognizers.Remove(meetingId);
+                }
             }
 
+            // Close and dispose audio stream
             if (_audioStreams.TryGetValue(meetingId, out var audioStream))
             {
-                audioStream.Close();
-                _audioStreams.Remove(meetingId);
+                try
+                {
+                    audioStream.Close();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error closing audio stream for meeting {MeetingId}", meetingId);
+                }
+                finally
+                {
+                    _audioStreams.Remove(meetingId);
+                }
+            }
+
+            // Clean up tracking dictionaries
+            lock (_lock)
+            {
+                _transcripts.Remove(meetingId);
+                _currentSpeakers.Remove(meetingId);
+                _audioBytesWritten.Remove(meetingId);
+                _lastAudioLogTime.Remove(meetingId);
             }
 
             _logger.LogInformation("Transcription stopped for meeting {MeetingId}", meetingId);
@@ -225,19 +280,78 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
         }
     }
 
+    // Track audio bytes pushed per meeting for diagnostics
+    private readonly Dictionary<string, long> _audioBytesWritten = new();
+    private readonly Dictionary<string, DateTime> _lastAudioLogTime = new();
+
     /// <inheritdoc/>
-    public Task ProcessAudioAsync(string meetingId, byte[] audioData)
+    public Task ProcessAudioAsync(string meetingId, byte[] audioData, uint speakerId = 0, string? speakerName = null)
     {
         try
         {
             if (!_audioStreams.TryGetValue(meetingId, out var audioStream))
             {
-                _logger.LogWarning("No audio stream found for meeting {MeetingId}", meetingId);
+                _logger.LogWarning("No audio stream found for meeting {MeetingId}. Recognizer exists: {HasRecognizer}",
+                    meetingId, _recognizers.ContainsKey(meetingId));
                 return Task.CompletedTask;
             }
 
             // Push audio data to Speech Services
+            // The audio should be 16kHz, 16-bit, mono PCM
             audioStream.Write(audioData);
+
+            // Calculate audio energy (RMS) to diagnose silence vs speech
+            double rms = 0;
+            int maxSample = 0;
+            int nonZeroSamples = 0;
+            for (int i = 0; i < audioData.Length - 1; i += 2)
+            {
+                // 16-bit little-endian PCM
+                short sample = (short)(audioData[i] | (audioData[i + 1] << 8));
+                rms += sample * sample;
+                var absSample = Math.Abs(sample);
+                if (absSample > maxSample) maxSample = absSample;
+                if (sample != 0) nonZeroSamples++;
+            }
+            rms = Math.Sqrt(rms / (audioData.Length / 2));
+
+            // Track bytes written for diagnostics
+            lock (_lock)
+            {
+                if (!_audioBytesWritten.ContainsKey(meetingId))
+                {
+                    _audioBytesWritten[meetingId] = 0;
+                    _lastAudioLogTime[meetingId] = DateTime.UtcNow;
+                }
+                _audioBytesWritten[meetingId] += audioData.Length;
+
+                // Track current speaker - update when audio has significant energy (someone is speaking)
+                // RMS > 100 indicates actual speech vs silence
+                if (rms > 100 && speakerId > 0)
+                {
+                    var newSpeaker = speakerName ?? $"Speaker {speakerId}";
+                    if (!_currentSpeakers.TryGetValue(meetingId, out var currentSpeaker) || currentSpeaker != newSpeaker)
+                    {
+                        _currentSpeakers[meetingId] = newSpeaker;
+                        _logger.LogInformation("SPEAKER-CHANGE: Meeting {MeetingId} now hearing from {Speaker} (ID: {SpeakerId})",
+                            meetingId, newSpeaker, speakerId);
+                    }
+                }
+
+                // Log every 5 seconds with audio energy stats
+                var now = DateTime.UtcNow;
+                if ((now - _lastAudioLogTime[meetingId]).TotalSeconds >= 5)
+                {
+                    var bytesWritten = _audioBytesWritten[meetingId];
+                    var kbps = (bytesWritten * 8.0 / 1000.0) / 5.0; // kilobits per second
+                    var currentSpeakerName = _currentSpeakers.TryGetValue(meetingId, out var s) ? s : "Unknown";
+                    _logger.LogWarning(
+                        "AUDIO-ANALYSIS: {TotalKB:F1}KB ({Kbps:F1}kbps), LastRMS={RMS:F0}, MaxSample={Max}, NonZero={NonZero}/{Total}, Speaker={Speaker} for {MeetingId}",
+                        bytesWritten / 1024.0, kbps, rms, maxSample, nonZeroSamples, audioData.Length / 2, currentSpeakerName, meetingId);
+                    _audioBytesWritten[meetingId] = 0;
+                    _lastAudioLogTime[meetingId] = now;
+                }
+            }
 
             return Task.CompletedTask;
         }
@@ -248,45 +362,57 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
         }
     }
 
-    /// <summary>
-    /// Dispose of managed resources.
-    /// </summary>
+    /// <inheritdoc/>
+    public IReadOnlyList<IndexedTranscriptionResult> GetTranscripts(string meetingId, int sinceIndex = 0)
+    {
+        lock (_lock)
+        {
+            if (!_transcripts.TryGetValue(meetingId, out var transcripts))
+            {
+                return Array.Empty<IndexedTranscriptionResult>();
+            }
+
+            var result = new List<IndexedTranscriptionResult>();
+            for (var i = sinceIndex; i < transcripts.Count; i++)
+            {
+                result.Add(new IndexedTranscriptionResult
+                {
+                    Index = i + 1,
+                    Result = transcripts[i]
+                });
+            }
+            return result;
+        }
+    }
+
     public void Dispose()
     {
         Dispose(true);
         GC.SuppressFinalize(this);
     }
 
-    /// <summary>
-    /// Dispose pattern implementation.
-    /// </summary>
     protected virtual void Dispose(bool disposing)
     {
-        if (_disposed)
-        {
-            return;
-        }
+        if (_disposed) return;
 
         if (disposing)
         {
             lock (_lock)
             {
-                // Dispose all active transcribers
-                foreach (var kvp in _transcribers)
+                foreach (var kvp in _recognizers)
                 {
                     try
                     {
                         kvp.Value.Dispose();
-                        _logger.LogDebug("Disposed transcriber for meeting {MeetingId}", kvp.Key);
+                        _logger.LogDebug("Disposed recognizer for meeting {MeetingId}", kvp.Key);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Error disposing transcriber for meeting {MeetingId}", kvp.Key);
+                        _logger.LogWarning(ex, "Error disposing recognizer for meeting {MeetingId}", kvp.Key);
                     }
                 }
-                _transcribers.Clear();
+                _recognizers.Clear();
 
-                // Close all active audio streams
                 foreach (var kvp in _audioStreams)
                 {
                     try

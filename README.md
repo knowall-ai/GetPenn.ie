@@ -370,7 +370,8 @@ TEAMS_APP_PASSWORD=your-app-password
 ### No transcription/work items created
 - Verify Azure Speech Services is provisioned
 - Check Application Insights logs for errors
-- Ensure meeting audio quality is good
+- **Check microphone volume** — Low volume (RMS < 100) won't produce transcription. Increase mic volume in Teams/Windows settings
+- Ensure correct microphone selected in Teams and not muted
 - Verify Azure DevOps PAT has required permissions
 
 ### Permission errors

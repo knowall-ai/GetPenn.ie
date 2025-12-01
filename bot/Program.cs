@@ -41,8 +41,12 @@ builder.Services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>
 
 // Bot Services
 builder.Services.AddSingleton<IBot, MediaBot>();
+builder.Services.AddSingleton<IMediaPlatformService, MediaPlatformService>();
 builder.Services.AddSingleton<IGraphCallService, GraphCallService>();
 builder.Services.AddSingleton<ISpeechTranscriptionService, SpeechTranscriptionService>();
+
+// Online Meeting Service - looks up meeting join URLs from Teams SDK meeting IDs
+builder.Services.AddSingleton<IOnlineMeetingService, OnlineMeetingService>();
 
 // Only register PennieAgentClient if AI Foundry is configured
 // This is optional - the bot can still handle simple queries via HTTP client
@@ -75,6 +79,24 @@ builder.Logging.AddApplicationInsights();
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 
 var app = builder.Build();
+
+// Initialize Media Platform Service on startup (for ApplicationHostedMedia)
+// This must happen before Graph Communications SDK initialization
+using (var scope = app.Services.CreateScope())
+{
+    var mediaPlatformService = scope.ServiceProvider.GetRequiredService<IMediaPlatformService>();
+    await mediaPlatformService.InitializeAsync();
+    Console.WriteLine($"Media Platform initialized (Enabled={mediaPlatformService.IsEnabled}, Initialized={mediaPlatformService.IsInitialized})");
+}
+
+// Initialize Graph Communications SDK on startup
+// This is required before the bot can join Teams meetings
+using (var scope = app.Services.CreateScope())
+{
+    var graphCallService = scope.ServiceProvider.GetRequiredService<IGraphCallService>();
+    await graphCallService.InitializeAsync();
+    Console.WriteLine("Graph Communications SDK initialized");
+}
 
 // Configure middleware
 if (app.Environment.IsDevelopment())

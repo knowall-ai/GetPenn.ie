@@ -407,9 +407,7 @@ public class PennieAgentClient : IPennieAgentClient, IDisposable
                 "Work item created notification: {Type} #{Id} - {Title}",
                 workItemType, workItemId, title);
 
-            // TODO: This would typically be handled by Pennie posting to Teams chat
-            // via the Bot Framework messaging API
-            // For now, just log
+            // TODO(#30): Post work item link to Teams chat via Bot Framework messaging API
 
             return Task.CompletedTask;
         }

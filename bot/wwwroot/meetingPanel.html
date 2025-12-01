@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pennie the Prepper</title>
+    <script src="https://res.cdn.office.net/teams-js/2.25.0/js/MicrosoftTeams.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #fafafa;
+            --bg-secondary: #f5f5f5;
+            --bg-info: #e7f3ff;
+            --text-primary: #333;
+            --text-secondary: #666;
+            --text-muted: #999;
+            --border-color: #ddd;
+            --accent-color: #1E90FF;
+            --accent-hover: #1a7dd9;
+            --input-bg: white;
+            --error-color: #d32f2f;
+            --success-color: #4caf50;
+            --warning-color: #ff9800;
+        }
+
+        /* Dark mode - detect via Teams theme or system preference */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #1f1f1f;
+                --bg-secondary: #2d2d2d;
+                --bg-info: #1a2a3a;
+                --text-primary: #e0e0e0;
+                --text-secondary: #b0b0b0;
+                --text-muted: #808080;
+                --border-color: #404040;
+                --accent-color: #4aa3ff;
+                --accent-hover: #2196f3;
+                --input-bg: #2d2d2d;
+                --error-color: #ff5252;
+                --success-color: #69f0ae;
+                --warning-color: #ffca28;
+            }
+        }
+
+        /* Teams dark theme class (set via JS) */
+        body.dark-theme {
+            --bg-primary: #1f1f1f;
+            --bg-secondary: #2d2d2d;
+            --bg-info: #1a2a3a;
+            --text-primary: #e0e0e0;
+            --text-secondary: #b0b0b0;
+            --text-muted: #808080;
+            --border-color: #404040;
+            --accent-color: #4aa3ff;
+            --accent-hover: #2196f3;
+            --input-bg: #2d2d2d;
+            --error-color: #ff5252;
+            --success-color: #69f0ae;
+            --warning-color: #ffca28;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0 16px 8px 16px;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        .container {
+            width: 100%;
+            margin: 0 auto;
+        }
+        h3 {
+            color: var(--accent-color);
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--border-color);
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+        .status-indicator.listening {
+            background: var(--success-color);
+            animation: pulse 2s infinite;
+        }
+        .status-indicator.idle {
+            background: var(--warning-color);
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .action-btn {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .action-btn.primary {
+            background: var(--accent-color);
+            color: white;
+        }
+        .action-btn.primary:hover {
+            background: var(--accent-hover);
+        }
+        .action-btn.primary:disabled {
+            background: var(--border-color);
+            cursor: not-allowed;
+        }
+        .action-btn.secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+        .action-btn.secondary:hover {
+            background: var(--border-color);
+        }
+        .action-btn.danger {
+            background: var(--error-color);
+            color: white;
+        }
+        .action-btn.danger:hover {
+            background: #b71c1c;
+        }
+        body.dark-theme .action-btn.danger:hover {
+            background: #ff1744;
+        }
+        .info-box {
+            background: var(--bg-info);
+            border-radius: 6px;
+            padding: 12px;
+            margin: 16px 0;
+            font-size: 13px;
+        }
+        .config-display {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px;
+            margin: 0 0 12px 0;
+            font-size: 13px;
+        }
+        .config-display .label {
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .config-display .value {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        .config-display .divider {
+            border-top: 1px solid var(--border-color);
+            margin: 8px 0;
+        }
+        .log {
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            padding: 8px;
+            font-size: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+            margin-top: 12px;
+        }
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        .log-time {
+            color: var(--text-muted);
+            font-size: 11px;
+        }
+        .form-group {
+            margin: 12px 0;
+        }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 13px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+            box-sizing: border-box;
+        }
+        .form-group input::placeholder {
+            color: var(--text-muted);
+        }
+        .error-text {
+            color: var(--error-color);
+            font-size: 12px;
+            margin-top: 4px;
+        }
+        .help-text {
+            color: var(--text-muted);
+            font-size: 11px;
+            margin-top: 4px;
+            font-style: italic;
+        }
+        .no-config-warning {
+            background: #fff3e0;
+            border: 1px solid var(--warning-color);
+            border-radius: 6px;
+            padding: 12px;
+            margin: 12px 0;
+            font-size: 13px;
+            color: #e65100;
+        }
+        body.dark-theme .no-config-warning {
+            background: #3d2800;
+            color: var(--warning-color);
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 12px;
+        }
+        .tab {
+            padding: 8px 16px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            color: var(--text-secondary);
+            font-size: 13px;
+            border-bottom: 2px solid transparent;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .tab:hover {
+            color: var(--text-primary);
+        }
+        .tab.active {
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .transcript-container {
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            padding: 8px;
+            height: 300px;
+            overflow-y: auto;
+        }
+        .transcript-entry {
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .transcript-entry:last-child {
+            border-bottom: none;
+        }
+        .transcript-speaker {
+            font-weight: 600;
+            color: var(--accent-color);
+            font-size: 12px;
+        }
+        .transcript-time {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-left: 8px;
+        }
+        .transcript-text {
+            margin-top: 2px;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .transcript-empty {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 40px 20px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="info-box">
+            <strong>Pennie will:</strong><br>
+            - Listen to the meeting audio<br>
+            - Identify who's speaking<br>
+            - Create DevOps work items<br>
+            - Post summaries to chat
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" data-tab="control">Control</button>
+            <button class="tab" data-tab="transcript">Transcript</button>
+        </div>
+
+        <!-- Control Tab -->
+        <div id="control-tab" class="tab-content active">
+            <!-- Configuration display (project/epic from config page) -->
+            <div id="configDisplay" class="config-display" style="display: none;">
+            <div class="label">Azure DevOps Project</div>
+            <div class="value" id="configProject">-</div>
+            <div class="divider"></div>
+            <div class="label">Parent Epic</div>
+            <div class="value" id="configEpic">None</div>
+        </div>
+
+        <!-- Warning if no configuration -->
+        <div id="noConfigWarning" class="no-config-warning" style="display: none;">
+            No project configured. Remove this tab and add Pennie again to select a project.
+        </div>
+
+        <button id="joinBtn" class="action-btn primary" disabled>
+            Add Pennie to Meeting
+        </button>
+
+        <!-- Manual entry form (hidden by default, shown if SDK API fails) -->
+        <div id="manualEntryForm" style="display: none;">
+            <div class="form-group">
+                <label for="meetingNumber">Meeting Number</label>
+                <input type="text" id="meetingNumber" placeholder="e.g. 396 240 783 591 15">
+                <div class="help-text">Find in meeting invite: "Meeting ID: xxx xxx xxx xxx xx"</div>
+            </div>
+            <div class="form-group">
+                <label for="meetingPasscode">Passcode</label>
+                <input type="text" id="meetingPasscode" placeholder="e.g. tj3HN9jw">
+                <div class="help-text">Find in meeting invite: "Passcode: xxxxxx"</div>
+            </div>
+            <button id="joinByIdBtn" class="action-btn primary">
+                Join with Meeting Number
+            </button>
+        </div>
+
+
+        <div id="joinError" class="error-text" style="display: none;"></div>
+
+            <div class="log" id="log">
+                <div class="log-entry">
+                    <span class="log-time">--:--</span> Waiting for meeting context...
+                </div>
+            </div>
+        </div>
+
+        <!-- Transcript Tab -->
+        <div id="transcript-tab" class="tab-content">
+            <div id="transcriptContainer" class="transcript-container">
+                <div class="transcript-empty" id="transcriptEmpty">
+                    Pennie must be in the meeting to transcribe. Transcriptions will appear here when people speak.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const joinBtn = document.getElementById('joinBtn');
+        const logEl = document.getElementById('log');
+        const configDisplay = document.getElementById('configDisplay');
+        const noConfigWarning = document.getElementById('noConfigWarning');
+        const configProjectEl = document.getElementById('configProject');
+        const configEpicEl = document.getElementById('configEpic');
+
+        let meetingContext = null;
+        let isJoined = false;
+        let joinUrl = null;  // Will be populated by getMeetingDetailsVerbose()
+        let currentMeetingId = null;  // Track the internal meeting ID for leave
+
+        // Read configuration from URL parameters (set by config page)
+        const urlParams = new URLSearchParams(window.location.search);
+        const selectedProject = urlParams.get('project') || '';
+        const selectedEpic = urlParams.get('epicId') || '';
+        const selectedEpicTitle = urlParams.get('epicTitle') || '';
+
+        const manualEntryForm = document.getElementById('manualEntryForm');
+        const joinByIdBtn = document.getElementById('joinByIdBtn');
+
+        function log(message) {
+            const time = new Date().toLocaleTimeString('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">${time}</span> ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // Status display removed - keeping function stub to avoid errors
+        function updateStatus(state, text) {
+            // No-op - status display removed
+        }
+
+        // Display configuration
+        function showConfiguration() {
+            if (selectedProject) {
+                configDisplay.style.display = 'block';
+                noConfigWarning.style.display = 'none';
+                configProjectEl.textContent = selectedProject;
+                if (selectedEpic && selectedEpicTitle) {
+                    configEpicEl.textContent = `#${selectedEpic}: ${selectedEpicTitle}`;
+                } else if (selectedEpic) {
+                    configEpicEl.textContent = `#${selectedEpic}`;
+                } else {
+                    configEpicEl.textContent = 'None';
+                }
+                log('Project: ' + selectedProject);
+            } else {
+                configDisplay.style.display = 'none';
+                noConfigWarning.style.display = 'block';
+                log('No project configured');
+            }
+        }
+
+        // Meeting number and passcode inputs
+        const meetingNumberInput = document.getElementById('meetingNumber');
+        const meetingPasscodeInput = document.getElementById('meetingPasscode');
+        const joinError = document.getElementById('joinError');
+
+        // Show manual entry form as fallback
+        function showManualEntryForm() {
+            joinBtn.style.display = 'none';
+            manualEntryForm.style.display = 'block';
+            updateStatus('idle', 'Enter meeting number manually');
+            log('Manual entry required');
+        }
+
+        // Try to get meeting join URL via Teams SDK
+        async function tryGetMeetingJoinUrl() {
+            if (!microsoftTeams.meeting) {
+                log('Meeting API not available');
+                return null;
+            }
+
+            try {
+                log('Getting meeting details...');
+                const details = await microsoftTeams.meeting.getMeetingDetailsVerbose();
+                log('Meeting details received');
+                console.log('Meeting details:', details);
+
+                // The joinUrl can be in different locations depending on SDK version
+                const url = details?.details?.joinUrl || details?.joinUrl;
+                if (url) {
+                    log('Join URL found');
+                    return url;
+                } else {
+                    log('No join URL in meeting details');
+                    return null;
+                }
+            } catch (error) {
+                log('getMeetingDetailsVerbose failed: ' + error.message);
+                console.error('getMeetingDetailsVerbose error:', error);
+                return null;
+            }
+        }
+
+        // Apply theme based on Teams context
+        function applyTheme(theme) {
+            log('Theme: ' + theme);
+            // Teams can return 'dark', 'default', or 'contrast'
+            if (theme === 'dark' || theme === 'contrast') {
+                document.body.classList.add('dark-theme');
+            } else {
+                document.body.classList.remove('dark-theme');
+            }
+        }
+
+        // Auto-join meeting when panel opens
+        async function autoJoinMeeting() {
+            if (!joinUrl) {
+                log('No join URL available');
+                return;
+            }
+
+            if (!selectedProject) {
+                joinError.textContent = 'No project configured. Remove this tab and add Pennie again to select a project.';
+                joinError.style.display = 'block';
+                return;
+            }
+
+            joinError.style.display = 'none';
+            joinBtn.disabled = true;
+            joinBtn.textContent = 'Joining...';
+            log('Auto-joining meeting...');
+            updateStatus('idle', 'Joining...');
+
+            try {
+                const response = await fetch('/api/meeting/join', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        joinUrl: joinUrl,
+                        devOpsProject: selectedProject,
+                        devOpsEpicId: selectedEpic
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    isJoined = true;
+                    currentMeetingId = result.internalMeetingId;
+                    log('Pennie joined the meeting');
+                    updateStatus('listening', '');
+                    joinBtn.textContent = 'Remove Pennie from Meeting';
+                    joinBtn.classList.remove('primary');
+                    joinBtn.classList.add('danger');
+                    joinBtn.disabled = false;
+                    // Start transcript polling
+                    clearTranscripts();
+                    startTranscriptPolling();
+                } else {
+                    const errorMsg = result.error || 'Unknown error';
+                    log('Join failed: ' + errorMsg);
+                    joinError.textContent = errorMsg;
+                    joinError.style.display = 'block';
+                    updateStatus('idle', 'Join failed');
+                    joinBtn.textContent = 'Add Pennie to Meeting';
+                    joinBtn.disabled = false;
+                }
+            } catch (error) {
+                log('Request failed: ' + error.message);
+                joinError.textContent = 'Request failed: ' + error.message;
+                joinError.style.display = 'block';
+                updateStatus('idle', 'Request failed');
+                joinBtn.textContent = 'Add Pennie to Meeting';
+                joinBtn.disabled = false;
+            }
+        }
+
+        async function init() {
+            try {
+                await microsoftTeams.app.initialize();
+                log('Teams SDK initialized');
+
+                // Show configuration from URL params
+                showConfiguration();
+
+                const context = await microsoftTeams.app.getContext();
+                meetingContext = context;
+
+                // Apply Teams theme (dark, default, or contrast)
+                if (context.app?.theme) {
+                    applyTheme(context.app.theme);
+                }
+
+                // Listen for theme changes
+                microsoftTeams.app.registerOnThemeChangeHandler((theme) => {
+                    applyTheme(theme);
+                });
+
+                // Try to get meeting join URL automatically
+                if (context.meeting?.id) {
+                    log('Meeting detected');
+                    joinUrl = await tryGetMeetingJoinUrl();
+
+                    if (joinUrl) {
+                        // Auto-join the meeting
+                        await autoJoinMeeting();
+                    } else {
+                        // Fallback to manual entry
+                        showManualEntryForm();
+                    }
+                } else {
+                    // Not in a meeting context - show manual entry
+                    log('No meeting context detected');
+                    showManualEntryForm();
+                }
+            } catch (error) {
+                log('SDK error: ' + error.message);
+                console.error('Init error:', error);
+                showConfiguration();
+                // Fallback to manual entry on error
+                showManualEntryForm();
+            }
+        }
+
+        // One-click join/leave toggle using joinUrl from getMeetingDetailsVerbose()
+        joinBtn.addEventListener('click', async () => {
+            // If already joined, handle leave
+            if (isJoined) {
+                joinBtn.disabled = true;
+                joinBtn.textContent = 'Leaving...';
+                const meetingIdToLeave = currentMeetingId || 'unknown';
+                log('Requesting Pennie to leave meeting: ' + meetingIdToLeave);
+                console.log('Leave request - meetingId:', meetingIdToLeave);
+                updateStatus('idle', 'Leaving...');
+
+                try {
+                    const response = await fetch('/api/meeting/leave', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            meetingId: meetingIdToLeave
+                        })
+                    });
+
+                    const result = await response.json();
+                    console.log('Leave response:', result);
+
+                    if (response.ok && result.success) {
+                        isJoined = false;
+                        currentMeetingId = null;
+                        stopTranscriptPolling();
+                        log('Pennie left the meeting');
+                        if (!result.wasInMeeting) {
+                            log('(Meeting was already inactive)');
+                        }
+                        updateStatus('idle', 'Pennie left');
+                        joinBtn.textContent = 'Add Pennie to Meeting';
+                        joinBtn.classList.remove('danger');
+                        joinBtn.classList.add('primary');
+                    } else {
+                        const errorMsg = result.error || 'Unknown error';
+                        log('Leave request failed: ' + errorMsg);
+                        joinBtn.textContent = 'Remove Pennie from Meeting';
+                    }
+                } catch (error) {
+                    console.error('Leave error:', error);
+                    log('Leave request failed: ' + error.message);
+                    joinBtn.textContent = 'Remove Pennie from Meeting';
+                } finally {
+                    joinBtn.disabled = false;
+                }
+                return;
+            }
+
+            // Handle join
+            if (!joinUrl) {
+                joinError.textContent = 'No meeting URL available. Please use manual entry.';
+                joinError.style.display = 'block';
+                showManualEntryForm();
+                return;
+            }
+
+            if (!selectedProject) {
+                joinError.textContent = 'No project configured. Remove this tab and add Pennie again to select a project.';
+                joinError.style.display = 'block';
+                return;
+            }
+
+            joinError.style.display = 'none';
+            joinBtn.disabled = true;
+            joinBtn.textContent = 'Joining...';
+            log('Joining via URL...');
+            updateStatus('idle', 'Joining...');
+
+            try {
+                const response = await fetch('/api/meeting/join', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        joinUrl: joinUrl,
+                        devOpsProject: selectedProject,
+                        devOpsEpicId: selectedEpic
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    isJoined = true;
+                    currentMeetingId = result.internalMeetingId;
+                    log('Pennie joined the meeting');
+                    updateStatus('listening', '');
+                    joinBtn.textContent = 'Remove Pennie from Meeting';
+                    joinBtn.classList.remove('primary');
+                    joinBtn.classList.add('danger');
+                    joinBtn.disabled = false;
+                    // Start transcript polling
+                    clearTranscripts();
+                    startTranscriptPolling();
+                } else {
+                    const errorMsg = result.error || 'Unknown error';
+                    log('Join failed: ' + errorMsg);
+                    joinError.textContent = errorMsg;
+                    joinError.style.display = 'block';
+                    updateStatus('idle', 'Join failed');
+                }
+            } catch (error) {
+                log('Request failed: ' + error.message);
+                joinError.textContent = 'Request failed: ' + error.message;
+                joinError.style.display = 'block';
+                updateStatus('idle', 'Request failed');
+            } finally {
+                joinBtn.disabled = false;
+                if (!isJoined) {
+                    joinBtn.textContent = 'Add Pennie to Meeting';
+                    joinBtn.classList.remove('danger');
+                    joinBtn.classList.add('primary');
+                }
+            }
+        });
+
+        // Manual entry fallback using meeting number and passcode
+        joinByIdBtn.addEventListener('click', async () => {
+            const meetingNumber = meetingNumberInput.value.trim();
+            const passcode = meetingPasscodeInput.value.trim();
+
+            if (!meetingNumber) {
+                joinError.textContent = 'Meeting number is required. Find it in your Teams meeting invitation.';
+                joinError.style.display = 'block';
+                return;
+            }
+
+            if (!selectedProject) {
+                joinError.textContent = 'No project configured. Remove this tab and add Pennie again to select a project.';
+                joinError.style.display = 'block';
+                return;
+            }
+
+            joinError.style.display = 'none';
+            joinByIdBtn.disabled = true;
+            joinByIdBtn.textContent = 'Joining...';
+            log('Joining meeting: ' + meetingNumber.substring(0, 8) + '...');
+            updateStatus('idle', 'Joining...');
+
+            try {
+                const response = await fetch('/api/meeting/join-by-id', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        meetingNumber: meetingNumber,
+                        passcode: passcode,
+                        devOpsProject: selectedProject,
+                        devOpsEpicId: selectedEpic
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    isJoined = true;
+                    currentMeetingId = result.internalMeetingId;
+                    log('Pennie joined the meeting');
+                    updateStatus('listening', '');
+                    // Hide manual entry form and show toggle button
+                    manualEntryForm.style.display = 'none';
+                    joinBtn.style.display = 'block';
+                    joinBtn.textContent = 'Remove Pennie from Meeting';
+                    joinBtn.classList.remove('primary');
+                    joinBtn.classList.add('danger');
+                    joinBtn.disabled = false;
+                    // Start transcript polling
+                    clearTranscripts();
+                    startTranscriptPolling();
+                } else {
+                    const errorMsg = result.error || 'Unknown error';
+                    log('Join failed: ' + errorMsg);
+                    joinError.textContent = errorMsg;
+                    joinError.style.display = 'block';
+                    updateStatus('idle', 'Join failed');
+                }
+            } catch (error) {
+                log('Request failed: ' + error.message);
+                joinError.textContent = 'Request failed: ' + error.message;
+                joinError.style.display = 'block';
+                updateStatus('idle', 'Request failed');
+            } finally {
+                joinByIdBtn.disabled = false;
+                joinByIdBtn.textContent = 'Join with Meeting Number';
+            }
+        });
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Update tab buttons
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                // Update tab content
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                const targetId = tab.dataset.tab + '-tab';
+                document.getElementById(targetId).classList.add('active');
+
+                // Start polling transcripts when transcript tab is active
+                if (tab.dataset.tab === 'transcript' && isJoined) {
+                    startTranscriptPolling();
+                }
+            });
+        });
+
+        // Transcript polling
+        const transcriptContainer = document.getElementById('transcriptContainer');
+        const transcriptEmpty = document.getElementById('transcriptEmpty');
+        let transcriptPollInterval = null;
+        let lastTranscriptIndex = 0;
+
+        function startTranscriptPolling() {
+            if (transcriptPollInterval) return;
+            if (!currentMeetingId) return;
+
+            transcriptPollInterval = setInterval(pollTranscripts, 2000);
+            pollTranscripts(); // Immediate first poll
+        }
+
+        function stopTranscriptPolling() {
+            if (transcriptPollInterval) {
+                clearInterval(transcriptPollInterval);
+                transcriptPollInterval = null;
+            }
+        }
+
+        async function pollTranscripts() {
+            if (!currentMeetingId) return;
+
+            try {
+                const response = await fetch(`/api/meeting/transcripts?meetingId=${encodeURIComponent(currentMeetingId)}&sinceIndex=${lastTranscriptIndex}`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                if (data.success && data.transcripts && data.transcripts.length > 0) {
+                    transcriptEmpty.style.display = 'none';
+
+                    data.transcripts.forEach(t => {
+                        addTranscriptEntry(t.speaker, t.timestamp, t.text);
+                    });
+
+                    lastTranscriptIndex = data.lastIndex;
+                }
+            } catch (error) {
+                console.error('Error polling transcripts:', error);
+            }
+        }
+
+        function addTranscriptEntry(speaker, timestamp, text) {
+            const entry = document.createElement('div');
+            entry.className = 'transcript-entry';
+            entry.innerHTML = `
+                <span class="transcript-speaker">${escapeHtml(speaker)}</span>
+                <span class="transcript-time">${timestamp}</span>
+                <div class="transcript-text">${escapeHtml(text)}</div>
+            `;
+            transcriptContainer.appendChild(entry);
+            transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function clearTranscripts() {
+            transcriptContainer.innerHTML = '';
+            transcriptContainer.appendChild(transcriptEmpty);
+            transcriptEmpty.style.display = 'block';
+            lastTranscriptIndex = 0;
+        }
+
+        // Auto-leave meeting when app is removed/closed
+        window.addEventListener('beforeunload', () => {
+            if (isJoined && currentMeetingId) {
+                // Use GET endpoint for more reliable sendBeacon (POST with JSON can be unreliable)
+                const leaveUrl = `/api/meeting/leave?meetingId=${encodeURIComponent(currentMeetingId)}`;
+                navigator.sendBeacon(leaveUrl);
+                console.log('Sent leave beacon for meeting:', currentMeetingId);
+            }
+        });
+
+        init();
+    </script>
+</body>
+</html>

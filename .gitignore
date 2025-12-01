@@ -113,3 +113,8 @@ htmlcov/
 
 # Application Insights
 ApplicationInsights.config
+
+# Deployment artifacts (should not be committed to public repo)
+bot/*.zip
+bot/publish-*/
+bot/teams-manifest/*.zip

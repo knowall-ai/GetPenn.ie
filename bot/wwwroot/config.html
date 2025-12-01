@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pennie the Prepper - Configuration</title>
+    <script src="https://res.cdn.office.net/teams-js/2.25.0/js/MicrosoftTeams.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #f5f5f5;
+            --bg-secondary: white;
+            --bg-info: #e7f3ff;
+            --text-primary: #333;
+            --text-secondary: #666;
+            --text-muted: #999;
+            --border-color: #ddd;
+            --accent-color: #1E90FF;
+            --input-bg: white;
+            --error-color: #c62828;
+            --success-color: #2e7d32;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #1f1f1f;
+                --bg-secondary: #2d2d2d;
+                --bg-info: #1a2a3a;
+                --text-primary: #e0e0e0;
+                --text-secondary: #b0b0b0;
+                --text-muted: #808080;
+                --border-color: #404040;
+                --accent-color: #4aa3ff;
+                --input-bg: #2d2d2d;
+                --error-color: #ff5252;
+                --success-color: #69f0ae;
+            }
+        }
+
+        body.dark-theme {
+            --bg-primary: #1f1f1f;
+            --bg-secondary: #2d2d2d;
+            --bg-info: #1a2a3a;
+            --text-primary: #e0e0e0;
+            --text-secondary: #b0b0b0;
+            --text-muted: #808080;
+            --border-color: #404040;
+            --accent-color: #4aa3ff;
+            --input-bg: #2d2d2d;
+            --error-color: #ff5252;
+            --success-color: #69f0ae;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        h2 {
+            color: var(--accent-color);
+            margin-top: 0;
+        }
+        p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .info {
+            background: var(--bg-info);
+            border-left: 4px solid var(--accent-color);
+            padding: 12px;
+            margin: 16px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .form-group {
+            margin: 16px 0;
+        }
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 14px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+        }
+        .form-group select:disabled {
+            background: var(--bg-primary);
+            color: var(--text-muted);
+        }
+        .form-group .help-text {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .status.ready {
+            background: var(--bg-info);
+            color: var(--success-color);
+        }
+        .status.error {
+            background: #ffebee;
+            color: var(--error-color);
+        }
+        .status.loading {
+            background: var(--bg-info);
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <p>Select the Azure DevOps project where work items will be created.</p>
+
+        <div class="form-group">
+            <label for="projectSelect">Azure DevOps Project *</label>
+            <select id="projectSelect" disabled>
+                <option value="">Loading projects...</option>
+            </select>
+            <div class="help-text">Work items will be created in this project</div>
+        </div>
+
+        <div class="form-group">
+            <label for="epicSelect">Epic (Optional)</label>
+            <select id="epicSelect" disabled>
+                <option value="">Select a project first</option>
+            </select>
+            <div class="help-text">New work items will be linked to this epic</div>
+        </div>
+
+        <div class="info">
+            <strong>What Pennie does:</strong>
+            <ul style="margin: 8px 0 0 0; padding-left: 20px;">
+                <li>Listens to meeting audio</li>
+                <li>Identifies speakers</li>
+                <li>Creates backlog items</li>
+                <li>Links to your DevOps project</li>
+            </ul>
+        </div>
+
+        <p>Click <strong>Save</strong> to add Pennie to this meeting.</p>
+
+        <div id="status" class="status loading">Loading projects...</div>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+        const projectSelect = document.getElementById('projectSelect');
+        const epicSelect = document.getElementById('epicSelect');
+
+        const BACKEND_URL = 'https://pennie-backend-prod.azurewebsites.net/api';
+
+        let selectedProject = '';
+        let selectedEpic = '';
+        let selectedEpicTitle = '';
+
+        function applyTheme(theme) {
+            console.log('Teams theme:', theme);
+            // Teams can return 'dark', 'default', or 'contrast'
+            if (theme === 'dark' || theme === 'contrast') {
+                document.body.classList.add('dark-theme');
+            } else {
+                document.body.classList.remove('dark-theme');
+            }
+        }
+
+        async function loadProjects() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/read_projects`);
+                if (response.ok) {
+                    const data = await response.json();
+                    projectSelect.innerHTML = '<option value="">Select a project...</option>';
+                    data.projects.forEach(project => {
+                        const option = document.createElement('option');
+                        option.value = project.name;
+                        option.textContent = project.name;
+                        projectSelect.appendChild(option);
+                    });
+                    projectSelect.disabled = false;
+                    updateStatus();
+                } else {
+                    showError('Failed to load projects');
+                }
+            } catch (error) {
+                showError('Error loading projects: ' + error.message);
+            }
+        }
+
+        async function loadEpics(projectName) {
+            epicSelect.innerHTML = '<option value="">Loading epics...</option>';
+            epicSelect.disabled = true;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/read_work_items?project=${encodeURIComponent(projectName)}&type=Epic&depth=1`);
+                if (response.ok) {
+                    const data = await response.json();
+                    epicSelect.innerHTML = '<option value="">None (no parent epic)</option>';
+                    if (data.work_items && data.work_items.length > 0) {
+                        data.work_items.forEach(epic => {
+                            const option = document.createElement('option');
+                            option.value = epic.id;
+                            option.textContent = `#${epic.id}: ${epic.title}`;
+                            option.dataset.title = epic.title;
+                            epicSelect.appendChild(option);
+                        });
+                    }
+                    epicSelect.disabled = false;
+                } else {
+                    epicSelect.innerHTML = '<option value="">None (no epics in project)</option>';
+                    epicSelect.disabled = false;
+                }
+            } catch (error) {
+                epicSelect.innerHTML = '<option value="">Error loading epics</option>';
+            }
+        }
+
+        function updateStatus() {
+            if (selectedProject) {
+                statusEl.className = 'status ready';
+                statusEl.textContent = 'Ready - click Save to add Pennie';
+                microsoftTeams.pages.config.setValidityState(true);
+            } else {
+                statusEl.className = 'status loading';
+                statusEl.textContent = 'Select a project to continue';
+                microsoftTeams.pages.config.setValidityState(false);
+            }
+        }
+
+        function showError(message) {
+            statusEl.className = 'status error';
+            statusEl.textContent = message;
+        }
+
+        projectSelect.addEventListener('change', () => {
+            selectedProject = projectSelect.value;
+            selectedEpic = '';
+            selectedEpicTitle = '';
+            if (selectedProject) {
+                loadEpics(selectedProject);
+            } else {
+                epicSelect.innerHTML = '<option value="">Select a project first</option>';
+                epicSelect.disabled = true;
+            }
+            updateStatus();
+        });
+
+        epicSelect.addEventListener('change', () => {
+            selectedEpic = epicSelect.value;
+            const selectedOption = epicSelect.options[epicSelect.selectedIndex];
+            selectedEpicTitle = selectedOption.dataset.title || '';
+        });
+
+        async function init() {
+            try {
+                await microsoftTeams.app.initialize();
+
+                // Get context for theme
+                const context = await microsoftTeams.app.getContext();
+                if (context.app?.theme) {
+                    applyTheme(context.app.theme);
+                }
+
+                // Listen for theme changes
+                microsoftTeams.app.registerOnThemeChangeHandler((theme) => {
+                    applyTheme(theme);
+                });
+
+                // Load projects
+                loadProjects();
+
+                // Register save handler
+                microsoftTeams.pages.config.registerOnSaveHandler((saveEvent) => {
+                    // Build content URL with selected project and epic as query params
+                    const params = new URLSearchParams();
+                    if (selectedProject) {
+                        params.set('project', selectedProject);
+                    }
+                    if (selectedEpic) {
+                        params.set('epicId', selectedEpic);
+                        params.set('epicTitle', selectedEpicTitle);
+                    }
+
+                    const contentUrl = window.location.origin + '/meetingPanel.html?' + params.toString();
+
+                    microsoftTeams.pages.config.setConfig({
+                        contentUrl: contentUrl,
+                        entityId: 'PennieTab-' + (selectedProject || 'default'),
+                        suggestedDisplayName: 'Pennie the Prepper'
+                    });
+                    saveEvent.notifySuccess();
+                });
+
+                // Initially disable save until project is selected
+                microsoftTeams.pages.config.setValidityState(false);
+
+            } catch (error) {
+                showError('Error: ' + error.message);
+                console.error('Teams SDK init error:', error);
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
