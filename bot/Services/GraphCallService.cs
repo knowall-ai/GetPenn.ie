@@ -586,32 +586,28 @@ public class GraphCallService : IGraphCallService, IDisposable
                             meetingId, callId);
 
                         // Check for state changes
-                        if (notification.TryGetProperty("resourceData", out var resourceData))
+                        if (notification.TryGetProperty("resourceData", out var resourceData)
+                            && resourceData.TryGetProperty("state", out var state)
+                            && state.GetString() == "terminated")
                         {
-                            if (resourceData.TryGetProperty("state", out var state))
+                            var callState = state.GetString();
+                            _logger.LogInformation("Call state changed to: {State}", callState);
+
+                            // Log termination reason if available (critical for diagnostics)
+                            if (resourceData.TryGetProperty("resultInfo", out var resultInfo))
                             {
-                                var callState = state.GetString();
-                                _logger.LogInformation("Call state changed to: {State}", callState);
-
-                                // Log termination reason if available (critical for diagnostics)
-                                if (resourceData.TryGetProperty("resultInfo", out var resultInfo))
-                                {
-                                    var code = resultInfo.TryGetProperty("code", out var c) ? c.GetInt32() : 0;
-                                    var subCode = resultInfo.TryGetProperty("subcode", out var sc) ? sc.GetInt32() : 0;
-                                    var message = resultInfo.TryGetProperty("message", out var m) ? m.GetString() : "unknown";
-                                    _logger.LogWarning("Call result info - Code: {Code}, SubCode: {SubCode}, Message: {Message}",
-                                        code, subCode, message);
-                                }
-
-                                // Handle terminated state
-                                if (callState == "terminated")
-                                {
-                                    _logger.LogInformation("Call {CallId} terminated, cleaning up", callId);
-                                    _activeCalls.TryRemove(meetingId, out _);
-                                    _callIdToMeetingId.TryRemove(callId, out _);
-                                    _audioCallbacks.TryRemove(meetingId, out _);
-                                }
+                                var code = resultInfo.TryGetProperty("code", out var c) ? c.GetInt32() : 0;
+                                var subCode = resultInfo.TryGetProperty("subcode", out var sc) ? sc.GetInt32() : 0;
+                                var message = resultInfo.TryGetProperty("message", out var m) ? m.GetString() : "unknown";
+                                _logger.LogWarning("Call result info - Code: {Code}, SubCode: {SubCode}, Message: {Message}",
+                                    code, subCode, message);
                             }
+
+                            // Handle terminated state
+                            _logger.LogInformation("Call {CallId} terminated, cleaning up", callId);
+                            _activeCalls.TryRemove(meetingId, out _);
+                            _callIdToMeetingId.TryRemove(callId, out _);
+                            _audioCallbacks.TryRemove(meetingId, out _);
                         }
                     }
                 }
