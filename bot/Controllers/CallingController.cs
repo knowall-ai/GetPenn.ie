@@ -113,7 +113,7 @@ public class CallingController : ControllerBase
     /// POST /api/calling
     /// </summary>
     [HttpPost]
-    [RequestSizeLimit(10_485_760)] // 10MB limit to prevent DoS attacks
+    [RequestSizeLimit(524_288)] // 512KB limit - Graph notifications are typically under 100KB
     public async Task<IActionResult> HandleNotification()
     {
         try
@@ -154,7 +154,7 @@ public class CallingController : ControllerBase
     /// POST /api/calling/media
     /// </summary>
     [HttpPost("media")]
-    [RequestSizeLimit(10_485_760)] // 10MB limit to prevent DoS attacks
+    [RequestSizeLimit(524_288)] // 512KB limit - media notifications are signaling/metadata only
     public async Task<IActionResult> HandleMediaNotification()
     {
         try
