@@ -187,13 +187,12 @@ public class MeetingController : ControllerBase
         var message = ex.Message;
 
         // If there's an inner exception with more details, append it
-        if (ex.InnerException != null && !string.IsNullOrEmpty(ex.InnerException.Message))
+        if (ex.InnerException != null && 
+            !string.IsNullOrEmpty(ex.InnerException.Message) && 
+            !message.Contains(ex.InnerException.Message))
         {
             // Only append if it adds new information
-            if (!message.Contains(ex.InnerException.Message))
-            {
-                message += $" - {ex.InnerException.Message}";
-            }
+            message += $" - {ex.InnerException.Message}";
         }
 
         return message;
