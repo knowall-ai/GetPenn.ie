@@ -297,6 +297,9 @@ public class GraphCallService : IGraphCallService, IDisposable
         }
         catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
         {
+            // Clean up socket on failure
+            audioSocket?.Dispose();
+
             // Extract detailed error information from ODataError
             var errorCode = odataEx.Error?.Code ?? "Unknown";
             var errorMessage = odataEx.Error?.Message ?? "No message";
@@ -335,6 +338,9 @@ public class GraphCallService : IGraphCallService, IDisposable
         }
         catch (Exception ex)
         {
+            // Clean up socket on failure
+            audioSocket?.Dispose();
+
             _logger.LogError(ex, "Failed to join meeting {MeetingId}", meetingId);
             throw;
         }
@@ -434,6 +440,9 @@ public class GraphCallService : IGraphCallService, IDisposable
         }
         catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
         {
+            // Clean up socket on failure
+            audioSocket?.Dispose();
+
             _logger.LogError(odataEx,
                 "Graph API error joining meeting by ID: {Code} - {Message}",
                 odataEx.Error?.Code, odataEx.Error?.Message);
@@ -442,6 +451,9 @@ public class GraphCallService : IGraphCallService, IDisposable
         }
         catch (Exception ex)
         {
+            // Clean up socket on failure
+            audioSocket?.Dispose();
+
             _logger.LogError(ex, "Failed to join meeting by ID {MeetingNumber}", meetingIdNumber);
             throw;
         }
@@ -1058,6 +1070,8 @@ public class GraphCallService : IGraphCallService, IDisposable
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to create AppHostedMediaConfig, falling back to ServiceHostedMedia");
+                // Clean up socket if it was created before the exception
+                audioSocket?.Dispose();
                 return (CreateServiceHostedMediaConfig(), null);
             }
         }
