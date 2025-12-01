@@ -233,10 +233,22 @@
                     }
                     epicSelect.disabled = false;
                 } else {
+                    // Parse error response body for diagnostic details
+                    let errorMessage = `Failed to load epics (${response.status})`;
+                    try {
+                        const errorData = await response.json();
+                        if (errorData.error) {
+                            errorMessage = errorData.error;
+                        }
+                    } catch (parseError) {
+                        // Response may not be JSON
+                    }
+                    console.error('Epic load error:', errorMessage);
                     epicSelect.innerHTML = '<option value="">None (no epics in project)</option>';
                     epicSelect.disabled = false;
                 }
             } catch (error) {
+                console.error('Error loading epics:', error);
                 epicSelect.innerHTML = '<option value="">Error loading epics</option>';
             }
         }
