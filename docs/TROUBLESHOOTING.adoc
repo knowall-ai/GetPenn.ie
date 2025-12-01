@@ -8,7 +8,7 @@
 | Backend is working (returns 26 projects via curl), but Pennie doesn't have the HTTP endpoint URL configured. Open the OpenAPI spec at `/mnt/raid1/GitHub/GetPenn.ie/openapi/pennie-backend-openapi.json` and add it as an Action in Azure AI Foundry portal: Actions → + Add Action → From OpenAPI → Paste spec → Save. Test: "What DevOps projects do we have?"
 
 | **Azure Functions return HTTP 503 "Function host is not running"**
-| Python Azure Functions were deployed to Windows Function App. Python requires Linux. Redeploy with `kind: 'functionapp,linux'` and `linuxFxVersion: 'Python|3.11'` in Bicep template. Verify with: `az functionapp show --query "{kind:kind, reserved:reserved}"`
+| Python Azure Functions were deployed to Windows Function App. Python requires Linux. Redeploy with `kind: 'functionapp,linux'` and `linuxFxVersion: 'Python\|3.11'` in Bicep template. Verify with: `az functionapp show --query "{kind:kind, reserved:reserved}"`
 
 | **Python SDK error: "OpenApiTool is not JSON serializable"**
 | Bug in azure-ai-agents SDK v1.0.0. Use the REST API scripts in `scripts/update-pennie-tools.sh` instead of Python SDK until SDK is fixed.
