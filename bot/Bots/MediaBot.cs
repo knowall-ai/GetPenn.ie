@@ -50,14 +50,6 @@ public class MediaBot : ActivityHandler
         // Log channel data for debugging meeting context
         LogChannelDataForDebugging(turnContext);
 
-        // Check for project-related queries
-        if (text.Contains("what projects") || text.Contains("devops projects") ||
-            text.Contains("list projects") || text.Contains("show projects"))
-        {
-            await HandleProjectQueryAsync(turnContext, cancellationToken);
-            return;
-        }
-
         // Check for simple join commands (like "join", "come join", "join us")
         // These can auto-join if we're in a meeting context
         if (IsSimpleJoinCommand(text))
@@ -73,99 +65,59 @@ public class MediaBot : ActivityHandler
             return;
         }
 
-        // Check for help command
-        if (text.Contains("help") || text == "?")
-        {
-            var helpText = "Hi! I'm Pennie the Prepper. Here's what I can do:\n\n" +
-                          "- Ask me: **\"What projects do we have in DevOps?\"**\n" +
-                          "- I'll list all your Azure DevOps projects\n" +
-                          "- Say: **\"Join meeting ID: xxx passcode: yyy\"** to join a Teams meeting\n\n" +
-                          "More features coming soon!";
-            await turnContext.SendActivityAsync(MessageFactory.Text(helpText), cancellationToken);
-            return;
-        }
-
-        // Default response
-        var responseText = "I didn't understand that. Try asking:\n" +
-                          "- \"What projects do we have in DevOps?\"\n" +
-                          "- \"Join meeting ID: xxx passcode: yyy\"\n" +
-                          "- \"Help\"";
-        await turnContext.SendActivityAsync(MessageFactory.Text(responseText), cancellationToken);
+        // For all other messages (including "what projects", "help", general questions, etc.),
+        // forward to Pennie for conversational handling
+        await HandleGeneralConversationAsync(turnContext, cancellationToken);
     }
 
     /// <summary>
-    /// Handle queries about Azure DevOps projects.
+    /// Handle general conversation by forwarding to Pennie AI agent.
+    /// This enables Pennie to answer questions about Agile, methodologies, DevOps projects, etc.
     /// </summary>
-    private async Task HandleProjectQueryAsync(
+    private async Task HandleGeneralConversationAsync(
         ITurnContext turnContext,
         CancellationToken cancellationToken)
     {
         try
         {
-            _logger.LogInformation("Handling project query");
+            var userMessage = turnContext.Activity.Text ?? "";
+            _logger.LogInformation("Forwarding message to Pennie: {Message}", userMessage);
 
-            // Get backend URL from configuration
-            var backendUrl = _configuration["AZURE_FUNCTIONS_BACKEND_URL"]
-                ?? "https://pennie-backend-prod.azurewebsites.net";
+            // Create a "chat" meeting ID for non-meeting conversations
+            // This allows Pennie to maintain conversation context per Teams conversation
+            var conversationId = turnContext.Activity.Conversation.Id;
+            var chatMeetingId = $"chat_{conversationId}";
 
-            var client = _httpClientFactory.CreateClient();
-            var response = await client.GetStringAsync($"{backendUrl}/api/read_projects", cancellationToken);
+            // Create a transcription result to send to Pennie
+            // In chat mode, there's no speaker diarization, so use the user's name
+            var transcriptionResult = new TranscriptionResult
+            {
+                MeetingId = chatMeetingId,
+                Speaker = turnContext.Activity.From?.Name ?? "User",
+                Timestamp = DateTime.UtcNow,
+                Text = userMessage
+            };
 
-            _logger.LogInformation("Backend response: {Response}", response);
+            // Send to Pennie agent and get response
+            var response = await _agentClient.SendMessageAndGetResponseAsync(transcriptionResult, cancellationToken);
 
-            // Parse the JSON response
-            using var doc = JsonDocument.Parse(response);
-            var root = doc.RootElement;
-
-            if (!root.TryGetProperty("success", out var successProp) || !successProp.GetBoolean())
+            if (!string.IsNullOrEmpty(response))
+            {
+                await turnContext.SendActivityAsync(MessageFactory.Text(response), cancellationToken);
+                _logger.LogInformation("Sent Pennie's response to user");
+            }
+            else
             {
                 await turnContext.SendActivityAsync(
-                    MessageFactory.Text("Sorry, I couldn't retrieve the projects. Please try again later."),
+                    MessageFactory.Text("I'm having trouble thinking right now. Could you try again?"),
                     cancellationToken);
-                return;
             }
-
-            var count = root.GetProperty("count").GetInt32();
-            var projects = root.GetProperty("projects").EnumerateArray();
-
-            // Build response message
-            var projectList = new List<string>();
-            foreach (var project in projects.Take(15))
-            {
-                if (project.TryGetProperty("name", out var nameProp))
-                {
-                    var name = nameProp.GetString();
-                    if (!string.IsNullOrEmpty(name))
-                    {
-                        projectList.Add($"- {name}");
-                    }
-                }
-            }
-
-            var reply = $"**Azure DevOps Projects**\n\n" +
-                       $"Found {count} projects:\n\n" +
-                       string.Join("\n", projectList);
-
-            if (count > 15)
-            {
-                reply += $"\n\n_(Showing first 15 of {count})_";
-            }
-
-            await turnContext.SendActivityAsync(MessageFactory.Text(reply), cancellationToken);
-            _logger.LogInformation("Successfully returned {Count} projects", count);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calling backend API");
+            _logger.LogError(ex, "Error handling general conversation");
             await turnContext.SendActivityAsync(
-                MessageFactory.Text("Sorry, I couldn't connect to the backend service. Please try again later."),
-                cancellationToken);
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogError(ex, "Error parsing backend response");
-            await turnContext.SendActivityAsync(
-                MessageFactory.Text("Sorry, I received an unexpected response from the backend. Please try again later."),
+                MessageFactory.Text("Sorry, I encountered an error. Please try again."),
                 cancellationToken);
         }
     }

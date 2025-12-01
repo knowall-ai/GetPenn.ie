@@ -132,6 +132,63 @@ public class PennieAgentClient : IPennieAgentClient, IDisposable
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<string> SendMessageAndGetResponseAsync(
+        TranscriptionResult result,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "Sending message to Pennie and awaiting response: {Speaker} - {Text}",
+                result.Speaker, result.Text);
+
+            // Get or create thread for this conversation
+            var threadId = await GetOrCreateThreadAsync(result.MeetingId, cancellationToken);
+
+            // Add user message to thread (no timestamp prefix for chat mode)
+            var message = result.Text;
+            await _assistantsClient.CreateMessageAsync(
+                threadId,
+                MessageRole.User,
+                message,
+                cancellationToken: cancellationToken);
+
+            _logger.LogInformation("Added message to thread {ThreadId}", threadId);
+
+            // Create run to process the message
+            var run = await _assistantsClient.CreateRunAsync(
+                threadId,
+                new CreateRunOptions(_assistantId),
+                cancellationToken);
+
+            _logger.LogInformation("Created run {RunId} with status {Status}", run.Value.Id, run.Value.Status);
+
+            // Monitor run and handle function calls
+            await ProcessRunAsync(threadId, run.Value.Id, cancellationToken);
+
+            // Get Pennie's response
+            var messages = await _assistantsClient.GetMessagesAsync(threadId, cancellationToken: cancellationToken);
+            var latestMessage = messages.Value.Data.FirstOrDefault(m => m.Role == MessageRole.Assistant);
+
+            if (latestMessage != null)
+            {
+                var responseText = latestMessage.ContentItems.OfType<MessageTextContent>().FirstOrDefault()?.Text ?? "";
+                _logger.LogInformation("Received response from Pennie: {Response}",
+                    responseText.Length > 100 ? responseText[..100] + "..." : responseText);
+                return responseText;
+            }
+
+            _logger.LogWarning("No response received from Pennie");
+            return "";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting response from Pennie");
+            return "";
+        }
+    }
+
     /// <summary>
     /// Get or create a thread for a meeting.
     /// Uses MemoryCache with 2-hour expiration to prevent unbounded memory growth.
