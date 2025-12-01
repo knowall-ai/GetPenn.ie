@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 app = func.FunctionApp()
 
 
+def escape_wiql(value: str) -> str:
+    """Escape a string for safe use in WIQL queries (prevents injection)."""
+    if value is None:
+        return ""
+    return value.replace("'", "''")
+
+
 class AzureDevOpsClient:
     """Client for Azure DevOps REST API with dynamic project support"""
 
@@ -808,29 +815,30 @@ def search_work_items(req: func.HttpRequest) -> func.HttpResponse:
 
         # Build WIQL query
         conditions = []
-        conditions.append(f"[System.TeamProject] = '{project}'")
+        conditions.append(f"[System.TeamProject] = '{escape_wiql(project)}'")
 
         if work_item_type:
-            conditions.append(f"[System.WorkItemType] = '{work_item_type}'")
+            conditions.append(f"[System.WorkItemType] = '{escape_wiql(work_item_type)}'")
 
         if state:
-            conditions.append(f"[System.State] = '{state}'")
+            conditions.append(f"[System.State] = '{escape_wiql(state)}'")
 
         if assigned_to:
-            conditions.append(f"[System.AssignedTo] = '{assigned_to}'")
+            conditions.append(f"[System.AssignedTo] = '{escape_wiql(assigned_to)}'")
 
         if tags:
-            conditions.append(f"[System.Tags] CONTAINS '{tags}'")
+            conditions.append(f"[System.Tags] CONTAINS '{escape_wiql(tags)}'")
 
         if title_contains:
-            conditions.append(f"[System.Title] CONTAINS '{title_contains}'")
+            conditions.append(f"[System.Title] CONTAINS '{escape_wiql(title_contains)}'")
 
         wiql = f"SELECT [System.Id] FROM WorkItems WHERE {' AND '.join(conditions)} ORDER BY [System.ChangedDate] DESC"
 
-        # Execute WIQL query
+        # Execute WIQL query (needs application/json, not application/json-patch+json)
         url = f"https://dev.azure.com/{client.organization}/{project}/_apis/wit/wiql?api-version={client.api_version}"
         query_payload = {"query": wiql}
-        response = requests.post(url, headers=client.headers, json=query_payload)
+        wiql_headers = {**client.headers, "Content-Type": "application/json"}
+        response = requests.post(url, headers=wiql_headers, json=query_payload)
         response.raise_for_status()
         query_result = response.json()
 
