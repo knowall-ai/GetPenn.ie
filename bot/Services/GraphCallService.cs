@@ -1178,14 +1178,12 @@ public class GraphCallService : IGraphCallService, IDisposable
                 {
                     foreach (var stream in participant.MediaStreams)
                     {
-                        if (!string.IsNullOrEmpty(stream.SourceId) && uint.TryParse(stream.SourceId, out var msi))
+                        if (!string.IsNullOrEmpty(stream.SourceId) && uint.TryParse(stream.SourceId, out var msi) &&
+                            (msiMap.TryAdd(msi, displayName) || msiMap[msi] != displayName))
                         {
-                            if (msiMap.TryAdd(msi, displayName) || msiMap[msi] != displayName)
-                            {
-                                msiMap[msi] = displayName;
-                                _logger.LogInformation("Mapped MSI {MSI} -> {DisplayName} for call {CallId}",
-                                    msi, displayName, callId);
-                            }
+                            msiMap[msi] = displayName;
+                            _logger.LogInformation("Mapped MSI {MSI} -> {DisplayName} for call {CallId}",
+                                msi, displayName, callId);
                         }
                     }
                 }
