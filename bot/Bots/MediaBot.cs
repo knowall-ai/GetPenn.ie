@@ -352,22 +352,42 @@ public class MediaBot : ActivityHandler
     /// </summary>
     private static string? ExtractPasscode(string text)
     {
+        var regexTimeout = TimeSpan.FromMilliseconds(100);
+
         // Pattern 1: "passcode:" or "passcode :" followed by alphanumeric
         var passcodePattern = new System.Text.RegularExpressions.Regex(
             @"passcode\s*:?\s*([a-zA-Z0-9]+)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        var match = passcodePattern.Match(text);
-        if (match.Success)
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+            regexTimeout);
+        try
         {
-            return match.Groups[1].Value;
+            var match = passcodePattern.Match(text);
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            return null; // Input too complex, reject
         }
 
         // Pattern 2: Look for alphanumeric string after the meeting ID (8+ chars)
-        var lastWordPattern = new System.Text.RegularExpressions.Regex(@"\s([a-zA-Z][a-zA-Z0-9]{5,})$");
-        match = lastWordPattern.Match(text.Trim());
-        if (match.Success)
+        var lastWordPattern = new System.Text.RegularExpressions.Regex(
+            @"\s([a-zA-Z][a-zA-Z0-9]{5,})$",
+            System.Text.RegularExpressions.RegexOptions.None,
+            regexTimeout);
+        try
         {
-            return match.Groups[1].Value;
+            var match = lastWordPattern.Match(text.Trim());
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            return null; // Input too complex, reject
         }
 
         return null;
