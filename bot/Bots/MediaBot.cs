@@ -230,7 +230,7 @@ public class MediaBot : ActivityHandler
                 meetingId,
                 passcode,
                 internalMeetingId,
-                async audioData => await OnAudioReceivedAsync(internalMeetingId, audioData),
+                async (audioData, speakerId, speakerName) => await OnAudioReceivedAsync(internalMeetingId, audioData, speakerId, speakerName),
                 cancellationToken);
 
             // Start transcription after successfully joining
@@ -483,7 +483,7 @@ public class MediaBot : ActivityHandler
                 await _callService.JoinMeetingAsync(
                     meetingJoinUrl,
                     meetingId,
-                    async audioData => await OnAudioReceivedAsync(meetingId, audioData),
+                    async (audioData, speakerId, speakerName) => await OnAudioReceivedAsync(meetingId, audioData, speakerId, speakerName),
                     cancellationToken);
 
                 // Meeting join succeeded - now start transcription
@@ -516,12 +516,12 @@ public class MediaBot : ActivityHandler
     /// <summary>
     /// Handle incoming audio data from the meeting.
     /// </summary>
-    private async Task OnAudioReceivedAsync(string meetingId, byte[] audioData)
+    private async Task OnAudioReceivedAsync(string meetingId, byte[] audioData, uint speakerId = 0, string? speakerName = null)
     {
         try
         {
-            // Send audio to speech transcription service
-            await _speechService.ProcessAudioAsync(meetingId, audioData);
+            // Send audio to speech transcription service with speaker ID and name
+            await _speechService.ProcessAudioAsync(meetingId, audioData, speakerId, speakerName);
         }
         catch (Exception ex)
         {
@@ -636,7 +636,7 @@ public class MediaBot : ActivityHandler
                 await _callService.JoinMeetingAsync(
                     meetingContext.JoinUrl,
                     internalMeetingId,
-                    async audioData => await OnAudioReceivedAsync(internalMeetingId, audioData),
+                    async (audioData, speakerId, speakerName) => await OnAudioReceivedAsync(internalMeetingId, audioData, speakerId, speakerName),
                     cancellationToken);
             }
             else if (!string.IsNullOrEmpty(meetingContext.MeetingId))

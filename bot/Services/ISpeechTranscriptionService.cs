@@ -27,7 +27,9 @@ public interface ISpeechTranscriptionService
     /// </summary>
     /// <param name="meetingId">Meeting identifier</param>
     /// <param name="audioData">Raw audio bytes (16kHz, mono, 16-bit PCM)</param>
-    Task ProcessAudioAsync(string meetingId, byte[] audioData);
+    /// <param name="speakerId">Speaker ID (MSI) from Teams unmixed audio buffer</param>
+    /// <param name="speakerName">Optional speaker name if known</param>
+    Task ProcessAudioAsync(string meetingId, byte[] audioData, uint speakerId = 0, string? speakerName = null);
 
     /// <summary>
     /// Get transcripts for a meeting since a specific index.

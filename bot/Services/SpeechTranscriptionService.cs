@@ -14,6 +14,7 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
     private readonly Dictionary<string, SpeechRecognizer> _recognizers = new();
     private readonly Dictionary<string, PushAudioInputStream> _audioStreams = new();
     private readonly Dictionary<string, List<TranscriptionResult>> _transcripts = new();
+    private readonly Dictionary<string, string> _currentSpeakers = new(); // meetingId -> speaker name
     private readonly object _lock = new();
     private bool _disposed;
 
@@ -135,9 +136,16 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
                         _logger.LogDebug(ex, "Could not extract confidence score");
                     }
 
+                    // Get the current speaker from tracked audio
+                    string speaker;
+                    lock (_lock)
+                    {
+                        speaker = _currentSpeakers.TryGetValue(meetingId, out var spkName) ? spkName : "Unknown Speaker";
+                    }
+
                     var result = new TranscriptionResult
                     {
-                        Speaker = "Meeting Audio", // We'll get speaker info from Teams unmixed buffers later
+                        Speaker = speaker,
                         Timestamp = DateTime.UtcNow,
                         Text = e.Result.Text,
                         Confidence = confidence,
@@ -264,7 +272,7 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
     private readonly Dictionary<string, DateTime> _lastAudioLogTime = new();
 
     /// <inheritdoc/>
-    public Task ProcessAudioAsync(string meetingId, byte[] audioData)
+    public Task ProcessAudioAsync(string meetingId, byte[] audioData, uint speakerId = 0, string? speakerName = null)
     {
         try
         {
@@ -304,15 +312,29 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
                 }
                 _audioBytesWritten[meetingId] += audioData.Length;
 
+                // Track current speaker - update when audio has significant energy (someone is speaking)
+                // RMS > 100 indicates actual speech vs silence
+                if (rms > 100 && speakerId > 0)
+                {
+                    var newSpeaker = speakerName ?? $"Speaker {speakerId}";
+                    if (!_currentSpeakers.TryGetValue(meetingId, out var currentSpeaker) || currentSpeaker != newSpeaker)
+                    {
+                        _currentSpeakers[meetingId] = newSpeaker;
+                        _logger.LogInformation("SPEAKER-CHANGE: Meeting {MeetingId} now hearing from {Speaker} (ID: {SpeakerId})",
+                            meetingId, newSpeaker, speakerId);
+                    }
+                }
+
                 // Log every 5 seconds with audio energy stats
                 var now = DateTime.UtcNow;
                 if ((now - _lastAudioLogTime[meetingId]).TotalSeconds >= 5)
                 {
                     var bytesWritten = _audioBytesWritten[meetingId];
                     var kbps = (bytesWritten * 8.0 / 1000.0) / 5.0; // kilobits per second
+                    var currentSpeakerName = _currentSpeakers.TryGetValue(meetingId, out var s) ? s : "Unknown";
                     _logger.LogWarning(
-                        "AUDIO-ANALYSIS: {TotalKB:F1}KB ({Kbps:F1}kbps), LastRMS={RMS:F0}, MaxSample={Max}, NonZero={NonZero}/{Total} for {MeetingId}",
-                        bytesWritten / 1024.0, kbps, rms, maxSample, nonZeroSamples, audioData.Length / 2, meetingId);
+                        "AUDIO-ANALYSIS: {TotalKB:F1}KB ({Kbps:F1}kbps), LastRMS={RMS:F0}, MaxSample={Max}, NonZero={NonZero}/{Total}, Speaker={Speaker} for {MeetingId}",
+                        bytesWritten / 1024.0, kbps, rms, maxSample, nonZeroSamples, audioData.Length / 2, currentSpeakerName, meetingId);
                     _audioBytesWritten[meetingId] = 0;
                     _lastAudioLogTime[meetingId] = now;
                 }

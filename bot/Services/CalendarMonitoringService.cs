@@ -265,10 +265,12 @@ public class CalendarMonitoringService : BackgroundService, ICalendarMonitoringS
                 await _graphCallService.JoinMeetingAsync(
                     joinUrl,
                     eventId,
-                    async audioData =>
+                    async (audioData, speakerId, speakerName) =>
                     {
                         // Audio callback - this is where transcription would happen
-                        _logger.LogDebug("Received {Bytes} bytes of audio from meeting {Id}", audioData.Length, eventId);
+                        _logger.LogDebug("Received {Bytes} bytes of audio from {SpeakerName} (ID: {SpeakerId}) in meeting {Id}",
+                            audioData.Length, speakerName ?? "Unknown", speakerId, eventId);
+                        await Task.CompletedTask;
                     },
                     cancellationToken);
 

@@ -53,9 +53,9 @@ public class CallingController : ControllerBase
             var internalMeetingId = $"meeting-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
 
             // Audio callback for transcription (placeholder for now)
-            Func<byte[], Task> audioCallback = async (audioData) =>
+            Func<byte[], uint, string?, Task> audioCallback = async (audioData, speakerId, speakerName) =>
             {
-                _logger.LogDebug("Received audio frame, length={Length}", audioData.Length);
+                _logger.LogDebug("Received audio frame from speaker {SpeakerId} ({SpeakerName}), length={Length}", speakerId, speakerName ?? "Unknown", audioData.Length);
                 await Task.CompletedTask;
             };
 

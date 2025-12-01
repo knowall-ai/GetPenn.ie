@@ -27,9 +27,11 @@ public class GraphCallService : IGraphCallService, IDisposable
     private readonly IConfiguration _configuration;
     private readonly IMediaPlatformService _mediaPlatformService;
     private readonly ConcurrentDictionary<string, string> _activeCalls = new(); // meetingId -> callId
-    private readonly ConcurrentDictionary<string, Func<byte[], Task>> _audioCallbacks = new();
+    private readonly ConcurrentDictionary<string, Func<byte[], uint, string?, Task>> _audioCallbacks = new(); // callback(audioData, speakerId, speakerName)
     private readonly ConcurrentDictionary<string, string> _callIdToMeetingId = new();
     private readonly ConcurrentDictionary<string, AudioSocket> _audioSockets = new(); // callId -> AudioSocket
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<uint, string>> _msiToParticipantName = new(); // callId -> (MSI -> displayName)
+    private readonly ConcurrentDictionary<string, DateTime> _lastParticipantRefresh = new(); // callId -> last refresh time
     private bool _disposed;
     private bool _initialized;
     private bool _useApplicationHostedMedia;
@@ -141,7 +143,7 @@ public class GraphCallService : IGraphCallService, IDisposable
     public async Task JoinMeetingAsync(
         string meetingJoinUrl,
         string meetingId,
-        Func<byte[], Task> audioDataCallback,
+        Func<byte[], uint, string?, Task> audioDataCallback,
         CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
@@ -345,7 +347,7 @@ public class GraphCallService : IGraphCallService, IDisposable
         string meetingIdNumber,
         string passcode,
         string meetingId,
-        Func<byte[], Task> audioDataCallback,
+        Func<byte[], uint, string?, Task> audioDataCallback,
         CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
@@ -1125,10 +1127,116 @@ public class GraphCallService : IGraphCallService, IDisposable
     }
 
     /// <summary>
+    /// Refresh participant list for a call and update MSI-to-name mappings.
+    /// Graph API: GET /communications/calls/{callId}/participants
+    /// Each participant has mediaStreams[].sourceId which is the MSI.
+    /// </summary>
+    private async Task RefreshParticipantsAsync(string callId)
+    {
+        if (_graphClient == null)
+        {
+            _logger.LogWarning("Cannot refresh participants: Graph client not initialized");
+            return;
+        }
+
+        try
+        {
+            // Check if we refreshed recently (within 10 seconds)
+            if (_lastParticipantRefresh.TryGetValue(callId, out var lastRefresh) &&
+                (DateTime.UtcNow - lastRefresh).TotalSeconds < 10)
+            {
+                return;
+            }
+
+            _logger.LogInformation("Refreshing participants for call {CallId}", callId);
+
+            var participants = await _graphClient.Communications.Calls[callId].Participants
+                .GetAsync(config =>
+                {
+                    config.QueryParameters.Select = new[] { "id", "info", "mediaStreams" };
+                });
+
+            if (participants?.Value == null)
+            {
+                _logger.LogWarning("No participants returned for call {CallId}", callId);
+                return;
+            }
+
+            // Initialize or get the MSI mapping dictionary for this call
+            var msiMap = _msiToParticipantName.GetOrAdd(callId, _ => new ConcurrentDictionary<uint, string>());
+
+            foreach (var participant in participants.Value)
+            {
+                // Get display name from identity (User, Application, or Device)
+                var displayName = participant.Info?.Identity?.User?.DisplayName
+                    ?? participant.Info?.Identity?.Application?.DisplayName
+                    ?? participant.Info?.Identity?.Device?.DisplayName
+                    ?? "Unknown";
+
+                // Map each media stream's sourceId (MSI) to the display name
+                if (participant.MediaStreams != null)
+                {
+                    foreach (var stream in participant.MediaStreams)
+                    {
+                        if (!string.IsNullOrEmpty(stream.SourceId) && uint.TryParse(stream.SourceId, out var msi))
+                        {
+                            if (msiMap.TryAdd(msi, displayName) || msiMap[msi] != displayName)
+                            {
+                                msiMap[msi] = displayName;
+                                _logger.LogInformation("Mapped MSI {MSI} -> {DisplayName} for call {CallId}",
+                                    msi, displayName, callId);
+                            }
+                        }
+                    }
+                }
+            }
+
+            _lastParticipantRefresh[callId] = DateTime.UtcNow;
+            _logger.LogInformation("Refreshed {Count} participants for call {CallId}", participants.Value.Count, callId);
+        }
+        catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
+        {
+            _logger.LogWarning("Failed to refresh participants: {Code} - {Message}",
+                odataEx.Error?.Code, odataEx.Error?.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error refreshing participants for call {CallId}", callId);
+        }
+    }
+
+    /// <summary>
+    /// Get participant display name for a given MSI (Media Stream ID).
+    /// Returns null if not found - will trigger a participant refresh.
+    /// </summary>
+    private async Task<string?> GetParticipantNameAsync(string callId, uint msi)
+    {
+        // Check cache first
+        if (_msiToParticipantName.TryGetValue(callId, out var msiMap) && msiMap.TryGetValue(msi, out var name))
+        {
+            return name;
+        }
+
+        // Not in cache - refresh participants
+        await RefreshParticipantsAsync(callId);
+
+        // Try again after refresh
+        if (_msiToParticipantName.TryGetValue(callId, out msiMap) && msiMap.TryGetValue(msi, out name))
+        {
+            return name;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Handle incoming audio frames from the media socket.
     /// Called at ~50 frames/second when audio is received.
     /// </summary>
-    public async Task HandleAudioFrameAsync(string callId, byte[] audioData)
+    /// <param name="callId">The call ID</param>
+    /// <param name="audioData">Raw audio bytes</param>
+    /// <param name="speakerId">Active speaker ID (MSI) from unmixed audio buffer</param>
+    public async Task HandleAudioFrameAsync(string callId, byte[] audioData, uint speakerId = 0)
     {
         try
         {
@@ -1144,8 +1252,15 @@ public class GraphCallService : IGraphCallService, IDisposable
                 return;
             }
 
-            // Forward audio data to transcription callback
-            await callback(audioData);
+            // Resolve speaker name from MSI (only if we have a speaker ID)
+            string? speakerName = null;
+            if (speakerId > 0)
+            {
+                speakerName = await GetParticipantNameAsync(callId, speakerId);
+            }
+
+            // Forward audio data to transcription callback with speaker ID and name
+            await callback(audioData, speakerId, speakerName);
         }
         catch (Exception ex)
         {
@@ -1208,7 +1323,8 @@ public class GraphCallService : IGraphCallService, IDisposable
                                     unmixedBuffer.ActiveSpeakerId, unmixedBuffer.Length, callId);
                             }
 
-                            await HandleAudioFrameAsync(callId, audioData);
+                            // Pass the speaker ID (MSI) from unmixed buffer
+                            await HandleAudioFrameAsync(callId, audioData, unmixedBuffer.ActiveSpeakerId);
                         }
                     }
                 }
@@ -1217,7 +1333,8 @@ public class GraphCallService : IGraphCallService, IDisposable
                 {
                     var audioData = new byte[buffer.Length];
                     Marshal.Copy(buffer.Data, audioData, 0, (int)buffer.Length);
-                    await HandleAudioFrameAsync(callId, audioData);
+                    // No speaker ID available for mixed buffer
+                    await HandleAudioFrameAsync(callId, audioData, 0);
                 }
             }
             catch (Exception ex)

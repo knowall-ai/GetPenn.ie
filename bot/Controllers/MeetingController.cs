@@ -127,18 +127,18 @@ public class MeetingController : ControllerBase
             await _callService.JoinMeetingAsync(
                 joinUrl,
                 internalMeetingId,
-                async audioData =>
+                async (audioData, speakerId, speakerName) =>
                 {
                     if (transcriptionEnabled)
                     {
-                        // Forward audio to Speech Services for transcription
+                        // Forward audio to Speech Services for transcription with speaker ID and name
                         audioForwardCount++;
                         if (audioForwardCount == 1 || audioForwardCount % 250 == 0) // Log first and every 5 seconds at 50fps
                         {
-                            _logger.LogInformation("AUDIO->SPEECH: Forwarded {Count} audio packets to Speech Services for meeting {MeetingId}",
-                                audioForwardCount, internalMeetingId);
+                            _logger.LogInformation("AUDIO->SPEECH: Forwarded {Count} audio packets (speaker {SpeakerId}: {SpeakerName}) to Speech Services for meeting {MeetingId}",
+                                audioForwardCount, speakerId, speakerName ?? "Unknown", internalMeetingId);
                         }
-                        await _transcriptionService.ProcessAudioAsync(internalMeetingId, audioData);
+                        await _transcriptionService.ProcessAudioAsync(internalMeetingId, audioData, speakerId, speakerName);
                     }
                 },
                 HttpContext.RequestAborted);
@@ -258,18 +258,18 @@ public class MeetingController : ControllerBase
                 request.MeetingNumber,
                 request.Passcode ?? "",
                 internalMeetingId,
-                async audioData =>
+                async (audioData, speakerId, speakerName) =>
                 {
                     if (transcriptionEnabled)
                     {
-                        // Forward audio to Speech Services for transcription
+                        // Forward audio to Speech Services for transcription with speaker ID and name
                         audioForwardCount++;
                         if (audioForwardCount == 1 || audioForwardCount % 250 == 0)
                         {
-                            _logger.LogInformation("AUDIO->SPEECH: Forwarded {Count} audio packets to Speech Services for meeting {MeetingId}",
-                                audioForwardCount, internalMeetingId);
+                            _logger.LogInformation("AUDIO->SPEECH: Forwarded {Count} audio packets (speaker {SpeakerId}: {SpeakerName}) to Speech Services for meeting {MeetingId}",
+                                audioForwardCount, speakerId, speakerName ?? "Unknown", internalMeetingId);
                         }
-                        await _transcriptionService.ProcessAudioAsync(internalMeetingId, audioData);
+                        await _transcriptionService.ProcessAudioAsync(internalMeetingId, audioData, speakerId, speakerName);
                     }
                 },
                 HttpContext.RequestAborted);

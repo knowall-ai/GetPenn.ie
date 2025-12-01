@@ -16,12 +16,12 @@ public interface IGraphCallService
     /// </summary>
     /// <param name="meetingJoinUrl">Teams meeting join URL</param>
     /// <param name="meetingId">Unique meeting identifier for tracking</param>
-    /// <param name="audioDataCallback">Callback to receive audio frames (16kHz, mono, 16-bit PCM)</param>
+    /// <param name="audioDataCallback">Callback to receive audio frames (16kHz, mono, 16-bit PCM) with speaker ID and name</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task JoinMeetingAsync(
         string meetingJoinUrl,
         string meetingId,
-        Func<byte[], Task> audioDataCallback,
+        Func<byte[], uint, string?, Task> audioDataCallback,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -30,13 +30,13 @@ public interface IGraphCallService
     /// <param name="meetingIdNumber">Meeting ID number (e.g., "396 240 783 591 15")</param>
     /// <param name="passcode">Meeting passcode</param>
     /// <param name="meetingId">Unique meeting identifier for tracking</param>
-    /// <param name="audioDataCallback">Callback to receive audio frames</param>
+    /// <param name="audioDataCallback">Callback to receive audio frames with speaker ID and name</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task JoinMeetingByIdAsync(
         string meetingIdNumber,
         string passcode,
         string meetingId,
-        Func<byte[], Task> audioDataCallback,
+        Func<byte[], uint, string?, Task> audioDataCallback,
         CancellationToken cancellationToken = default);
 
     /// <summary>
