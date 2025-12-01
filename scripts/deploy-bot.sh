@@ -13,6 +13,9 @@ set -e
 #
 # Usage:
 #     ./scripts/deploy-bot.sh
+#
+# Cross-platform support:
+# - Works on Linux, macOS, and Windows (Git Bash/WSL)
 
 echo "🤖 Deploying Pennie Teams Bot to Azure VM"
 echo ""
@@ -20,8 +23,11 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BOT_DIR="$PROJECT_ROOT/bot"
-PUBLISH_DIR="/tmp/pennie-bot-publish"
-ZIP_FILE="/tmp/pennie-bot-deploy.zip"
+
+# Use OS-appropriate temp directory (TEMP on Windows, /tmp on Unix)
+TEMP_DIR="${TEMP:-/tmp}"
+PUBLISH_DIR="$TEMP_DIR/pennie-bot-publish"
+ZIP_FILE="$TEMP_DIR/pennie-bot-deploy.zip"
 
 # Load environment variables from .env if available
 if [ -f "$PROJECT_ROOT/.env" ]; then
@@ -33,6 +39,8 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
         # Remove leading/trailing whitespace
         key=$(echo "$key" | xargs)
         value=$(echo "$value" | xargs)
+        # Skip if key is empty after trimming
+        [[ -z $key ]] && continue
         # Export the variable (without eval to prevent command injection)
         export "$key=$value"
     done < "$PROJECT_ROOT/.env"
@@ -111,22 +119,45 @@ echo ""
 echo "🔐 Configuring Key Vault in appsettings.json..."
 APPSETTINGS="$PUBLISH_DIR/appsettings.json"
 
-# Use jq to set the Key Vault name (credentials loaded at runtime)
-jq --arg kvName "$AZURE_KEY_VAULT_NAME" \
-   '.AZURE_KEY_VAULT_NAME = $kvName' \
-   "$APPSETTINGS" > "$APPSETTINGS.tmp" && mv "$APPSETTINGS.tmp" "$APPSETTINGS"
+# Cross-platform JSON update (works without jq)
+# Check if AZURE_KEY_VAULT_NAME already exists in the file
+if grep -q '"AZURE_KEY_VAULT_NAME"' "$APPSETTINGS"; then
+    # Update existing key
+    sed -i.bak "s|\"AZURE_KEY_VAULT_NAME\":.*|\"AZURE_KEY_VAULT_NAME\": \"$AZURE_KEY_VAULT_NAME\",|" "$APPSETTINGS"
+else
+    # Add key after opening brace (insert as first property)
+    sed -i.bak "s|^{|{\n  \"AZURE_KEY_VAULT_NAME\": \"$AZURE_KEY_VAULT_NAME\",|" "$APPSETTINGS"
+fi
+rm -f "$APPSETTINGS.bak"
 
 echo "✅ Key Vault configured: $AZURE_KEY_VAULT_NAME"
 echo "   Bot will load MicrosoftAppId and MicrosoftAppPassword from Key Vault at startup"
 
-# Step 4: Create zip archive
+# Step 4: Create zip archive (cross-platform)
 echo ""
 echo "📦 Creating deployment package..."
 rm -f "$ZIP_FILE"
-cd "$PUBLISH_DIR"
-zip -r "$ZIP_FILE" . > /dev/null
-cd - > /dev/null
-echo "✅ Created $ZIP_FILE ($(du -h "$ZIP_FILE" | cut -f1))"
+
+# Try zip first (Linux/macOS), fall back to PowerShell (Windows)
+if command -v zip &> /dev/null; then
+    cd "$PUBLISH_DIR"
+    zip -r "$ZIP_FILE" . > /dev/null
+    cd - > /dev/null
+else
+    # Use PowerShell Compress-Archive (available on Windows and can be installed on Linux)
+    WIN_PUBLISH_DIR=$(cygpath -w "$PUBLISH_DIR" 2>/dev/null || echo "$PUBLISH_DIR")
+    WIN_ZIP_FILE=$(cygpath -w "$ZIP_FILE" 2>/dev/null || echo "$ZIP_FILE")
+    powershell -Command "Compress-Archive -Path '$WIN_PUBLISH_DIR\*' -DestinationPath '$WIN_ZIP_FILE' -Force"
+fi
+
+if [ ! -f "$ZIP_FILE" ]; then
+    echo "❌ Failed to create zip file"
+    exit 1
+fi
+
+# Get file size - try du first (Linux/macOS), fall back to PowerShell
+ZIP_SIZE=$(du -h "$ZIP_FILE" 2>/dev/null | cut -f1 || powershell -Command "[math]::Round((Get-Item '$(cygpath -w "$ZIP_FILE" 2>/dev/null || echo "$ZIP_FILE")').Length / 1MB, 1).ToString() + 'M'")
+echo "✅ Created $ZIP_FILE ($ZIP_SIZE)"
 
 # Step 5: Upload to Azure Blob Storage
 echo ""
@@ -149,7 +180,9 @@ echo "✅ Uploaded to $STORAGE_ACCOUNT/$CONTAINER_NAME/$BLOB_NAME"
 # Step 6: Generate SAS URL
 echo ""
 echo "🔑 Generating SAS URL..."
-EXPIRY=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%MZ)
+
+# Calculate expiry time - try GNU date first (Linux/Git Bash), fall back to BSD date (macOS)
+EXPIRY=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%MZ 2>/dev/null || date -u -v+1H +%Y-%m-%dT%H:%MZ)
 SAS_URL=$(az storage blob generate-sas \
     --account-name "$STORAGE_ACCOUNT" \
     --container-name "$CONTAINER_NAME" \
