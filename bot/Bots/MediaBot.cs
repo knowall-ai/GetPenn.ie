@@ -81,6 +81,11 @@ public class MediaBot : ActivityHandler
         try
         {
             var userMessage = turnContext.Activity.Text ?? "";
+
+            // Strip @mention markup (e.g., "<at>Pennie</at>") from user messages
+            // Teams adds this XML when users @mention the bot in group chats
+            userMessage = StripAtMentions(userMessage);
+
             _logger.LogInformation("Forwarding message to Pennie: {Message}", userMessage);
 
             // Create a "chat" meeting ID for non-meeting conversations
@@ -589,7 +594,7 @@ public class MediaBot : ActivityHandler
     private static bool IsSimpleJoinCommand(string text)
     {
         // Remove bot mention from text for cleaner matching
-        var cleanText = System.Text.RegularExpressions.Regex.Replace(text, @"<at>.*?</at>", "").Trim();
+        var cleanText = StripAtMentions(text);
 
         // Check for simple join patterns
         var joinPatterns = new[]
@@ -614,6 +619,38 @@ public class MediaBot : ActivityHandler
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Strip @mention markup from Teams messages.
+    /// Teams wraps @mentions in XML like: "<at>Pennie</at> what projects do we have?"
+    /// This strips the markup so Pennie receives clean text.
+    /// </summary>
+    private static string StripAtMentions(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        // Remove <at>...</at> tags (Teams @mention markup)
+        // Uses timeout to prevent ReDoS attacks
+        try
+        {
+            var cleanText = System.Text.RegularExpressions.Regex.Replace(
+                text,
+                @"<at>.*?</at>",
+                "",
+                System.Text.RegularExpressions.RegexOptions.None,
+                TimeSpan.FromMilliseconds(100));
+
+            return cleanText.Trim();
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            // If regex times out, return original text
+            return text.Trim();
+        }
     }
 
     /// <summary>

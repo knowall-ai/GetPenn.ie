@@ -54,11 +54,16 @@ public class PennieAgentClient : IPennieAgentClient, IDisposable
         _meetingThreadCache = memoryCache;
 
         // Get configuration
-        var endpoint = _configuration["AZURE_AI_FOUNDRY_ENDPOINT"]
-            ?? throw new InvalidOperationException("AZURE_AI_FOUNDRY_ENDPOINT not configured");
+        // IMPORTANT: The Azure.AI.OpenAI.Assistants SDK requires an Azure OpenAI endpoint
+        // in the format: https://{resource-name}.openai.azure.com
+        // This is different from AI Foundry project URLs which use .services.ai.azure.com
+        // Note: Config keys use dashes to match Azure Key Vault naming convention
+        var endpoint = _configuration["AZURE-OPENAI-ENDPOINT"]
+            ?? throw new InvalidOperationException("AZURE-OPENAI-ENDPOINT not configured. " +
+                "Expected format: https://{resource}.openai.azure.com");
 
-        _assistantId = _configuration["AZURE_AI_FOUNDRY_AGENT_ID"]
-            ?? throw new InvalidOperationException("AZURE_AI_FOUNDRY_AGENT_ID not configured");
+        _assistantId = _configuration["AZURE-OPENAI-ASSISTANT-ID"]
+            ?? throw new InvalidOperationException("AZURE-OPENAI-ASSISTANT-ID not configured");
 
         _backendUrl = _configuration["AZURE_FUNCTIONS_BACKEND_URL"]
             ?? "https://pennie-backend-prod.azurewebsites.net"; // Default to production backend
