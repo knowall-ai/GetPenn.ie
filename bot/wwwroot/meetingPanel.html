@@ -575,8 +575,8 @@
                 // because it fires on panel switches too, not just app removal.
                 // Users must click "Remove Pennie from Meeting" to make her leave.
 
-                // Try to restore transcript history from previous session (e.g., after switching panes)
-                // Note: Only restores transcripts, NOT joined state - auto-join will verify actual state
+                // Try to restore state from previous session (e.g., after switching panes)
+                // This restores transcripts, isJoined state, and button appearance
                 restoreState();
 
                 // Try to get meeting join URL automatically
@@ -584,13 +584,15 @@
                     log('Meeting detected');
                     joinUrl = await tryGetMeetingJoinUrl();
 
-                    if (joinUrl) {
+                    // Only auto-join if we're not already joined (restored from storage)
+                    if (joinUrl && !isJoined) {
                         // Auto-join the meeting
                         await autoJoinMeeting();
-                    } else {
-                        // Fallback to manual entry
+                    } else if (!joinUrl && !isJoined) {
+                        // Fallback to manual entry if not joined and no URL
                         showManualEntryForm();
                     }
+                    // If isJoined is already true (restored), skip auto-join - button is already set
                 } else {
                     // Not in a meeting context - show manual entry
                     log('No meeting context detected');
@@ -843,7 +845,6 @@
         function restoreState() {
             try {
                 const storedMeetingId = sessionStorage.getItem(STORAGE_KEY_MEETING_ID);
-                const storedIsJoined = sessionStorage.getItem(STORAGE_KEY_IS_JOINED) === 'true';
                 const storedLastIndex = parseInt(sessionStorage.getItem(STORAGE_KEY_LAST_INDEX) || '0', 10);
 
                 // Parse with error handling for corrupted storage
@@ -877,14 +878,25 @@
                     return;
                 }
 
-                // Only restore transcript history for display - do NOT restore isJoined state
-                // This allows auto-join to run and sync with server reality
-                // (Pennie may have been removed since last session)
-                // BUT we DO restore currentMeetingId so we can detect reconnects vs new joins
+                // Restore meeting context including isJoined state
+                // This preserves the button state when switching panes
                 if (storedMeetingId) {
                     currentMeetingId = storedMeetingId;
                     lastTranscriptIndex = storedLastIndex;
-                    console.log('Restored meeting context:', { currentMeetingId, lastTranscriptIndex });
+
+                    // Restore isJoined state and update button
+                    const storedIsJoined = sessionStorage.getItem(STORAGE_KEY_IS_JOINED) === 'true';
+                    if (storedIsJoined) {
+                        isJoined = true;
+                        joinBtn.textContent = 'Remove Pennie from Meeting';
+                        joinBtn.classList.remove('primary');
+                        joinBtn.classList.add('danger');
+                        joinBtn.disabled = false;
+                        // Start polling for transcripts since we're already joined
+                        startTranscriptPolling();
+                        log('Session restored - Pennie is in the meeting');
+                    }
+                    console.log('Restored meeting context:', { currentMeetingId, lastTranscriptIndex, isJoined });
                 }
 
                 if (storedTranscripts.length > 0) {
@@ -909,8 +921,8 @@
                 return;
             }
             sessionStorage.setItem(STORAGE_KEY_MEETING_ID, currentMeetingId);
-            sessionStorage.setItem(STORAGE_KEY_IS_JOINED, isJoined.toString());
             sessionStorage.setItem(STORAGE_KEY_LAST_INDEX, lastTranscriptIndex.toString());
+            sessionStorage.setItem(STORAGE_KEY_IS_JOINED, isJoined.toString());
             // Also save Teams SDK meeting ID for cross-meeting validation
             const teamsMeetingId = meetingContext?.meeting?.id;
             if (teamsMeetingId) {
