@@ -526,8 +526,10 @@
                     joinBtn.classList.remove('primary');
                     joinBtn.classList.add('danger');
                     joinBtn.disabled = false;
-                    // Start transcript polling
-                    clearTranscripts();
+                    // Save state for persistence across pane switches
+                    saveState();
+                    // Don't clear transcripts here - rely on restoreState()'s Teams SDK meeting ID check
+                    // to clear on actual meeting change. Server meeting IDs may differ on reconnect.
                     startTranscriptPolling();
                 } else {
                     const errorMsg = result.error || 'Unknown error';
@@ -569,18 +571,28 @@
                     applyTheme(theme);
                 });
 
+                // Note: We intentionally do NOT use registerBeforeUnloadHandler for auto-leave
+                // because it fires on panel switches too, not just app removal.
+                // Users must click "Remove Pennie from Meeting" to make her leave.
+
+                // Try to restore state from previous session (e.g., after switching panes)
+                // This restores transcripts, isJoined state, and button appearance
+                restoreState();
+
                 // Try to get meeting join URL automatically
                 if (context.meeting?.id) {
                     log('Meeting detected');
                     joinUrl = await tryGetMeetingJoinUrl();
 
-                    if (joinUrl) {
+                    // Only auto-join if we're not already joined (restored from storage)
+                    if (joinUrl && !isJoined) {
                         // Auto-join the meeting
                         await autoJoinMeeting();
-                    } else {
-                        // Fallback to manual entry
+                    } else if (!joinUrl && !isJoined) {
+                        // Fallback to manual entry if not joined and no URL
                         showManualEntryForm();
                     }
+                    // If isJoined is already true (restored), skip auto-join - button is already set
                 } else {
                     // Not in a meeting context - show manual entry
                     log('No meeting context detected');
@@ -622,6 +634,8 @@
                         isJoined = false;
                         currentMeetingId = null;
                         stopTranscriptPolling();
+                        // Clear saved state when leaving
+                        clearSavedState();
                         log('Pennie left the meeting');
                         if (!result.wasInMeeting) {
                             log('(Meeting was already inactive)');
@@ -687,8 +701,9 @@
                     joinBtn.classList.remove('primary');
                     joinBtn.classList.add('danger');
                     joinBtn.disabled = false;
-                    // Start transcript polling
-                    clearTranscripts();
+                    // Save state for persistence across pane switches
+                    saveState();
+                    // Don't clear transcripts here - rely on restoreState()'s Teams SDK meeting ID check
                     startTranscriptPolling();
                 } else {
                     const errorMsg = result.error || 'Unknown error';
@@ -761,8 +776,9 @@
                     joinBtn.classList.remove('primary');
                     joinBtn.classList.add('danger');
                     joinBtn.disabled = false;
-                    // Start transcript polling
-                    clearTranscripts();
+                    // Save state for persistence across pane switches
+                    saveState();
+                    // Don't clear transcripts here - rely on restoreState()'s Teams SDK meeting ID check
                     startTranscriptPolling();
                 } else {
                     const errorMsg = result.error || 'Unknown error';
@@ -807,6 +823,181 @@
         let transcriptPollInterval = null;
         let lastTranscriptIndex = 0;
 
+        // Session storage keys for state persistence across pane switches
+        // Using unique namespace to prevent collision with other Teams apps
+        const STORAGE_PREFIX = 'com.knowall.pennie.';
+        const STORAGE_KEY_TRANSCRIPTS = STORAGE_PREFIX + 'transcripts';
+        const STORAGE_KEY_LAST_INDEX = STORAGE_PREFIX + 'lastTranscriptIndex';
+        const STORAGE_KEY_MEETING_ID = STORAGE_PREFIX + 'currentMeetingId';
+        const STORAGE_KEY_TEAMS_MEETING_ID = STORAGE_PREFIX + 'teamsMeetingId';  // Teams SDK meeting ID for cross-meeting check
+        const STORAGE_KEY_IS_JOINED = STORAGE_PREFIX + 'isJoined';
+
+        // Validate transcript object has expected string properties (XSS protection)
+        function isValidTranscript(t) {
+            return t &&
+                   typeof t === 'object' &&
+                   typeof t.speaker === 'string' &&
+                   typeof t.timestamp === 'string' &&
+                   typeof t.text === 'string';
+        }
+
+        // Restore state from sessionStorage on load
+        function restoreState() {
+            try {
+                const storedMeetingId = sessionStorage.getItem(STORAGE_KEY_MEETING_ID);
+                const storedLastIndex = parseInt(sessionStorage.getItem(STORAGE_KEY_LAST_INDEX) || '0', 10);
+
+                // Parse with error handling for corrupted storage
+                let storedTranscripts = [];
+                try {
+                    const rawTranscripts = sessionStorage.getItem(STORAGE_KEY_TRANSCRIPTS);
+                    if (rawTranscripts) {
+                        const parsed = JSON.parse(rawTranscripts);
+                        // Validate it's an array and filter to only valid transcript objects
+                        if (Array.isArray(parsed)) {
+                            storedTranscripts = parsed.filter(isValidTranscript);
+                        }
+                    }
+                } catch (parseError) {
+                    console.warn('Failed to parse stored transcripts, clearing corrupted data:', parseError);
+                    sessionStorage.removeItem(STORAGE_KEY_TRANSCRIPTS);
+                }
+
+                // Cross-meeting check: Only clear if we're CERTAIN it's a different meeting
+                // Be lenient on panel switches - the server will filter transcripts anyway
+                const currentTeamsMeetingId = meetingContext?.meeting?.id;
+                const storedTeamsMeetingId = sessionStorage.getItem(STORAGE_KEY_TEAMS_MEETING_ID);
+                console.log('Cross-meeting check:', { currentTeamsMeetingId, storedTeamsMeetingId });
+
+                // Only clear if BOTH IDs exist and are genuinely different
+                // Note: Teams SDK meeting ID should be consistent for the same meeting
+                if (currentTeamsMeetingId && storedTeamsMeetingId &&
+                    currentTeamsMeetingId !== storedTeamsMeetingId) {
+                    console.log('Different meeting detected - clearing old transcripts');
+                    clearSavedState();
+                    return;
+                }
+
+                // Restore meeting context including isJoined state
+                // This preserves the button state when switching panes
+                if (storedMeetingId) {
+                    currentMeetingId = storedMeetingId;
+                    lastTranscriptIndex = storedLastIndex;
+
+                    // Restore isJoined state and update button
+                    const storedIsJoined = sessionStorage.getItem(STORAGE_KEY_IS_JOINED) === 'true';
+                    if (storedIsJoined) {
+                        isJoined = true;
+                        joinBtn.textContent = 'Remove Pennie from Meeting';
+                        joinBtn.classList.remove('primary');
+                        joinBtn.classList.add('danger');
+                        joinBtn.disabled = false;
+                        // Start polling for transcripts since we're already joined
+                        startTranscriptPolling();
+                        log('Session restored - Pennie is in the meeting');
+                    }
+                    console.log('Restored meeting context:', { currentMeetingId, lastTranscriptIndex, isJoined });
+                }
+
+                if (storedTranscripts.length > 0) {
+                    transcriptEmpty.style.display = 'none';
+                    storedTranscripts.forEach(t => {
+                        addTranscriptEntry(t.speaker, t.timestamp, t.text, false);
+                    });
+                    log('Restored ' + storedTranscripts.length + ' transcript entries from previous session');
+                }
+            } catch (error) {
+                console.error('Error restoring state:', error);
+                // Clear potentially corrupted state
+                clearSavedState();
+            }
+        }
+
+        // Save state to sessionStorage
+        function saveState() {
+            // Only save state if we have valid meeting data to prevent race conditions
+            if (!currentMeetingId || !isJoined) {
+                console.warn('saveState() called but meeting state not ready:', { currentMeetingId, isJoined });
+                return;
+            }
+            sessionStorage.setItem(STORAGE_KEY_MEETING_ID, currentMeetingId);
+            sessionStorage.setItem(STORAGE_KEY_LAST_INDEX, lastTranscriptIndex.toString());
+            sessionStorage.setItem(STORAGE_KEY_IS_JOINED, isJoined.toString());
+            // Also save Teams SDK meeting ID for cross-meeting validation
+            const teamsMeetingId = meetingContext?.meeting?.id;
+            if (teamsMeetingId) {
+                sessionStorage.setItem(STORAGE_KEY_TEAMS_MEETING_ID, teamsMeetingId);
+            }
+        }
+
+        // Save transcript to sessionStorage
+        // Uses rolling window to prevent quota exceeded errors (keeps last 200 transcripts)
+        const MAX_STORED_TRANSCRIPTS = 200;
+
+        function saveTranscript(speaker, timestamp, text) {
+            try {
+                let transcripts = [];
+                try {
+                    const raw = sessionStorage.getItem(STORAGE_KEY_TRANSCRIPTS);
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed)) {
+                            transcripts = parsed;
+                        }
+                    }
+                } catch (parseError) {
+                    console.warn('Failed to parse transcripts for save, starting fresh:', parseError);
+                }
+                transcripts.push({ speaker, timestamp, text });
+
+                // Rolling window: keep only last MAX_STORED_TRANSCRIPTS to avoid quota issues
+                if (transcripts.length > MAX_STORED_TRANSCRIPTS) {
+                    transcripts = transcripts.slice(-MAX_STORED_TRANSCRIPTS);
+                }
+
+                sessionStorage.setItem(STORAGE_KEY_TRANSCRIPTS, JSON.stringify(transcripts));
+            } catch (error) {
+                // Handle QuotaExceededError by trimming older transcripts
+                if (error.name === 'QuotaExceededError') {
+                    console.warn('SessionStorage quota exceeded, trimming old transcripts');
+                    try {
+                        let transcripts = [];
+                        const raw = sessionStorage.getItem(STORAGE_KEY_TRANSCRIPTS);
+                        if (raw) {
+                            transcripts = JSON.parse(raw) || [];
+                        }
+                        // Keep only last 50 transcripts on quota error
+                        transcripts = transcripts.slice(-50);
+                        transcripts.push({ speaker, timestamp, text });
+                        sessionStorage.setItem(STORAGE_KEY_TRANSCRIPTS, JSON.stringify(transcripts));
+                    } catch (retryError) {
+                        console.error('Failed to save transcript after trimming:', retryError);
+                    }
+                } else {
+                    console.error('Failed to save transcript:', error);
+                }
+            }
+        }
+
+        // Clear saved state
+        function clearSavedState() {
+            sessionStorage.removeItem(STORAGE_KEY_TRANSCRIPTS);
+            sessionStorage.removeItem(STORAGE_KEY_LAST_INDEX);
+            sessionStorage.removeItem(STORAGE_KEY_MEETING_ID);
+            sessionStorage.removeItem(STORAGE_KEY_TEAMS_MEETING_ID);
+            sessionStorage.removeItem(STORAGE_KEY_IS_JOINED);
+        }
+
+        // Lightweight function to save just the transcript index (performance optimization)
+        // Called frequently during polling - avoids redundant full saveState() calls
+        function saveTranscriptIndex() {
+            try {
+                sessionStorage.setItem(STORAGE_KEY_LAST_INDEX, lastTranscriptIndex.toString());
+            } catch (error) {
+                console.warn('Failed to save transcript index:', error);
+            }
+        }
+
         function startTranscriptPolling() {
             if (transcriptPollInterval) return;
             if (!currentMeetingId) return;
@@ -838,13 +1029,15 @@
                     });
 
                     lastTranscriptIndex = data.lastIndex;
+                    // Save updated index only (lightweight, not full state)
+                    saveTranscriptIndex();
                 }
             } catch (error) {
                 console.error('Error polling transcripts:', error);
             }
         }
 
-        function addTranscriptEntry(speaker, timestamp, text) {
+        function addTranscriptEntry(speaker, timestamp, text, save = true) {
             const entry = document.createElement('div');
             entry.className = 'transcript-entry';
             entry.innerHTML = `
@@ -854,6 +1047,11 @@
             `;
             transcriptContainer.appendChild(entry);
             transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+
+            // Save to sessionStorage for persistence across pane switches
+            if (save) {
+                saveTranscript(speaker, timestamp, text);
+            }
         }
 
         function escapeHtml(text) {
@@ -867,16 +1065,26 @@
             transcriptContainer.appendChild(transcriptEmpty);
             transcriptEmpty.style.display = 'block';
             lastTranscriptIndex = 0;
+            // Clear saved transcripts (but not meeting state - that's cleared on leave)
+            sessionStorage.removeItem(STORAGE_KEY_TRANSCRIPTS);
+            sessionStorage.setItem(STORAGE_KEY_LAST_INDEX, '0');
         }
 
-        // Auto-leave meeting when app is removed/closed
-        window.addEventListener('beforeunload', () => {
-            if (isJoined && currentMeetingId) {
-                // Use GET endpoint for more reliable sendBeacon (POST with JSON can be unreliable)
-                const leaveUrl = `/api/meeting/leave?meetingId=${encodeURIComponent(currentMeetingId)}`;
-                navigator.sendBeacon(leaveUrl);
-                console.log('Sent leave beacon for meeting:', currentMeetingId);
+        // Handle visibility changes - fetch new transcripts when tab becomes visible
+        // This catches transcripts received while the panel was hidden
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && isJoined && currentMeetingId) {
+                console.log('Tab became visible - polling for new transcripts');
+                pollTranscripts();
             }
+        });
+
+        // Save state when app is unloaded (panel switch or close)
+        // Note: beforeunload is unreliable - state is proactively saved via saveTranscript()
+        // This is a redundant safeguard, not the primary mechanism
+        window.addEventListener('beforeunload', () => {
+            console.log('beforeunload - saving state (redundant safeguard):', { isJoined, currentMeetingId });
+            saveState();
         });
 
         init();
