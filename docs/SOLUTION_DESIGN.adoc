@@ -469,7 +469,8 @@ MeetingTranscriber Output:
 **Currently Deployed Resources**:
 
 **East US 2 Region**:
-* Azure AI Foundry Agent (Pennie) - asst_QP4Q94razJnAaC16jjiuDfih
+* Azure OpenAI Assistant (Pennie) - `asst_6Xp8voe3wn4BnIRBqM9CPl5Y`
+  ** Uses OpenAI resource-level assistant (not AI Foundry project agent) for `Azure.AI.OpenAI.Assistants` SDK compatibility
 * Azure OpenAI Service (GPT-4o deployment - model version 2024-08-06)
 
 **UK South Region**:

@@ -14,6 +14,9 @@ param adminUsername string = 'pennieadmin'
 @description('VM size for the Windows Server')
 param vmSize string = 'Standard_D2s_v3' // 2 vCPU, 8 GB RAM
 
+@description('Resource ID of an existing Azure OpenAI resource for RBAC (optional, for cross-region deployments)')
+param existingOpenAiResourceId string = ''
+
 // Virtual Network
 resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
   name: 'pennie-vnet-${environmentName}'
@@ -240,6 +243,24 @@ resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04
   name: guid(keyVaultReference.id, vm.id, 'Key Vault Secrets User')
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
+    principalId: vm.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant VM Managed Identity access to Azure OpenAI (if existing resource provided)
+// Role: Cognitive Services OpenAI Contributor (a]001dd7-823b-4bf9-a81c-774440b5d111)
+// Required for the bot to call Azure OpenAI APIs using managed identity
+resource openAiReference 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = if (!empty(existingOpenAiResourceId)) {
+  name: last(split(existingOpenAiResourceId, '/'))
+  scope: resourceGroup(split(existingOpenAiResourceId, '/')[2], split(existingOpenAiResourceId, '/')[4])
+}
+
+resource openAiRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(existingOpenAiResourceId)) {
+  scope: openAiReference
+  name: guid(existingOpenAiResourceId, vm.id, 'Cognitive Services OpenAI Contributor')
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a001dd7-823b-4bf9-a81c-774440b5d111') // Cognitive Services OpenAI Contributor
     principalId: vm.identity.principalId
     principalType: 'ServicePrincipal'
   }

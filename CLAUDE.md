@@ -19,17 +19,17 @@ Pennie the Prepper is an AI-powered business analyst that joins Microsoft Teams 
    - Real-time speech-to-text transcription
    - Outputs: Speaker name + timestamp + text
 
-3. **Azure OpenAI Assistant** (Pennie) - **AI Foundry Agent**
+3. **Azure OpenAI Assistant** (Pennie) - **OpenAI Resource Level**
    - Deployed via scripts/deploy-agent.sh
-   - Assistant ID: asst_QP4Q94razJnAaC16jjiuDfih (East US 2)
-   - **AI Foundry Project Agent API**: `https://benw-mgan4638-eastus2.services.ai.azure.com/api/projects/benw-mgan4638-eastus2_project/assistants/asst_QP4Q94razJnAaC16jjiuDfih`
-   - **API Version**: `2025-05-15-preview` (CRITICAL: Do not use older API versions like 2024-*)
-   - **Azure CLI Authentication**: `--resource https://ai.azure.com` (not cognitiveservices.azure.com)
-   - Project: benw-mgan4638-eastus2_project (T-Minus-15-Agents-US)
+   - **Assistant ID**: `asst_6Xp8voe3wn4BnIRBqM9CPl5Y` (East US 2)
+   - **OpenAI Resource API**: `https://benw-mgan4638-eastus2.openai.azure.com/openai/assistants`
+   - **API Version**: `2024-05-01-preview` (for Azure.AI.OpenAI.Assistants SDK compatibility)
+   - **Azure CLI Authentication**: `--resource https://cognitiveservices.azure.com`
    - GPT-4o (model version 2024-08-06) with T-Minus-15 logic (temperature: 0.1)
    - **OpenAI Assistants function calling pattern** - Pennie calls functions, application code must handle them
-   - **IMPORTANT**: This is an AI Foundry PROJECT agent, not an OpenAI resource agent
+   - **IMPORTANT**: Uses OpenAI resource-level assistant (NOT AI Foundry project agent) for SDK compatibility
    - Functions defined: All 9 backend functions (read_projects, read_teams, read_work_item, read_work_items, read_work_item_types, read_link_types, search_work_items, create_work_item, link_work_items)
+   - **Note**: AI Foundry project agents use different API path and are NOT visible to Azure.AI.OpenAI.Assistants SDK
 
 4. **Azure Functions Backend** (Python 3.11 on Linux)
    - URL: https://pennie-backend-prod.azurewebsites.net
@@ -210,7 +210,9 @@ Values already configured in `.env`:
 └── README.md                  # Project overview and quick start
 ```
 
-## Azure AI Foundry Agent API
+## Azure AI Foundry Agent API (Reference Only)
+
+> **NOTE**: The bot currently uses an **OpenAI resource-level assistant** (`asst_6Xp8voe3wn4BnIRBqM9CPl5Y`) for SDK compatibility with `Azure.AI.OpenAI.Assistants`. The AI Foundry project agent documented below exists but is NOT used by the bot. This section is kept for reference if migrating to the AI Foundry Agents SDK in the future.
 
 ### Critical Information
 

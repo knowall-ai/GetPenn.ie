@@ -13,6 +13,14 @@ public interface IPennieAgentClient
     Task SendTranscriptAsync(TranscriptionResult result, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Send a user message to Pennie and get a response (for general conversation).
+    /// </summary>
+    /// <param name="result">Transcription result with user message</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Pennie's response text</returns>
+    Task<string> SendMessageAndGetResponseAsync(TranscriptionResult result, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Request a meeting summary from Pennie.
     /// </summary>
     /// <param name="meetingId">Meeting identifier</param>

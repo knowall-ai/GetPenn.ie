@@ -48,10 +48,12 @@ builder.Services.AddSingleton<ISpeechTranscriptionService, SpeechTranscriptionSe
 // Online Meeting Service - looks up meeting join URLs from Teams SDK meeting IDs
 builder.Services.AddSingleton<IOnlineMeetingService, OnlineMeetingService>();
 
-// Only register PennieAgentClient if AI Foundry is configured
+// Only register PennieAgentClient if Azure OpenAI is configured
 // This is optional - the bot can still handle simple queries via HTTP client
-var aiFoundryEndpoint = builder.Configuration["AZURE_AI_FOUNDRY_ENDPOINT"];
-if (!string.IsNullOrEmpty(aiFoundryEndpoint))
+// Note: Config keys try dashes first (Azure Key Vault convention), then underscores for backward compatibility
+var openaiEndpoint = builder.Configuration["AZURE-OPENAI-ENDPOINT"]
+    ?? builder.Configuration["AZURE_OPENAI_ENDPOINT"];
+if (!string.IsNullOrEmpty(openaiEndpoint))
 {
     builder.Services.AddSingleton<IPennieAgentClient, PennieAgentClient>();
 }

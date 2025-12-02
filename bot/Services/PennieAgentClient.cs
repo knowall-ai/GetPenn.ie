@@ -54,11 +54,18 @@ public class PennieAgentClient : IPennieAgentClient, IDisposable
         _meetingThreadCache = memoryCache;
 
         // Get configuration
-        var endpoint = _configuration["AZURE_AI_FOUNDRY_ENDPOINT"]
-            ?? throw new InvalidOperationException("AZURE_AI_FOUNDRY_ENDPOINT not configured");
+        // IMPORTANT: The Azure.AI.OpenAI.Assistants SDK requires an Azure OpenAI endpoint
+        // in the format: https://{resource-name}.openai.azure.com
+        // This is different from AI Foundry project URLs which use .services.ai.azure.com
+        // Note: Config keys try dashes first (Azure Key Vault convention), then underscores for backward compatibility
+        var endpoint = _configuration["AZURE-OPENAI-ENDPOINT"]
+            ?? _configuration["AZURE_OPENAI_ENDPOINT"]
+            ?? throw new InvalidOperationException("AZURE-OPENAI-ENDPOINT not configured. " +
+                "Expected format: https://{resource}.openai.azure.com");
 
-        _assistantId = _configuration["AZURE_AI_FOUNDRY_AGENT_ID"]
-            ?? throw new InvalidOperationException("AZURE_AI_FOUNDRY_AGENT_ID not configured");
+        _assistantId = _configuration["AZURE-OPENAI-ASSISTANT-ID"]
+            ?? _configuration["AZURE_OPENAI_ASSISTANT_ID"]
+            ?? throw new InvalidOperationException("AZURE-OPENAI-ASSISTANT-ID not configured");
 
         _backendUrl = _configuration["AZURE_FUNCTIONS_BACKEND_URL"]
             ?? "https://pennie-backend-prod.azurewebsites.net"; // Default to production backend
@@ -129,6 +136,63 @@ public class PennieAgentClient : IPennieAgentClient, IDisposable
         {
             _logger.LogError(ex, "Error sending transcript to Pennie");
             // Don't throw - we don't want transcription failures to break the bot
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<string> SendMessageAndGetResponseAsync(
+        TranscriptionResult result,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "Sending message to Pennie and awaiting response: {Speaker} - {Text}",
+                result.Speaker, result.Text);
+
+            // Get or create thread for this conversation
+            var threadId = await GetOrCreateThreadAsync(result.MeetingId, cancellationToken);
+
+            // Add user message to thread (no timestamp prefix for chat mode)
+            var message = result.Text;
+            await _assistantsClient.CreateMessageAsync(
+                threadId,
+                MessageRole.User,
+                message,
+                cancellationToken: cancellationToken);
+
+            _logger.LogInformation("Added message to thread {ThreadId}", threadId);
+
+            // Create run to process the message
+            var run = await _assistantsClient.CreateRunAsync(
+                threadId,
+                new CreateRunOptions(_assistantId),
+                cancellationToken);
+
+            _logger.LogInformation("Created run {RunId} with status {Status}", run.Value.Id, run.Value.Status);
+
+            // Monitor run and handle function calls
+            await ProcessRunAsync(threadId, run.Value.Id, cancellationToken);
+
+            // Get Pennie's response
+            var messages = await _assistantsClient.GetMessagesAsync(threadId, cancellationToken: cancellationToken);
+            var latestMessage = messages.Value.Data.FirstOrDefault(m => m.Role == MessageRole.Assistant);
+
+            if (latestMessage != null)
+            {
+                var responseText = latestMessage.ContentItems.OfType<MessageTextContent>().FirstOrDefault()?.Text ?? "";
+                _logger.LogInformation("Received response from Pennie: {Response}",
+                    responseText.Length > 100 ? responseText[..100] + "..." : responseText);
+                return responseText;
+            }
+
+            _logger.LogWarning("No response received from Pennie");
+            return "";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting response from Pennie");
+            return "";
         }
     }
 
