@@ -624,6 +624,7 @@ public class MediaBot : ActivityHandler
     /// <summary>
     /// Strip @mention markup from Teams messages.
     /// Teams wraps @mentions in XML like: "<at>Pennie</at> what projects do we have?"
+    /// or with attributes: "<at id="...">Pennie</at> what projects do we have?"
     /// This strips the markup so Pennie receives clean text.
     /// </summary>
     private static string StripAtMentions(string text)
@@ -634,12 +635,13 @@ public class MediaBot : ActivityHandler
         }
 
         // Remove <at>...</at> tags (Teams @mention markup)
+        // Handles optional attributes like <at id="...">Name</at>
         // Uses timeout to prevent ReDoS attacks
         try
         {
             var cleanText = System.Text.RegularExpressions.Regex.Replace(
                 text,
-                @"<at>.*?</at>",
+                @"<at[^>]*>.*?</at>",
                 "",
                 System.Text.RegularExpressions.RegexOptions.None,
                 TimeSpan.FromMilliseconds(100));

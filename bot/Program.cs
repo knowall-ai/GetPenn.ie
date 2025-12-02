@@ -50,8 +50,9 @@ builder.Services.AddSingleton<IOnlineMeetingService, OnlineMeetingService>();
 
 // Only register PennieAgentClient if Azure OpenAI is configured
 // This is optional - the bot can still handle simple queries via HTTP client
-// Note: Config keys use dashes to match Azure Key Vault naming convention
-var openaiEndpoint = builder.Configuration["AZURE-OPENAI-ENDPOINT"];
+// Note: Config keys try dashes first (Azure Key Vault convention), then underscores for backward compatibility
+var openaiEndpoint = builder.Configuration["AZURE-OPENAI-ENDPOINT"]
+    ?? builder.Configuration["AZURE_OPENAI_ENDPOINT"];
 if (!string.IsNullOrEmpty(openaiEndpoint))
 {
     builder.Services.AddSingleton<IPennieAgentClient, PennieAgentClient>();

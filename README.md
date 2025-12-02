@@ -55,12 +55,13 @@ Azure DevOps Boards (Epics, Features, Stories, Questions)
 ```
 
 **Current Deployment Architecture**:
-- **Windows Server VM**: Hosts Teams Media Bot with function call handler (future phase)
+- **Windows Server VM**: Hosts Teams Media Bot with function call handler
 - **Azure Functions Backend**: Python 3.11 on Linux (9 HTTP endpoints)
-- **AI Foundry Agent**: Pennie deployed in East US 2 (asst_QP4Q94razJnAaC16jjiuDfih)
+- **OpenAI Assistant**: Pennie deployed in East US 2 (`asst_6Xp8voe3wn4BnIRBqM9CPl5Y`)
+  - Uses **OpenAI resource-level assistant** (not AI Foundry project agent) for `Azure.AI.OpenAI.Assistants` SDK compatibility
 - **Function Calling Pattern**: OpenAI Assistants API - Pennie calls functions, application code handles them
 - **Backend Region**: UK South for Azure DevOps proximity
-- **Agent Region**: East US 2 (Agents feature availability)
+- **Agent Region**: East US 2 (model availability)
 
 **Key Architecture Decision**: Using Azure Functions backend with OpenAI Assistants function calling pattern instead of MCP Server. This provides:
 - Better scalability and serverless pricing model
