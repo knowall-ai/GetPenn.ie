@@ -24,6 +24,9 @@ param devOpsOrg string
 @description('Azure DevOps project name')
 param devOpsProject string
 
+@description('Deploy AI services (OpenAI, Speech, AI Foundry). Set to false for test environments that share prod AI services.')
+param deployAiServices bool = true
+
 @description('Tags to apply to all resources')
 param tags object = {
   Environment: environmentName
@@ -43,7 +46,8 @@ module monitoring './modules/monitoring.bicep' = {
 }
 
 // Module: AI Services (AI Foundry, Speech Services, OpenAI)
-module aiServices './modules/ai-services.bicep' = {
+// Optional: Test environments can share production AI services
+module aiServices './modules/ai-services.bicep' = if (deployAiServices) {
   name: 'ai-services-deployment'
   params: {
     location: location
@@ -73,10 +77,10 @@ output location string = location
 output applicationInsightsName string = monitoring.outputs.applicationInsightsName
 output applicationInsightsConnectionString string = monitoring.outputs.applicationInsightsConnectionString
 output storageAccountName string = monitoring.outputs.storageAccountName
-output aiHubName string = aiServices.outputs.aiHubName
-output aiProjectName string = aiServices.outputs.aiProjectName
-output speechServiceEndpoint string = aiServices.outputs.speechServiceEndpoint
-output openAiEndpoint string = aiServices.outputs.openAiEndpoint
+output aiHubName string = deployAiServices ? aiServices.outputs.aiHubName : 'not-deployed'
+output aiProjectName string = deployAiServices ? aiServices.outputs.aiProjectName : 'not-deployed'
+output speechServiceEndpoint string = deployAiServices ? aiServices.outputs.speechServiceEndpoint : 'not-deployed'
+output openAiEndpoint string = deployAiServices ? aiServices.outputs.openAiEndpoint : 'not-deployed'
 output vmName string = windowsVM.outputs.vmName
 output vmPublicIP string = windowsVM.outputs.vmPublicIP
 output vmPrivateIP string = windowsVM.outputs.vmPrivateIP
