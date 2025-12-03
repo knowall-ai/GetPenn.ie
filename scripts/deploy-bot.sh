@@ -50,10 +50,9 @@ else
 fi
 
 # Validate required environment variables
-# Note: Credentials are stored in Key Vault, not .env
+# Note: Credentials are managed via GitHub Secrets
 required_vars=(
     "AZURE_RESOURCE_GROUP"
-    "AZURE_KEY_VAULT_NAME"
 )
 
 missing_vars=()
@@ -81,10 +80,9 @@ BLOB_NAME="pennie-bot-$VERSION.zip"
 echo "Configuration:"
 echo "  Resource Group: $AZURE_RESOURCE_GROUP"
 echo "  VM Name: $VM_NAME"
-echo "  Key Vault: $AZURE_KEY_VAULT_NAME"
 echo "  Version: $VERSION"
 echo ""
-echo "Note: Credentials loaded from Key Vault at runtime"
+echo "Note: Credentials managed via GitHub Secrets"
 echo ""
 
 # Step 1: Build the bot

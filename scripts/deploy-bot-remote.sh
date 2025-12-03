@@ -17,12 +17,10 @@ echo ""
 # Configuration
 RESOURCE_GROUP=${AZURE_RESOURCE_GROUP:-"TMinus15Agents"}
 VM_NAME=${VM_NAME:-"pennie-vm-prod"}
-KEY_VAULT_NAME=${AZURE_KEY_VAULT_NAME:-"pennie-kv-mmdxqm3w7kjwm"}
 
 echo -e "${CYAN}Configuration:${NC}"
 echo "  Resource Group: $RESOURCE_GROUP"
 echo "  VM Name: $VM_NAME"
-echo "  Key Vault: $KEY_VAULT_NAME"
 echo ""
 
 # Step 1: Check prerequisites

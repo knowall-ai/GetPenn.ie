@@ -3,7 +3,7 @@ set -e
 
 # Setup Bot App Registration Script
 # This script automates the creation of the Azure AD app registration for Pennie the Prepper Teams Bot
-# and stores credentials in Azure Key Vault.
+# Credentials are output for storage in GitHub Secrets.
 
 # Usage: ./scripts/setup-bot-app-registration.sh
 
@@ -29,7 +29,6 @@ fi
 
 # Variables
 APP_NAME="Pennie the Prepper Bot"
-KEY_VAULT_NAME=${AZURE_KEY_VAULT_NAME:-"pennie-kv-mmdxqm3w7kjwm"}
 RESOURCE_GROUP=${AZURE_RESOURCE_GROUP:-"TMinus15Agents"}
 SECRET_EXPIRATION_YEARS=${SECRET_EXPIRATION_YEARS:-2}  # Configurable: default 2 years
 
@@ -88,44 +87,13 @@ CREDENTIALS=$(az ad app credential reset \
 CLIENT_SECRET=$(echo $CREDENTIALS | jq -r '.password')
 echo -e "${GREEN}✓ Client secret created (expires in $SECRET_EXPIRATION_YEARS years)${NC}"
 
-echo -e "\n${GREEN}Step 4: Storing credentials in Azure Key Vault${NC}"
-az keyvault secret set \
-    --vault-name $KEY_VAULT_NAME \
-    --name "TEAMS-APP-ID" \
-    --value "$APP_ID" \
-    > /dev/null
-
-az keyvault secret set \
-    --vault-name $KEY_VAULT_NAME \
-    --name "TEAMS-APP-PASSWORD" \
-    --value "$CLIENT_SECRET" \
-    > /dev/null
-
-echo -e "${GREEN}✓ Credentials stored in Key Vault: $KEY_VAULT_NAME${NC}"
-echo -e "  Secret names: TEAMS-APP-ID, TEAMS-APP-PASSWORD"
-
-echo -e "\n${GREEN}Step 5: Updating .env file${NC}"
-# Update .env file with new app ID (cross-platform compatible)
-if grep -q "^TEAMS_APP_ID=" .env; then
-    sed -i.bak "s|^TEAMS_APP_ID=.*|TEAMS_APP_ID=$APP_ID|" .env
-else
-    echo "TEAMS_APP_ID=$APP_ID" >> .env
-fi
-
-if grep -q "^TEAMS_APP_PASSWORD=" .env; then
-    sed -i.bak "s|^TEAMS_APP_PASSWORD=.*|TEAMS_APP_PASSWORD=$CLIENT_SECRET|" .env
-else
-    echo "TEAMS_APP_PASSWORD=$CLIENT_SECRET" >> .env
-fi
-
-# Remove sed backup file
-rm -f .env.bak
-
-echo -e "${GREEN}✓ .env file updated${NC}"
-echo -e "${RED}⚠️  WARNING: .env file now contains sensitive credentials${NC}"
-echo -e "${YELLOW}   - Ensure .env is in .gitignore (never commit to Git)${NC}"
-echo -e "${YELLOW}   - Restrict file permissions: chmod 600 .env${NC}"
-echo -e "${YELLOW}   - Credentials are also stored securely in Key Vault${NC}"
+echo -e "\n${GREEN}Step 4: Store credentials in GitHub Secrets${NC}"
+echo -e "${YELLOW}Run these commands to store credentials in GitHub:${NC}"
+echo ""
+echo -e "gh secret set TEAMS_APP_ID --env <environment> --body \"$APP_ID\""
+echo -e "gh secret set TEAMS_APP_PASSWORD --env <environment> --body \"$CLIENT_SECRET\""
+echo ""
+echo -e "${GREEN}✓ Credentials ready for GitHub Secrets${NC}"
 
 echo -e "\n${YELLOW}=== MANUAL STEP REQUIRED ===${NC}"
 echo -e "${YELLOW}Admin consent is required for the Graph API permissions.${NC}"
@@ -139,8 +107,9 @@ echo -e "\n${YELLOW}Note: This requires Global Administrator or Privileged Role 
 
 echo -e "\n${GREEN}=== Setup Complete ===${NC}"
 echo -e "App ID: ${YELLOW}$APP_ID${NC}"
-echo -e "Key Vault: ${YELLOW}$KEY_VAULT_NAME${NC}"
+echo -e "Password: ${YELLOW}$CLIENT_SECRET${NC}"
 echo -e "\n${GREEN}Next steps:${NC}"
-echo -e "1. Grant admin consent (see above)"
-echo -e "2. Deploy the Teams bot to the Windows VM"
-echo -e "3. Configure the bot endpoint in Teams App Studio"
+echo -e "1. Run the gh secret commands shown above"
+echo -e "2. Grant admin consent (see above)"
+echo -e "3. Deploy the Teams bot to the Windows VM"
+echo -e "4. Configure the bot endpoint in Teams App Studio"

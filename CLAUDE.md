@@ -146,7 +146,7 @@ az deployment sub create \
   --template-file infra/main.bicep \
   --parameters environmentName=prod
 ```
-- Deploys AI Foundry Hub, Project, Storage, Key Vault, Monitoring
+- Deploys AI Foundry Hub, Project, Storage, Monitoring
 - Windows VM for Teams Bot (future phase)
 
 ### GitHub Actions Workflow
@@ -179,7 +179,7 @@ Values already configured in `.env`:
 
 - All components must reside within the organization's Azure tenant
 - No external services required
-- Secrets managed via GitHub Secrets and Azure Key Vault
+- Secrets managed via GitHub Secrets (set as environment variables during deployment)
 - Authentication uses managed identity, not PAT tokens where possible
 
 ## Repository Structure

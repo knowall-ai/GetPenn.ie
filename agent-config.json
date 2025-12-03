@@ -137,7 +137,7 @@
     "owner": "Ben Weeks",
     "owner_email": "ben.weeks@outlook.com",
     "license": "MIT",
-    "repository": "https://github.com/benweeks/GetPenn.ie",
+    "repository": "https://github.com/KnowAll-AI/GetPenn.ie",
     "deployment_region": "uksouth",
     "model_info": {
       "name": "GPT-4o",

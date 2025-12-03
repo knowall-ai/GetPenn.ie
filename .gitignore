@@ -122,3 +122,4 @@ ApplicationInsights.config
 bot/*.zip
 bot/publish-*/
 bot/teams-manifest/*.zip
+src/*.zip
