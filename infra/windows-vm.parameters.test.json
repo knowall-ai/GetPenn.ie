@@ -8,9 +8,6 @@
     "environmentName": {
       "value": "test"
     },
-    "keyVaultName": {
-      "value": "pennie-kv-test"
-    },
     "applicationInsightsConnectionString": {
       "value": ""
     },

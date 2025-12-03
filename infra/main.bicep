@@ -87,7 +87,6 @@ module windowsVM './modules/windows-vm.bicep' = {
   params: {
     location: location
     environmentName: environmentName
-    keyVaultName: keyVault.outputs.keyVaultName
     applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
     devOpsOrg: devOpsOrg
     devOpsProject: devOpsProject

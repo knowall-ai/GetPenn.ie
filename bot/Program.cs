@@ -1,5 +1,3 @@
-using Azure.Identity;
-using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.Integration.AspNet.Core;
 using Microsoft.Bot.Connector.Authentication;
@@ -12,19 +10,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Configuration
 // Load order: appsettings.json -> appsettings.{Environment}.json -> appsettings.local.json -> env vars
 // Later files override earlier ones. appsettings.local.json is gitignored for developer secrets.
+// Secrets are managed via GitHub Secrets and set as environment variables during deployment.
 builder.Configuration.AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true);
 builder.Configuration.AddEnvironmentVariables();
-
-// Add Key Vault if configured
-// Uses Azure.Extensions.AspNetCore.Configuration.Secrets with DefaultAzureCredential
-// On the VM, this uses the managed identity for authentication
-var keyVaultName = builder.Configuration["AZURE_KEY_VAULT_NAME"];
-if (!string.IsNullOrEmpty(keyVaultName))
-{
-    var keyVaultUri = new Uri($"https://{keyVaultName}.vault.azure.net/");
-    builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
-    Console.WriteLine($"Key Vault configuration loaded from: {keyVaultName}");
-}
 
 // Application Insights
 builder.Services.AddApplicationInsightsTelemetry(options =>

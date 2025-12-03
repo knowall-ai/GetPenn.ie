@@ -2,7 +2,6 @@
 
 param location string
 param environmentName string
-param keyVaultName string
 param applicationInsightsConnectionString string
 param devOpsOrg string
 param devOpsProject string
@@ -161,7 +160,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
     osProfile: {
       computerName: 'pennie-${environmentName}'
       adminUsername: adminUsername
-      adminPassword: 'P@ssw0rd!${uniqueString(resourceGroup().id)}' // Change in production via Key Vault
+      adminPassword: 'P@ssw0rd!${uniqueString(resourceGroup().id)}' // Change via GitHub Secrets in deployment
       windowsConfiguration: {
         enableAutomaticUpdates: true
         provisionVMAgent: true
@@ -274,21 +273,6 @@ resource vmExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09-01' =
         "
       '''
     }
-  }
-}
-
-// Grant VM Managed Identity access to Key Vault
-resource keyVaultReference 'Microsoft.KeyVault/vaults@2023-02-01' existing = {
-  name: keyVaultName
-}
-
-resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: keyVaultReference
-  name: guid(keyVaultReference.id, vm.id, 'Key Vault Secrets User')
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
-    principalId: vm.identity.principalId
-    principalType: 'ServicePrincipal'
   }
 }
 
