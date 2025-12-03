@@ -10,6 +10,9 @@ using PennieBot.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
+// Load order: appsettings.json -> appsettings.{Environment}.json -> appsettings.local.json -> env vars
+// Later files override earlier ones. appsettings.local.json is gitignored for developer secrets.
+builder.Configuration.AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true);
 builder.Configuration.AddEnvironmentVariables();
 
 // Add Key Vault if configured
