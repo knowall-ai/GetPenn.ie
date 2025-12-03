@@ -14,6 +14,25 @@ param adminUsername string = 'pennieadmin'
 @description('VM size for the Windows Server')
 param vmSize string = 'Standard_D2s_v3' // 2 vCPU, 8 GB RAM
 
+@description('Use Azure Spot VM for cost savings (can be evicted)')
+param useSpotVM bool = false
+
+@description('Spot VM eviction policy: Deallocate (preserve disk) or Delete')
+@allowed(['Deallocate', 'Delete'])
+param spotEvictionPolicy string = 'Deallocate'
+
+@description('Max price for Spot VM (-1 = up to on-demand price)')
+param spotMaxPrice int = -1
+
+@description('Enable auto-shutdown schedule')
+param enableAutoShutdown bool = false
+
+@description('Auto-shutdown time in 24h format (e.g., 1900 for 7pm)')
+param autoShutdownTime string = '1900'
+
+@description('Auto-shutdown timezone')
+param autoShutdownTimezone string = 'GMT Standard Time'
+
 @description('Resource ID of an existing Azure OpenAI resource for RBAC (optional, for cross-region deployments)')
 param existingOpenAiResourceId string = ''
 
@@ -125,7 +144,7 @@ resource nic 'Microsoft.Network/networkInterfaces@2023-05-01' = {
 resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
   name: 'pennie-vm-${environmentName}'
   location: location
-  tags: tags
+  tags: union(tags, useSpotVM ? { 'SpotVM': 'true' } : {})
   identity: {
     type: 'SystemAssigned'
   }
@@ -133,6 +152,12 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
     hardwareProfile: {
       vmSize: vmSize
     }
+    // Spot VM configuration (60-80% cost savings, can be evicted)
+    priority: useSpotVM ? 'Spot' : 'Regular'
+    evictionPolicy: useSpotVM ? spotEvictionPolicy : null
+    billingProfile: useSpotVM ? {
+      maxPrice: spotMaxPrice
+    } : null
     osProfile: {
       computerName: 'pennie-${environmentName}'
       adminUsername: adminUsername
@@ -175,6 +200,25 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
       bootDiagnostics: {
         enabled: true
       }
+    }
+  }
+}
+
+// Auto-shutdown schedule (saves costs by stopping VM outside business hours)
+resource autoShutdownSchedule 'Microsoft.DevTestLab/schedules@2018-09-15' = if (enableAutoShutdown) {
+  name: 'shutdown-computevm-${vm.name}'
+  location: location
+  tags: tags
+  properties: {
+    status: 'Enabled'
+    taskType: 'ComputeVmShutdownTask'
+    dailyRecurrence: {
+      time: autoShutdownTime
+    }
+    timeZoneId: autoShutdownTimezone
+    targetResourceId: vm.id
+    notificationSettings: {
+      status: 'Disabled'
     }
   }
 }
@@ -273,3 +317,5 @@ output vmPublicIP string = publicIP.properties.ipAddress
 output vmPrivateIP string = nic.properties.ipConfigurations[0].properties.privateIPAddress
 output vmFQDN string = publicIP.properties.dnsSettings.fqdn
 output vmPrincipalId string = vm.identity.principalId
+output isSpotVM bool = useSpotVM
+output autoShutdownEnabled bool = enableAutoShutdown

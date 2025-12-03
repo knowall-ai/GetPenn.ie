@@ -599,9 +599,10 @@ Speaker: Ben Weeks | Timestamp: 00:02:10 | Text: Let's support both OAuth and SA
 
 === Local Development
 
-* **Bot**: Bot Framework Emulator
+* **Bot**: Bot Framework Emulator or dev tunnel to local instance
+* **Config**: `appsettings.local.json` (gitignored, copy from template)
 * **Speech**: Azure Speech Services (dev subscription)
-* **DevOps**: Test project in Azure DevOps
+* **DevOps**: KnowAll project in Azure DevOps (same as prod)
 * **AI Agent**: Local AI Foundry project instance
 
 === Continuous Integration (GitHub Actions)
@@ -611,17 +612,89 @@ Speaker: Ben Weeks | Timestamp: 00:02:10 | Text: Let's support both OAuth and SA
 * **DevOps**: Test project (separate from prod)
 * **AI Agent**: Test AI Foundry project
 
-=== Staging
+=== Test Environment (Manual Testing)
 
-* **Deployment**: Separate Windows VM in staging resource group
-* **Teams**: Test Teams tenant (if available) or production tenant with test meetings
-* **DevOps**: Staging project in Azure DevOps
-* **AI Agent**: Staging AI Foundry project
+The test environment uses a **Spot VM** for significant cost savings (~80% cheaper than standard VMs).
+
+**Infrastructure**:
+
+* **Resource Group**: `TMinus15Agents-Test`
+* **VM Name**: `pennie-vm-test`
+* **VM Type**: Azure Spot VM (Standard_D2s_v3)
+* **Eviction Policy**: Deallocate (VM stops but disk preserved)
+* **Auto-Shutdown**: Enabled at 7pm GMT (saves costs overnight)
+* **Teams App**: "Pennie Test" with purple accent (#9C27B0)
+
+**Cost Savings**:
+
+[cols="1,1,1"]
+|===
+| Type | Monthly Cost | Savings
+
+| Standard VM
+| ~$70-90
+| -
+
+| Spot VM
+| ~$15-25
+| 60-80%
+
+| Spot VM + Auto-shutdown
+| ~$10-15
+| 80-85%
+|===
+
+**Spot VM Behavior**:
+
+* Azure can evict the VM with 30 seconds notice if they need capacity
+* Eviction is rare (typically during high-demand periods)
+* When evicted with `Deallocate` policy, the VM stops but disk is preserved
+* Restart the VM to continue testing (no data loss)
+* For test environment, occasional eviction is acceptable
+
+**Starting the Test VM**:
+
+[source,bash]
+----
+# Start the test VM for manual testing
+az vm start -g TMinus15Agents-Test -n pennie-vm-test
+
+# Check VM status
+az vm show -g TMinus15Agents-Test -n pennie-vm-test --query "powerState" -o tsv
+
+# Stop the test VM when done (saves money)
+az vm deallocate -g TMinus15Agents-Test -n pennie-vm-test --no-wait
+----
+
+**Deploying to Test**:
+
+[source,bash]
+----
+# Deploy infrastructure (creates Spot VM if not exists)
+az deployment group create \
+  --resource-group TMinus15Agents-Test \
+  --template-file infra/modules/windows-vm.bicep \
+  --parameters @infra/windows-vm.parameters.test.json
+
+# Deploy bot code to test VM
+# (Use GitHub Actions workflow or manual deployment)
+----
+
+**Distinguishing Test from Production in Teams**:
+
+The test bot "Pennie Test" has:
+
+* Purple accent color (#9C27B0) vs green (#9DFF0A) for production
+* Name suffix "(Test Environment)" in description
+* Separate bot registration (different App ID)
+* Points to test backend: `pennie-backend-test.azurewebsites.net`
 
 === Production
 
 * **Deployment**: Production Windows VM in `TMinus15Agents` resource group
+* **VM Type**: Standard VM (no eviction risk)
 * **Teams**: Production Teams tenant (KnowAll AI)
+* **Teams App**: "Pennie the Prepper" with green accent (#9DFF0A)
 * **DevOps**: Production Azure DevOps project
 * **AI Agent**: Production AI Foundry project (`knowall-ai-foundry`)
 

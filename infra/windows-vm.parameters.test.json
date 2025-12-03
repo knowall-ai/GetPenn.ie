@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "uksouth"
+    },
+    "environmentName": {
+      "value": "test"
+    },
+    "keyVaultName": {
+      "value": "pennie-kv-test"
+    },
+    "applicationInsightsConnectionString": {
+      "value": ""
+    },
+    "devOpsOrg": {
+      "value": "knowall-ai"
+    },
+    "devOpsProject": {
+      "value": "KnowAll"
+    },
+    "useSpotVM": {
+      "value": true
+    },
+    "spotEvictionPolicy": {
+      "value": "Deallocate"
+    },
+    "spotMaxPrice": {
+      "value": -1
+    },
+    "enableAutoShutdown": {
+      "value": true
+    },
+    "autoShutdownTime": {
+      "value": "1900"
+    },
+    "autoShutdownTimezone": {
+      "value": "GMT Standard Time"
+    },
+    "tags": {
+      "value": {
+        "Project": "Pennie",
+        "Environment": "Test",
+        "ManagedBy": "Bicep",
+        "Purpose": "Teams Bot VM (Spot)",
+        "CostCenter": "Development"
+      }
+    }
+  }
+}
