@@ -66,8 +66,8 @@ jobs:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'prod' }}
-    # Skip infrastructure deployment - VM already exists
-    if: false
+    # Only deploy infrastructure when explicitly enabled per environment
+    if: ${{ vars.AZURE_DEPLOYMENT_ENABLED == 'true' }}
 
     steps:
       - name: Checkout code
