@@ -111,28 +111,7 @@ if [ $? -ne 0 ]; then
 fi
 echo "✅ Published to $PUBLISH_DIR"
 
-# Step 3: Update appsettings.json with Key Vault name
-# Credentials are loaded from Key Vault at runtime using managed identity
-echo ""
-echo "🔐 Configuring Key Vault in appsettings.json..."
-APPSETTINGS="$PUBLISH_DIR/appsettings.json"
-
-# Cross-platform JSON update using portable cp/sed/mv pattern
-# Note: sed -i behaves differently on macOS vs Linux, so we use temp file approach
-APPSETTINGS_TMP="$APPSETTINGS.tmp"
-if grep -q '"AZURE_KEY_VAULT_NAME"' "$APPSETTINGS"; then
-    # Update existing key
-    sed "s|\"AZURE_KEY_VAULT_NAME\":.*|\"AZURE_KEY_VAULT_NAME\": \"$AZURE_KEY_VAULT_NAME\",|" "$APPSETTINGS" > "$APPSETTINGS_TMP"
-else
-    # Add key after opening brace (insert as first property)
-    sed "s|^{|{\n  \"AZURE_KEY_VAULT_NAME\": \"$AZURE_KEY_VAULT_NAME\",|" "$APPSETTINGS" > "$APPSETTINGS_TMP"
-fi
-mv "$APPSETTINGS_TMP" "$APPSETTINGS"
-
-echo "✅ Key Vault configured: $AZURE_KEY_VAULT_NAME"
-echo "   Bot will load MicrosoftAppId and MicrosoftAppPassword from Key Vault at startup"
-
-# Step 4: Create zip archive (cross-platform)
+# Step 3: Create zip archive (cross-platform)
 echo ""
 echo "📦 Creating deployment package..."
 rm -f "$ZIP_FILE"

@@ -183,7 +183,6 @@ az vm run-command invoke \
     --name "$VM_NAME" \
     --command-id RunPowerShellScript \
     --scripts @"$DEPLOY_SCRIPT" \
-    --parameters "KeyVaultName=$KEY_VAULT_NAME" \
     --output table
 
 # Step 6: Verify deployment
