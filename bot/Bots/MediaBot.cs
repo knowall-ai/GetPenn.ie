@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Schema;
+using PennieBot.Helpers;
 using PennieBot.Services;
 
 namespace PennieBot.Bots;
@@ -52,7 +53,7 @@ public class MediaBot : ActivityHandler
 
         // Check for simple join commands (like "join", "come join", "join us")
         // These can auto-join if we're in a meeting context
-        if (IsSimpleJoinCommand(text))
+        if (MeetingHelpers.IsSimpleJoinCommand(text))
         {
             await HandleSimpleJoinCommandAsync(turnContext, cancellationToken);
             return;
@@ -84,7 +85,7 @@ public class MediaBot : ActivityHandler
 
             // Strip @mention markup (e.g., "<at>Pennie</at>") from user messages
             // Teams adds this XML when users @mention the bot in group chats
-            userMessage = StripAtMentions(userMessage);
+            userMessage = MeetingHelpers.StripAtMentions(userMessage);
 
             _logger.LogInformation("Forwarding message to Pennie: {Message}", userMessage);
 
@@ -145,8 +146,8 @@ public class MediaBot : ActivityHandler
             // - "join meeting 396 240 783 591 15 tj3HN9jw"
             // - "join meeting id 396240783591 passcode tj3HN9jw"
 
-            var meetingId = ExtractMeetingId(originalText);
-            var passcode = ExtractPasscode(originalText);
+            var meetingId = MeetingHelpers.ExtractMeetingId(originalText);
+            var passcode = MeetingHelpers.ExtractPasscode(originalText);
 
             if (string.IsNullOrEmpty(meetingId))
             {
@@ -217,137 +218,6 @@ public class MediaBot : ActivityHandler
                 MessageFactory.Text($"❌ Failed to join meeting: {ex.Message}"),
                 cancellationToken);
         }
-    }
-
-    /// <summary>
-    /// Extract meeting ID from a message. Handles formats like "396 240 783 591 15" or "39624078359115".
-    /// </summary>
-    private static string? ExtractMeetingId(string text)
-    {
-        // Pattern 1: "id:" or "id :" followed by digits and spaces
-        var regexTimeout = TimeSpan.FromMilliseconds(100);
-        var idPattern = new System.Text.RegularExpressions.Regex(
-            @"id\s*:?\s*([\d\s]+)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase,
-            regexTimeout);
-        System.Text.RegularExpressions.Match match;
-        try
-        {
-            match = idPattern.Match(text);
-        }
-        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
-        {
-            return null; // Input too complex, reject
-        }
-        if (match.Success)
-        {
-            var id = match.Groups[1].Value.Trim();
-            // Stop at "passcode" or end of digits
-            var passcodeIndex = id.IndexOf("passcode", StringComparison.OrdinalIgnoreCase);
-            if (passcodeIndex > 0)
-            {
-                id = id.Substring(0, passcodeIndex).Trim();
-            }
-            // Remove any non-digit/space chars at the end
-            id = System.Text.RegularExpressions.Regex.Replace(id, @"[^\d\s]+$", "").Trim();
-            if (IsValidMeetingIdFormat(id))
-            {
-                return id;
-            }
-        }
-
-        // Pattern 2: Look for a sequence of numbers that could be a meeting ID (10-30 digits)
-        var numberPattern = new System.Text.RegularExpressions.Regex(
-            @"(\d[\d\s]{9,30})",
-            System.Text.RegularExpressions.RegexOptions.None,
-            regexTimeout);
-        try
-        {
-            match = numberPattern.Match(text);
-            if (match.Success)
-            {
-                var id = match.Groups[1].Value.Trim();
-                if (IsValidMeetingIdFormat(id))
-                {
-                    return id;
-                }
-            }
-        }
-        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
-        {
-            return null; // Input too complex, reject
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Validate that a meeting ID has the correct format (10-15 digits when spaces are removed).
-    /// </summary>
-    private static bool IsValidMeetingIdFormat(string? meetingId)
-    {
-        if (string.IsNullOrWhiteSpace(meetingId))
-        {
-            return false;
-        }
-
-        // Remove spaces and validate digit count
-        var digitsOnly = meetingId.Replace(" ", "");
-
-        // Teams meeting IDs are typically 10-15 digits
-        if (digitsOnly.Length < 10 || digitsOnly.Length > 15)
-        {
-            return false;
-        }
-
-        // Ensure all characters are digits
-        return digitsOnly.All(char.IsDigit);
-    }
-
-    /// <summary>
-    /// Extract passcode from a message.
-    /// </summary>
-    private static string? ExtractPasscode(string text)
-    {
-        var regexTimeout = TimeSpan.FromMilliseconds(100);
-
-        // Pattern 1: "passcode:" or "passcode :" followed by alphanumeric
-        var passcodePattern = new System.Text.RegularExpressions.Regex(
-            @"passcode\s*:?\s*([a-zA-Z0-9]+)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase,
-            regexTimeout);
-        try
-        {
-            var match = passcodePattern.Match(text);
-            if (match.Success)
-            {
-                return match.Groups[1].Value;
-            }
-        }
-        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
-        {
-            return null; // Input too complex, reject
-        }
-
-        // Pattern 2: Look for alphanumeric string after the meeting ID (8+ chars)
-        var lastWordPattern = new System.Text.RegularExpressions.Regex(
-            @"\s([a-zA-Z][a-zA-Z0-9]{5,})$",
-            System.Text.RegularExpressions.RegexOptions.None,
-            regexTimeout);
-        try
-        {
-            var match = lastWordPattern.Match(text.Trim());
-            if (match.Success)
-            {
-                return match.Groups[1].Value;
-            }
-        }
-        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
-        {
-            return null; // Input too complex, reject
-        }
-
-        return null;
     }
 
     /// <summary>
@@ -585,73 +455,6 @@ public class MediaBot : ActivityHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing transcript for meeting {MeetingId}", result.MeetingId);
-        }
-    }
-
-    /// <summary>
-    /// Check if the text is a simple join command (without explicit meeting ID).
-    /// </summary>
-    private static bool IsSimpleJoinCommand(string text)
-    {
-        // Remove bot mention from text for cleaner matching
-        var cleanText = StripAtMentions(text);
-
-        // Check for simple join patterns
-        var joinPatterns = new[]
-        {
-            "join",
-            "come join",
-            "join us",
-            "join the meeting",
-            "join the call",
-            "join this meeting",
-            "join this call",
-            "please join",
-            "can you join"
-        };
-
-        foreach (var pattern in joinPatterns)
-        {
-            if (cleanText.Contains(pattern))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Strip @mention markup from Teams messages.
-    /// Teams wraps @mentions in XML like: "<at>Pennie</at> what projects do we have?"
-    /// or with attributes: "<at id="...">Pennie</at> what projects do we have?"
-    /// This strips the markup so Pennie receives clean text.
-    /// </summary>
-    private static string StripAtMentions(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-        {
-            return text;
-        }
-
-        // Remove <at>...</at> tags (Teams @mention markup)
-        // Handles optional attributes like <at id="...">Name</at>
-        // Uses timeout to prevent ReDoS attacks
-        try
-        {
-            var cleanText = System.Text.RegularExpressions.Regex.Replace(
-                text,
-                @"<at[^>]*>.*?</at>",
-                "",
-                System.Text.RegularExpressions.RegexOptions.None,
-                TimeSpan.FromMilliseconds(100));
-
-            return cleanText.Trim();
-        }
-        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
-        {
-            // If regex times out, return original text
-            return text.Trim();
         }
     }
 

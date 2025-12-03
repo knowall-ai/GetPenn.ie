@@ -9,6 +9,11 @@
     <UserSecretsId>pennie-bot-secrets</UserSecretsId>
   </PropertyGroup>
 
+  <!-- Expose internals to test project -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="PennieBot.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Bot Framework -->
     <PackageReference Include="Microsoft.Bot.Builder" Version="4.21.2" />
