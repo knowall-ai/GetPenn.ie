@@ -7,7 +7,7 @@
 
 This guide provides step-by-step instructions for deploying Pennie the Prepper to your Azure environment. The deployment process is largely automated through scripts and Bicep templates, with a few manual steps for security approvals.
 
-**Current Status** (November 2025): Infrastructure (Phase 1) ✅ complete. Teams bot integration (Phase 2) ✅ deployed with Key Vault integration.
+**Current Status** (December 2025): Infrastructure (Phase 1) ✅ complete. Teams bot integration (Phase 2) ✅ deployed. Secrets managed via GitHub Secrets.
 
 == Architecture Overview
 
@@ -29,9 +29,9 @@ This guide provides step-by-step instructions for deploying Pennie the Prepper t
 |✅ Deployed
 |Hosts Teams Media Bot (future phase)
 
-|Key Vault
-|✅ Deployed
-|Secure storage for bot credentials
+|GitHub Secrets
+|✅ Configured
+|Secure storage for bot credentials and deployment secrets
 
 |Application Insights
 |✅ Deployed
@@ -39,7 +39,7 @@ This guide provides step-by-step instructions for deploying Pennie the Prepper t
 
 |Teams Media Bot
 |✅ Deployed
-|C# bot with Graph SDK, Key Vault integration for credentials
+|C# bot with Graph SDK for real-time audio capture
 
 |Function Call Handler
 |✅ Implemented
@@ -1082,32 +1082,35 @@ Wait 10 seconds for role propagation, then retry.
 
 === Secrets Management
 
-The project uses a layered secrets management approach:
+The project uses GitHub Secrets for secrets management:
 
 [cols="1,2,2"]
 |===
 |Location |Purpose |Contents
 
-|Azure Key Vault
-|Production runtime secrets
-|`MicrosoftAppId`, `MicrosoftAppPassword`, `AZURE-FUNCTIONS-BACKEND-URL`
+|GitHub Secrets (Repository)
+|Shared across environments
+|`AZURE_CREDENTIALS`, `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`
 
-|`.env` file
-|Local configuration (non-secrets)
-|`AZURE_KEY_VAULT_NAME`, `AZURE_RESOURCE_GROUP`, region settings
+|GitHub Secrets (Environment: prod)
+|Production-specific
+|`TEAMS_APP_ID`, `TEAMS_APP_PASSWORD`, `AZURE_RESOURCE_GROUP`, `AZURE_STORAGE_ACCOUNT`
 
-|GitHub Secrets
-|CI/CD pipelines
-|Azure credentials, subscription IDs (future)
+|GitHub Secrets (Environment: test)
+|Test-specific
+|`TEAMS_APP_ID`, `TEAMS_APP_PASSWORD`, `AZURE_RESOURCE_GROUP`, `AZURE_STORAGE_ACCOUNT`
+
+|`appsettings.json` (on VM)
+|Runtime configuration
+|Non-secret settings, URLs, region settings
 |===
 
 **Key Principles**:
 
-* Bot credentials **never** stored in `.env` or `appsettings.json`
-* Bot loads secrets from Key Vault at startup using managed identity
-* Managed identity authenticates to Key Vault (no API keys needed)
+* Bot credentials managed via GitHub Secrets
+* Secrets set as environment variables during deployment
 * **Never commit secrets to Git**
-* `.env` file excluded from source control (`.gitignore`)
+* `appsettings.json` on VM is preserved during deployments (backup/restore)
 
 === Network Security
 
@@ -1123,7 +1126,51 @@ The project uses a layered secrets management approach:
 * Admin consent required for Graph API permissions
 * Azure DevOps PAT with minimal scopes
 
-== Appendix A: Automated Deployment Scripts
+== Appendix A: Deployment Scripts
+
+=== Overview
+
+The project includes several deployment scripts. The GitHub Actions workflow handles automated CI/CD deployment, while manual scripts provide backup options for local development and emergency fixes.
+
+[cols="2,1,3"]
+|===
+|Script |Used by CI/CD? |Purpose
+
+|`deploy-bot-to-vm.ps1`
+|✅ Yes
+|Runs ON the VM to restart the bot service after deployment
+
+|`deploy-bot.sh`
+|❌ No
+|Manual deployment from your Linux/Mac PC
+
+|`deploy-bot-remote.sh`
+|❌ No
+|Manual deployment from your PC to VM via Azure CLI
+
+|`deploy-teams-app.sh`
+|❌ No
+|Manual Teams app package upload to organization catalog
+
+|`setup-bot-app-registration.sh`
+|❌ No
+|One-time setup: Creates Azure AD app registration for bot
+
+|`deploy-agent.sh`
+|❌ No
+|Deploys Pennie AI Foundry agent with function calling
+
+|`deploy-backend.sh`
+|❌ No
+|Deploys Azure Functions backend for Azure DevOps integration
+|===
+
+**When to use manual scripts:**
+
+* Deploying without waiting for CI/CD pipeline
+* Emergency fixes when GitHub Actions is unavailable
+* Local development and testing
+* One-time setup tasks (app registration, agent deployment)
 
 === setup-bot-app-registration.sh
 
@@ -1136,9 +1183,8 @@ Located at: `scripts/setup-bot-app-registration.sh`
 1. Creates app registration
 2. Adds Graph API permissions
 3. Generates client secret
-4. Stores credentials in Key Vault
-5. Updates `.env` file
-6. Provides instructions for manual admin consent
+4. Outputs `gh secret set` commands for GitHub Secrets
+5. Provides instructions for manual admin consent
 
 **Usage**:
 
