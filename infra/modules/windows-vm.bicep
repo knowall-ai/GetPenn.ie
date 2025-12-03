@@ -277,22 +277,12 @@ resource vmExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09-01' =
 }
 
 // Grant VM Managed Identity access to Azure OpenAI (if existing resource provided)
-// Role: Cognitive Services OpenAI Contributor (a]001dd7-823b-4bf9-a81c-774440b5d111)
-// Required for the bot to call Azure OpenAI APIs using managed identity
-resource openAiReference 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = if (!empty(existingOpenAiResourceId)) {
-  name: last(split(existingOpenAiResourceId, '/'))
-  scope: resourceGroup(split(existingOpenAiResourceId, '/')[2], split(existingOpenAiResourceId, '/')[4])
-}
-
-resource openAiRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(existingOpenAiResourceId)) {
-  scope: openAiReference
-  name: guid(existingOpenAiResourceId, vm.id, 'Cognitive Services OpenAI Contributor')
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a001dd7-823b-4bf9-a81c-774440b5d111') // Cognitive Services OpenAI Contributor
-    principalId: vm.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
+// NOTE: Cross-scope role assignment for OpenAI must be done via Azure CLI after deployment:
+// az role assignment create \
+//   --assignee <vm-principal-id> \
+//   --role "Cognitive Services OpenAI Contributor" \
+//   --scope <openai-resource-id>
+// This is because Bicep doesn't support cross-resource-group role assignments in the same deployment.
 
 // Outputs
 output vmName string = vm.name

@@ -25,10 +25,6 @@ param devOpsOrg string
 @description('Azure DevOps project name')
 param devOpsProject string
 
-@description('Teams bot app ID (from Azure AD app registration)')
-@secure()
-param teamsAppId string
-
 @description('Tags to apply to all resources')
 param tags object = {
   Environment: environmentName
@@ -52,18 +48,6 @@ module monitoring './modules/monitoring.bicep' = {
     location: location
     environmentName: environmentName
     tags: tags
-  }
-}
-
-// Module: Key Vault (Secrets management)
-module keyVault './modules/key-vault.bicep' = {
-  scope: rg
-  name: 'keyvault-deployment'
-  params: {
-    location: location
-    environmentName: environmentName
-    tags: tags
-    teamsAppId: teamsAppId
   }
 }
 
@@ -97,7 +81,6 @@ module windowsVM './modules/windows-vm.bicep' = {
 // Outputs
 output resourceGroupName string = rg.name
 output location string = location
-output keyVaultName string = keyVault.outputs.keyVaultName
 output applicationInsightsName string = monitoring.outputs.applicationInsightsName
 output applicationInsightsConnectionString string = monitoring.outputs.applicationInsightsConnectionString
 output storageAccountName string = monitoring.outputs.storageAccountName

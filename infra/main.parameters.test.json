@@ -22,14 +22,6 @@
     },
     "devOpsProject": {
       "value": "KnowAll"
-    },
-    "teamsAppId": {
-      "reference": {
-        "keyVault": {
-          "id": "/subscriptions/{subscription-id}/resourceGroups/TMinus15Agents-Test/providers/Microsoft.KeyVault/vaults/pennie-kv-test"
-        },
-        "secretName": "teams-app-id"
-      }
     }
   }
 }
