@@ -7,7 +7,7 @@
 
 This guide provides step-by-step instructions for deploying Pennie the Prepper to your Azure environment. The deployment process is largely automated through scripts and Bicep templates, with a few manual steps for security approvals.
 
-**Current Status** (December 2025): Infrastructure (Phase 1) ✅ complete. Teams bot integration (Phase 2) ✅ deployed. Secrets managed via GitHub Secrets.
+**Current Status** (December 2025): All infrastructure deployed. Teams bot running. Secrets managed via GitHub Secrets.
 
 == Architecture Overview
 
@@ -27,7 +27,7 @@ This guide provides step-by-step instructions for deploying Pennie the Prepper t
 
 |Windows Server VM
 |✅ Deployed
-|Hosts Teams Media Bot (future phase)
+|Hosts Teams Media Bot with Graph Communications SDK
 
 |GitHub Secrets
 |✅ Configured
@@ -119,9 +119,6 @@ AZURE_LOCATION=uksouth
 # Azure DevOps
 AZURE_DEVOPS_ORG=your-org-name
 AZURE_DEVOPS_PAT=your-personal-access-token
-
-# Key Vault (bot loads credentials at runtime)
-AZURE_KEY_VAULT_NAME=pennie-kv-xxxxxx
 
 # AI Foundry (configured in Step 4)
 AZURE_AI_FOUNDRY_PROJECT=
@@ -637,20 +634,18 @@ Deploy the bot from your local machine using the automated script:
 
 **What This Does**:
 
-1. Loads configuration from `.env` (only needs `AZURE_KEY_VAULT_NAME`)
-2. Builds bot locally with .NET SDK
-3. Publishes for Windows (`win-x64`, self-contained)
-4. Injects Key Vault name into `appsettings.json`
-5. Creates deployment package (ZIP ~65MB)
-6. Uploads to Azure Blob Storage
-7. Generates SAS URL (1-hour expiry)
-8. Deploys to VM via `az vm run-command invoke`:
+1. Builds bot locally with .NET SDK
+2. Publishes for Windows (`win-x64`, self-contained)
+3. Creates deployment package (ZIP ~65MB)
+4. Uploads to Azure Blob Storage
+5. Generates SAS URL (1-hour expiry)
+6. Deploys to VM via `az vm run-command invoke`:
    - Stops PennieBot service
    - **Backs up appsettings.json** (preserves VM configuration)
    - Downloads and extracts new version
    - **Restores appsettings.json from backup**
    - Starts PennieBot service
-9. Verifies health endpoint
+7. Verifies health endpoint
 
 === Configuration Preservation During Deployment
 
@@ -663,8 +658,7 @@ The VM's `appsettings.json` contains environment-specific configuration that mus
 {
   "MicrosoftAppId": "<your-bot-app-id>",
   "MicrosoftAppTenantId": "<your-tenant-id>",
-  "MicrosoftAppType": "SingleTenant",
-  "AZURE_KEY_VAULT_NAME": "<your-key-vault-name>"
+  "MicrosoftAppType": "SingleTenant"
 }
 ----
 
@@ -672,7 +666,7 @@ The VM's `appsettings.json` contains environment-specific configuration that mus
 
 * The deployed package contains default/template values, not production configuration
 * Without backup/restore, deployment would break the bot's authentication
-* Secrets (MicrosoftAppPassword) remain in Key Vault - only non-secrets in appsettings.json
+* Credentials are managed via GitHub Secrets and set as environment variables
 
 **Both deployment methods preserve the configuration**:
 
@@ -955,11 +949,11 @@ Expected secrets:
 
 === Current Completion Status
 
-* **Phase 1 Infrastructure**: 100% complete
-* **Backend API**: 100% deployed and tested
-* **Agent Configuration**: 100% deployed
-* **Bot Integration**: 100% deployed with Key Vault integration
-* **Overall MVP**: 100% complete
+* **Infrastructure**: ✅ Deployed (Windows VM, Azure Functions, Application Insights)
+* **Backend API**: ✅ Deployed and tested (9 HTTP endpoints)
+* **Agent Configuration**: ✅ Deployed (Pennie in East US 2)
+* **Bot Integration**: ✅ Deployed (Teams Media Bot with Graph SDK)
+* **Secrets Management**: ✅ Configured (GitHub Secrets)
 
 === Recent Deployments
 
