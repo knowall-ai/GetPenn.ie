@@ -115,16 +115,15 @@ echo "App ID:  $APP_ID"
 echo "Version: $APP_VERSION"
 echo ""
 
-# Get access token for Microsoft Graph using bot credentials
-KEY_VAULT_NAME="${AZURE_KEY_VAULT_NAME:-"pennie-kv-mmdxqm3w7kjwm"}"
-echo "Getting bot credentials from Key Vault ($KEY_VAULT_NAME)..."
-BOT_APP_ID=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name "MicrosoftAppId" --query value -o tsv 2>/dev/null)
-BOT_APP_SECRET=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name "MicrosoftAppPassword" --query value -o tsv 2>/dev/null)
+# Get bot credentials from environment variables (set via GitHub Secrets)
+BOT_APP_ID="${TEAMS_APP_ID:-}"
+BOT_APP_SECRET="${TEAMS_APP_PASSWORD:-}"
 TENANT_ID=$(az account show --query tenantId -o tsv 2>/dev/null)
 
 if [ -z "$BOT_APP_ID" ] || [ -z "$BOT_APP_SECRET" ]; then
-    echo -e "${RED}ERROR: Failed to get bot credentials from Key Vault${NC}"
-    echo "Make sure you're logged in: az login"
+    echo -e "${RED}ERROR: Missing bot credentials${NC}"
+    echo "Set TEAMS_APP_ID and TEAMS_APP_PASSWORD environment variables"
+    echo "These are stored in GitHub Secrets"
     exit 1
 fi
 
