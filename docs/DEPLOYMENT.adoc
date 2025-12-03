@@ -1116,9 +1116,54 @@ The project uses GitHub Secrets for secrets management:
 === Access Control
 
 * RBAC enforced on all Azure resources
-* Key Vault access via managed identity
 * Admin consent required for Graph API permissions
 * Azure DevOps PAT with minimal scopes
+
+=== GitHub Actions RBAC Requirements
+
+The GitHub Actions service principal (`github-actions-pennie`) requires specific Azure RBAC roles for CI/CD deployments.
+
+**Per Resource Group Roles:**
+
+Each environment's resource group (e.g., `TMinus15Agents-Test`, `TMinus15Agents`) requires:
+
+[source,bash]
+----
+# 1. Contributor role - to deploy infrastructure and manage resources
+az role assignment create \
+  --assignee "<service-principal-app-id>" \
+  --role "Contributor" \
+  --scope "/subscriptions/<subscription-id>/resourceGroups/<resource-group-name>"
+
+# 2. Storage Blob Data Contributor - to upload deployment packages
+az role assignment create \
+  --assignee "<service-principal-app-id>" \
+  --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/<subscription-id>/resourceGroups/<resource-group-name>/providers/Microsoft.Storage/storageAccounts/<storage-account-name>"
+----
+
+**Example for Test Environment:**
+
+[source,bash]
+----
+# Get subscription ID
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+SP_APP_ID="3c841dbd-21b0-4493-8ac3-112924744601"  # github-actions-pennie
+
+# Contributor on resource group
+az role assignment create \
+  --assignee "$SP_APP_ID" \
+  --role "Contributor" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/TMinus15Agents-Test"
+
+# Storage Blob Data Contributor on storage account
+az role assignment create \
+  --assignee "$SP_APP_ID" \
+  --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/TMinus15Agents-Test/providers/Microsoft.Storage/storageAccounts/pennietest294b6c75"
+----
+
+NOTE: Role assignments can take up to 5 minutes to propagate. If the workflow fails with permission errors immediately after granting roles, wait a few minutes and retry.
 
 == Appendix A: Deployment Scripts
 
