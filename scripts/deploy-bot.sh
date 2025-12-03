@@ -4,12 +4,17 @@ set -e
 # Deploy Pennie Teams Bot to Azure VM
 #
 # This script builds, packages, and deploys the Teams bot to the production VM.
-# It reads credentials from .env and injects them into appsettings.json.
+# Configuration is injected via appsettings.Production.json at deployment time.
 #
 # Prerequisites:
 # - Azure CLI logged in: az login
 # - .NET SDK installed
-# - Environment variables set in .env file
+# - Environment variables: AZURE_RESOURCE_GROUP (from .env or GitHub Secrets)
+#
+# Optional environment variables (override defaults):
+# - AZURE_FUNCTIONS_BACKEND_URL: Backend API endpoint
+# - TEAMS_APP_ID: Teams bot app ID
+# - TEAMS_APP_PASSWORD: Teams bot app password
 #
 # Usage:
 #     ./scripts/deploy-bot.sh
@@ -29,7 +34,7 @@ TEMP_DIR="${TEMP:-/tmp}"
 PUBLISH_DIR="$TEMP_DIR/pennie-bot-publish"
 ZIP_FILE="$TEMP_DIR/pennie-bot-deploy.zip"
 
-# Load environment variables from .env if available
+# Load environment variables from .env if available (for local development)
 if [ -f "$PROJECT_ROOT/.env" ]; then
     echo "📄 Loading environment from .env"
     while IFS='=' read -r key value; do
@@ -41,16 +46,14 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
         value=$(echo "$value" | xargs)
         # Skip if key is empty after trimming
         [[ -z $key ]] && continue
-        # Export the variable (without eval to prevent command injection)
-        export "$key=$value"
+        # Only set if not already set (allow GitHub Secrets to override)
+        if [ -z "${!key}" ]; then
+            export "$key=$value"
+        fi
     done < "$PROJECT_ROOT/.env"
-else
-    echo "❌ .env file not found at $PROJECT_ROOT/.env"
-    exit 1
 fi
 
 # Validate required environment variables
-# Note: Credentials are managed via GitHub Secrets
 required_vars=(
     "AZURE_RESOURCE_GROUP"
 )
@@ -77,15 +80,35 @@ CONTAINER_NAME="deployments"
 VERSION=$(date +%Y%m%d%H%M%S)
 BLOB_NAME="pennie-bot-$VERSION.zip"
 
+# Default values (can be overridden by environment variables)
+BACKEND_URL="${AZURE_FUNCTIONS_BACKEND_URL:-https://pennie-backend-prod.azurewebsites.net}"
+
 echo "Configuration:"
 echo "  Resource Group: $AZURE_RESOURCE_GROUP"
 echo "  VM Name: $VM_NAME"
 echo "  Version: $VERSION"
-echo ""
-echo "Note: Credentials managed via GitHub Secrets"
+echo "  Backend URL: $BACKEND_URL"
 echo ""
 
-# Step 1: Build the bot
+# Step 1: Get VM FQDN for configuration
+echo "🔍 Getting VM FQDN..."
+VM_FQDN=$(az vm show -g "$AZURE_RESOURCE_GROUP" -n "$VM_NAME" -d --query "fqdns" -o tsv 2>/dev/null | head -1)
+
+if [ -z "$VM_FQDN" ]; then
+    # Fallback: try to get from public IP DNS name
+    VM_FQDN=$(az network public-ip list -g "$AZURE_RESOURCE_GROUP" --query "[?contains(name, 'pennie')].dnsSettings.fqdn" -o tsv 2>/dev/null | head -1)
+fi
+
+if [ -z "$VM_FQDN" ]; then
+    echo "❌ Could not determine VM FQDN"
+    echo "   Please set BOT_FQDN environment variable"
+    exit 1
+fi
+
+echo "✅ VM FQDN: $VM_FQDN"
+
+# Step 2: Build the bot
+echo ""
 echo "🔨 Building bot..."
 dotnet build "$BOT_DIR/PennieBot.csproj" --configuration Release --verbosity minimal
 if [ $? -ne 0 ]; then
@@ -94,7 +117,7 @@ if [ $? -ne 0 ]; then
 fi
 echo "✅ Build successful"
 
-# Step 2: Publish for Windows
+# Step 3: Publish for Windows
 echo ""
 echo "📦 Publishing for Windows..."
 rm -rf "$PUBLISH_DIR"
@@ -111,7 +134,7 @@ if [ $? -ne 0 ]; then
 fi
 echo "✅ Published to $PUBLISH_DIR"
 
-# Step 3: Create zip archive (cross-platform)
+# Step 4: Create zip archive (cross-platform)
 echo ""
 echo "📦 Creating deployment package..."
 rm -f "$ZIP_FILE"
@@ -181,8 +204,23 @@ echo "✅ SAS URL generated (expires in 1 hour)"
 echo ""
 echo "🚀 Deploying to VM..."
 
-# Escape special characters in the URL for PowerShell
-ESCAPED_URL=$(echo "$SAS_URL" | sed 's/&/`&/g')
+# Create appsettings.Production.json content
+# This injects environment-specific values at deployment time
+APPSETTINGS_PROD=$(cat <<EOF
+{
+  "BotBaseUrl": "https://$VM_FQDN",
+  "MediaPlatform": {
+    "ServiceFqdn": "$VM_FQDN",
+    "CallNotificationUrl": "https://$VM_FQDN/api/calling",
+    "MediaDnsName": "$VM_FQDN"
+  },
+  "AZURE_FUNCTIONS_BACKEND_URL": "$BACKEND_URL"
+}
+EOF
+)
+
+# Escape for PowerShell (convert to single line, escape quotes)
+APPSETTINGS_ESCAPED=$(echo "$APPSETTINGS_PROD" | tr '\n' ' ' | sed 's/"/\\"/g')
 
 DEPLOY_RESULT=$(az vm run-command invoke \
     --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -205,16 +243,16 @@ Write-Output '=== Extracting new version ==='
 Remove-Item -Path 'C:\Pennie\bot\*' -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive -Path 'C:\Temp\pennie-bot-deploy.zip' -DestinationPath 'C:\Pennie\bot' -Force
 
-Write-Output '=== Restoring appsettings.json from backup ==='
-if (Test-Path 'C:\Pennie\bot-backup\appsettings.json') {
-    Copy-Item -Path 'C:\Pennie\bot-backup\appsettings.json' -Destination 'C:\Pennie\bot\appsettings.json' -Force
-    Write-Output 'appsettings.json restored from backup'
-} else {
-    Write-Output 'WARNING: No appsettings.json backup found'
-}
+Write-Output '=== Creating appsettings.Production.json ==='
+\$prodConfig = @'
+$APPSETTINGS_PROD
+'@
+Set-Content -Path 'C:\Pennie\bot\appsettings.Production.json' -Value \$prodConfig -Encoding UTF8
+Write-Output 'appsettings.Production.json created with environment-specific values'
 
 Write-Output '=== Verifying deployment ==='
 Get-Item 'C:\Pennie\bot\PennieBot.exe' | Select-Object Name, Length, LastWriteTime
+Get-Item 'C:\Pennie\bot\appsettings.Production.json' | Select-Object Name, Length, LastWriteTime
 
 Write-Output '=== Starting PennieBot service ==='
 Start-Service -Name PennieBot
@@ -260,5 +298,5 @@ rm -rf "$PUBLISH_DIR"
 echo ""
 echo "✨ Deployment complete!"
 echo ""
-echo "Bot deployed to: https://$VM_IP/"
+echo "Bot deployed to: https://$VM_FQDN/"
 echo "Test in Teams by sending: \"What projects do we have in DevOps?\""

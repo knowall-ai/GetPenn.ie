@@ -1174,18 +1174,41 @@ Located at: `scripts/setup-bot-app-registration.sh`
 
 **What It Does**:
 
-1. Creates app registration
-2. Adds Graph API permissions
-3. Generates client secret
-4. Outputs `gh secret set` commands for GitHub Secrets
+1. Creates app registration (environment-specific naming)
+2. Adds Graph API permissions (Calls.AccessMedia.All, Calls.JoinGroupCall.All, OnlineMeetings.ReadWrite.All)
+3. Generates client secret (2-year expiry)
+4. Optionally sets GitHub Secrets automatically
 5. Provides instructions for manual admin consent
 
 **Usage**:
 
 [source,bash]
 ----
+# Production app registration
 ./scripts/setup-bot-app-registration.sh
+
+# Test app registration (purple accent, "(Test)" suffix)
+./scripts/setup-bot-app-registration.sh --env test
 ----
+
+**Environment Differences**:
+
+[cols="1,2,2"]
+|===
+|Setting |Production |Test
+
+|App Name
+|Pennie the Prepper Bot
+|Pennie the Prepper (Test)
+
+|Accent Color
+|#9DFF0A (Green)
+|#9C27B0 (Purple)
+
+|Secret Name
+|PennieBot-Prod-Secret
+|PennieBot-Test-Secret
+|===
 
 === deploy-agent.sh
 
