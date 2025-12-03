@@ -3,13 +3,13 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "environmentName": {
-      "value": "test"
+      "value": "prod"
     },
     "aiHubName": {
-      "value": "knowall-ai-foundry-test"
+      "value": "knowall-ai-foundry"
     },
     "aiProjectName": {
-      "value": "T-Minus-15 Agents Test"
+      "value": "T-Minus-15 Agents"
     },
     "devOpsOrg": {
       "value": "knowall-ai"

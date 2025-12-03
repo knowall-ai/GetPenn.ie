@@ -1123,6 +1123,19 @@ The project uses GitHub Secrets for secrets management:
 
 The GitHub Actions service principal (`github-actions-pennie`) requires specific Azure RBAC roles for CI/CD deployments.
 
+**Prerequisites:**
+
+Resource groups must be created manually before deployment (one-time setup per environment):
+
+[source,bash]
+----
+# Create resource group for test environment
+az group create --name TMinus15Agents-Test --location uksouth
+
+# Create resource group for production
+az group create --name TMinus15Agents --location uksouth
+----
+
 **Per Resource Group Roles:**
 
 Each environment's resource group (e.g., `TMinus15Agents-Test`, `TMinus15Agents`) requires:

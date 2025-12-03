@@ -1,17 +1,16 @@
 // Main Bicep orchestration for Pennie the Prepper
-// Deploys all infrastructure in single Azure region
-
-targetScope = 'subscription'
+// Deploys all infrastructure to an existing resource group
+//
+// Prerequisites:
+//   - Resource group must be created manually before deployment
+//   - See docs/DEPLOYMENT.adoc for setup instructions
 
 // Parameters
 @description('Name of the environment (dev, test, prod)')
 param environmentName string = 'prod'
 
 @description('Primary Azure region for all resources')
-param location string = 'uksouth'
-
-@description('Name of the resource group')
-param resourceGroupName string = 'TMinus15Agents'
+param location string = resourceGroup().location
 
 @description('Name of the Azure AI Foundry Hub (existing or new)')
 param aiHubName string
@@ -33,16 +32,8 @@ param tags object = {
   CostCenter: 'AI-Agents'
 }
 
-// Resource Group
-resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
-  name: resourceGroupName
-  location: location
-  tags: tags
-}
-
 // Module: Monitoring (Application Insights, Log Analytics, Storage)
 module monitoring './modules/monitoring.bicep' = {
-  scope: rg
   name: 'monitoring-deployment'
   params: {
     location: location
@@ -53,7 +44,6 @@ module monitoring './modules/monitoring.bicep' = {
 
 // Module: AI Services (AI Foundry, Speech Services, OpenAI)
 module aiServices './modules/ai-services.bicep' = {
-  scope: rg
   name: 'ai-services-deployment'
   params: {
     location: location
@@ -66,7 +56,6 @@ module aiServices './modules/ai-services.bicep' = {
 
 // Module: Windows VM (Teams Media Bot + Node.js MCP Server)
 module windowsVM './modules/windows-vm.bicep' = {
-  scope: rg
   name: 'windows-vm-deployment'
   params: {
     location: location
@@ -79,7 +68,7 @@ module windowsVM './modules/windows-vm.bicep' = {
 }
 
 // Outputs
-output resourceGroupName string = rg.name
+output resourceGroupName string = resourceGroup().name
 output location string = location
 output applicationInsightsName string = monitoring.outputs.applicationInsightsName
 output applicationInsightsConnectionString string = monitoring.outputs.applicationInsightsConnectionString

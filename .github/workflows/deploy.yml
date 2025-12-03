@@ -88,12 +88,11 @@ jobs:
         uses: azure/arm-deploy@v2
         with:
           subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          scope: subscription
-          region: uksouth
+          resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
           template: ./infra/main.bicep
           parameters: >
-            @./infra/main.parameters.${{ github.event.inputs.environment || 'prod' }}.json
-            environmentName=${{ github.event.inputs.environment || 'prod' }}
+            @./infra/main.parameters.${{ needs.set-environment.outputs.environment }}.json
+            environmentName=${{ needs.set-environment.outputs.environment }}
           failOnStdErr: false
 
       - name: Get deployment outputs
