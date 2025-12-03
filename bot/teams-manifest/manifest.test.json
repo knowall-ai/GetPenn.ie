@@ -1,0 +1,103 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "{{BOT_APP_ID}}",
+  "developer": {
+    "name": "KnowAll Ltd",
+    "websiteUrl": "https://getpenn.ie",
+    "privacyUrl": "https://getpenn.ie/privacy",
+    "termsOfUseUrl": "https://getpenn.ie/terms"
+  },
+  "name": {
+    "short": "Pennie Test",
+    "full": "Pennie the Prepper (Test Environment)"
+  },
+  "description": {
+    "short": "TEST - AI assistant for Azure DevOps backlog management",
+    "full": "TEST ENVIRONMENT - Pennie the Prepper is an AI-powered assistant that helps you manage Azure DevOps projects."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#9C27B0",
+  "bots": [
+    {
+      "botId": "{{BOT_APP_ID}}",
+      "scopes": [
+        "personal",
+        "team",
+        "groupChat"
+      ],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "supportsCalling": true,
+      "supportsVideo": false,
+      "commandLists": [
+        {
+          "scopes": [
+            "personal",
+            "team",
+            "groupChat"
+          ],
+          "commands": [
+            {
+              "title": "help",
+              "description": "Show available commands"
+            },
+            {
+              "title": "projects",
+              "description": "List Azure DevOps projects"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "configurableTabs": [
+    {
+      "configurationUrl": "{{BOT_BASE_URL}}/config.html",
+      "canUpdateConfiguration": true,
+      "scopes": ["team", "groupChat"],
+      "context": [
+        "meetingChatTab",
+        "meetingDetailsTab",
+        "meetingSidePanel"
+      ]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": [
+    "{{BOT_DOMAIN}}"
+  ],
+  "webApplicationInfo": {
+    "id": "{{BOT_APP_ID}}",
+    "resource": "api://botid-{{BOT_APP_ID}}"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "OnlineMeeting.ReadBasic.Chat",
+          "type": "Delegated"
+        },
+        {
+          "name": "OnlineMeetingParticipant.Read.Chat",
+          "type": "Delegated"
+        },
+        {
+          "name": "OnlineMeetingParticipant.ToggleIncomingAudio.Chat",
+          "type": "Delegated"
+        }
+      ]
+    }
+  },
+  "meetingExtensionDefinition": {
+    "scenes": [],
+    "supportsStreaming": false
+  }
+}

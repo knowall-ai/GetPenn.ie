@@ -18,17 +18,17 @@
       "value": "T-Minus-15 Agents Test"
     },
     "devOpsOrg": {
-      "value": "YourDevOpsOrg"
+      "value": "knowall-ai"
     },
     "devOpsProject": {
-      "value": "YourDevOpsProject-Test"
+      "value": "KnowAll"
     },
     "teamsAppId": {
       "reference": {
         "keyVault": {
-          "id": "/subscriptions/{subscription-id}/resourceGroups/{rg-name}/providers/Microsoft.KeyVault/vaults/{vault-name}"
+          "id": "/subscriptions/{subscription-id}/resourceGroups/TMinus15Agents-Test/providers/Microsoft.KeyVault/vaults/pennie-kv-test"
         },
-        "secretName": "teams-app-id-test"
+        "secretName": "teams-app-id"
       }
     }
   }
