@@ -1,0 +1,279 @@
+= Development Guide: Pennie the Prepper
+
+== Prerequisites
+
+=== Required Software
+
+* **.NET 8 SDK**: https://dotnet.microsoft.com/download/dotnet/8.0
+* **Azure CLI**: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli
+* **Git**: https://git-scm.com/downloads
+* **IDE**: Visual Studio 2022, VS Code, or JetBrains Rider
+
+=== Azure Resources (for full testing)
+
+* Azure subscription with contributor access
+* Azure DevOps organization access
+* Bot Framework registration (for Teams integration)
+
+== Quick Start
+
+=== 1. Clone the Repository
+
+[source,bash]
+----
+git clone https://github.com/knowall-ai/GetPenn.ie.git
+cd GetPenn.ie
+----
+
+=== 2. Build the Solution
+
+[source,bash]
+----
+# Restore dependencies and build
+dotnet build Pennie.sln
+
+# Run unit tests
+dotnet test Pennie.sln
+----
+
+=== 3. Configure Local Development
+
+[source,bash]
+----
+# Copy the template to create your local config
+cp bot/appsettings.local.json.template bot/appsettings.local.json
+
+# Edit with your Azure credentials (file is gitignored)
+# See template for required values
+----
+
+=== 4. Run the Bot Locally
+
+[source,bash]
+----
+cd bot
+dotnet run
+
+# Bot will start on http://localhost:3978
+----
+
+== Project Structure
+
+[source]
+----
+GetPenn.ie/
+├── bot/                          # Teams Media Bot (C# .NET 8)
+│   ├── Bots/                     # Bot activity handlers
+│   │   └── MediaBot.cs           # Main bot logic
+│   ├── Helpers/                  # Utility classes
+│   │   └── MeetingHelpers.cs     # Meeting ID parsing, @mention stripping
+│   ├── Services/                 # External service integrations
+│   ├── Properties/
+│   │   └── launchSettings.json   # IDE launch profiles
+│   ├── appsettings.json          # Base configuration
+│   ├── appsettings.Development.json  # Development overrides
+│   ├── appsettings.Test.json     # Test environment config
+│   └── appsettings.local.json.template  # Template for local secrets
+├── tests/                        # Unit tests (xUnit)
+│   ├── Helpers/
+│   │   └── MeetingHelpersTests.cs
+│   └── PennieBot.Tests.csproj
+├── infra/                        # Infrastructure as Code (Bicep)
+│   ├── modules/
+│   │   └── windows-vm.bicep      # VM template (supports Spot VMs)
+│   ├── main.parameters.json      # Production parameters
+│   └── main.parameters.test.json # Test environment parameters
+├── docs/                         # Documentation
+├── scripts/                      # Deployment and utility scripts
+├── Pennie.sln                    # Solution file
+└── CLAUDE.md                     # AI assistant context
+----
+
+== Configuration Hierarchy
+
+.NET loads configuration in this order (later overrides earlier):
+
+1. `appsettings.json` - Base settings (committed)
+2. `appsettings.{Environment}.json` - Environment-specific (committed)
+3. `appsettings.local.json` - Developer secrets (gitignored)
+4. Environment variables
+
+=== Environment Detection
+
+Set `ASPNETCORE_ENVIRONMENT` to control which config is loaded:
+
+* `Development` - loads `appsettings.Development.json`
+* `Test` - loads `appsettings.Test.json`
+* `Production` - loads only `appsettings.json`
+
+== Running Tests
+
+=== Unit Tests
+
+[source,bash]
+----
+# Run all tests
+dotnet test Pennie.sln
+
+# Run with verbose output
+dotnet test Pennie.sln --verbosity normal
+
+# Run specific test class
+dotnet test --filter "FullyQualifiedName~MeetingHelpersTests"
+
+# Run with coverage
+dotnet test Pennie.sln --collect:"XPlat Code Coverage"
+----
+
+=== Test Categories
+
+[cols="1,2,1"]
+|===
+| Location | Description | Count
+
+| `tests/Helpers/`
+| Unit tests for helper methods
+| 51 tests
+|===
+
+== Development Workflow
+
+=== Making Changes
+
+1. **Create a feature branch**:
++
+[source,bash]
+----
+git checkout main
+git pull origin main
+git checkout -b feature/your-feature-name
+----
+
+2. **Make your changes and add tests**
+
+3. **Run tests locally**:
++
+[source,bash]
+----
+dotnet test Pennie.sln
+----
+
+4. **Commit with descriptive message**:
++
+[source,bash]
+----
+git add .
+git commit -m "feat: Add your feature description"
+----
+
+5. **Push and create PR**:
++
+[source,bash]
+----
+git push -u origin feature/your-feature-name
+gh pr create --title "Your PR title" --body "Description"
+----
+
+=== CI/CD Pipeline
+
+Pull requests automatically run:
+
+* Lint and format checks
+* Unit tests
+* Build verification
+
+Merging to `main` deploys to the test environment.
+
+Creating a tag `v*.*.*` deploys to production.
+
+== Local Testing with Teams
+
+=== Option 1: Dev Tunnel (Recommended)
+
+Use Azure Dev Tunnels to expose your local bot to Teams:
+
+[source,bash]
+----
+# Install dev tunnel CLI (one time)
+curl -sL https://aka.ms/DevTunnelCliInstall | bash
+
+# Create a tunnel
+devtunnel create --allow-anonymous
+
+# Host the tunnel on port 3978
+devtunnel host -p 3978 --allow-anonymous
+----
+
+Update `appsettings.local.json` with the tunnel URL:
+
+[source,json]
+----
+{
+  "BotBaseUrl": "https://YOUR-TUNNEL-ID.euw.devtunnels.ms"
+}
+----
+
+=== Option 2: Bot Framework Emulator
+
+For testing without Teams:
+
+1. Download Bot Framework Emulator from https://github.com/microsoft/BotFramework-Emulator/releases
+2. Run the bot locally (`dotnet run`)
+3. Connect emulator to `http://localhost:3978/api/messages`
+
+== Test Environment
+
+A dedicated test environment with a Spot VM is available for manual testing.
+See link:TESTING.adoc[TESTING.adoc] for details on:
+
+* Starting/stopping the test VM
+* Cost savings with Spot VMs
+* Distinguishing test from production in Teams
+
+== Troubleshooting
+
+=== Build Errors
+
+**"The type or namespace 'Xunit' could not be found"**
+
+Ensure you're building the solution, not just the bot project:
+
+[source,bash]
+----
+dotnet build Pennie.sln  # Correct
+dotnet build bot/PennieBot.csproj  # Won't include test dependencies
+----
+
+**"appsettings.local.json not found"**
+
+This file is gitignored. Copy from template:
+
+[source,bash]
+----
+cp bot/appsettings.local.json.template bot/appsettings.local.json
+----
+
+=== Runtime Errors
+
+**"MicrosoftAppId is empty"**
+
+You need a Bot Framework registration for Teams integration. For local testing without Teams, use the Bot Framework Emulator.
+
+**"Azure Speech Services key not configured"**
+
+Audio transcription requires Speech Services. For chat-only testing, this is optional.
+
+== Contributing
+
+1. Follow the existing code style
+2. Add unit tests for new functionality
+3. Update documentation if adding features
+4. Keep PRs focused and small
+
+== Related Documentation
+
+* link:REQUIREMENTS.adoc[REQUIREMENTS.adoc] - Project requirements (T-Minus-15 methodology)
+* link:SOLUTION_DESIGN.adoc[SOLUTION_DESIGN.adoc] - Architecture and design decisions
+* link:TESTING.adoc[TESTING.adoc] - Comprehensive test strategy
+* link:DEPLOYMENT.adoc[DEPLOYMENT.adoc] - Production deployment guide
+* link:TROUBLESHOOTING.adoc[TROUBLESHOOTING.adoc] - Common issues and solutions
