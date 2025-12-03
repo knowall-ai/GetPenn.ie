@@ -868,6 +868,135 @@ Get-Content C:\Pennie\logs\bot-stdout.log -Tail 100
 
 **Tracked in GitHub Issue**: #4 (Complete Teams Bot Integration) - **✅ Complete**
 
+== First-Time Environment Setup
+
+When deploying to a **new environment** (test, prod), certain steps must be completed manually before the CI/CD workflow can deploy successfully. These steps cannot be automated due to security requirements.
+
+=== Why Manual Setup is Required
+
+[cols="1,2,2"]
+|===
+|Step |Why Manual? |Security Concern
+
+|Azure AD App Registration
+|Requires `Application.ReadWrite.All` permission
+|Giving CI/CD this permission is acceptable
+
+|**Admin Consent**
+|Requires Global Admin or Privileged Role Admin
+|**Never give CI/CD these permissions** - too powerful
+
+|Teams Manifest Upload
+|Requires Teams Administrator or `AppCatalog.ReadWrite.All` with admin consent
+|High-privilege operation that should be audited
+|===
+
+=== Per-Environment Setup Checklist
+
+For each new environment (e.g., `test`), complete these one-time steps:
+
+==== 1. Create Azure AD App Registration
+
+Run the automated script:
+
+[source,bash]
+----
+# For test environment
+./scripts/setup-bot-app-registration.sh --env test
+
+# For production
+./scripts/setup-bot-app-registration.sh --env prod
+----
+
+This creates:
+
+* App registration with appropriate name (e.g., "Pennie the Prepper (Test)")
+* Graph API permissions (not yet consented)
+* Client secret (2-year expiry)
+* Optionally stores credentials in GitHub Secrets
+
+==== 2. Grant Admin Consent (REQUIRES ADMIN)
+
+This step **cannot be automated** without giving CI/CD Global Admin permissions.
+
+**Azure Portal Method** (Recommended):
+
+1. Go to: https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/<APP_ID>
+2. Click "Grant admin consent for [Your Organization]"
+3. Confirm the consent prompt
+
+**Azure CLI Method** (Requires admin permissions):
+
+[source,bash]
+----
+az ad app permission admin-consent --id <APP_ID>
+----
+
+==== 3. Create Teams App Manifest
+
+For test environment, create a separate manifest:
+
+[source,bash]
+----
+# Copy production manifest
+cp bot/teams-manifest/manifest.json bot/teams-manifest/manifest.test.json
+
+# Edit manifest.test.json:
+# - id: Generate new UUID (uuidgen)
+# - name.short: "Pennie the Prepper (Test)"
+# - name.full: "Pennie the Prepper - AI Business Analyst (Test)"
+# - accentColor: "#9C27B0" (purple for test)
+# - bots[0].botId: <TEST_APP_ID from step 1>
+
+# Create app package
+cd bot/teams-manifest
+zip pennie-app-test.zip manifest.test.json color.png outline.png
+----
+
+==== 4. Upload Teams App to Organization
+
+**Option 1 - Teams Admin Center** (first-time):
+
+1. Go to: https://admin.teams.microsoft.com
+2. Navigate to: Teams apps → Manage apps
+3. Click: Upload new app
+4. Select: `pennie-app-test.zip`
+5. Approve for your organization
+
+**Option 2 - Script** (if you have permissions):
+
+[source,bash]
+----
+./scripts/deploy-teams-app.sh bot/teams-manifest/pennie-app-test.zip
+----
+
+==== 5. Configure GitHub Environment Secrets
+
+Set these secrets in GitHub for the environment:
+
+[source,bash]
+----
+gh secret set TEAMS_APP_ID --env test --body "<app-id-from-step-1>"
+gh secret set TEAMS_APP_PASSWORD --env test --body "<client-secret-from-step-1>"
+gh secret set AZURE_RESOURCE_GROUP --env test --body "TMinus15Agents-Test"
+gh secret set AZURE_STORAGE_ACCOUNT --env test --body "<storage-account-name>"
+----
+
+==== 6. Enable Deployments
+
+Set the environment variable to enable CI/CD deployments:
+
+1. Go to: GitHub Repository → Settings → Environments → test
+2. Add variable: `AZURE_DEPLOYMENT_ENABLED` = `true`
+
+=== After First-Time Setup
+
+Once the above steps are complete, the CI/CD workflow (`deploy.yml`) handles all subsequent deployments automatically:
+
+* Infrastructure updates via Bicep
+* Bot code deployments to VM
+* Configuration preservation (appsettings.json backup/restore)
+
 == Step 6: Verification
 
 === Infrastructure Checklist
