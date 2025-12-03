@@ -195,7 +195,6 @@ jobs:
         run: |
           $vmName = "pennie-vm-${{ github.event.inputs.environment || 'prod' }}"
           $rgName = "${{ secrets.AZURE_RESOURCE_GROUP }}"
-          $keyVaultName = "${{ secrets.AZURE_KEY_VAULT_NAME }}"
 
           # Download and extract package on VM, preserving appsettings.json
           $uploadScript = @'
@@ -251,8 +250,7 @@ jobs:
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts $deployScript `
-            --parameters "KeyVaultName=$keyVaultName"
+            --scripts $deployScript
 
           Write-Host "✅ Bot deployed successfully to $vmName"
 
