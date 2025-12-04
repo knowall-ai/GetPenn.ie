@@ -175,11 +175,13 @@ jobs:
               2>/dev/null || echo "::warning::Could not update bot endpoint"
           else
             echo "Creating bot registration '$BOT_NAME'..."
-            # Azure Bot registration with MultiTenant app type
+            # Azure Bot registration with SingleTenant app type
+            # Note: MultiTenant is deprecated, use SingleTenant with tenant ID
             az bot create \
               --resource-group "$RG" \
               --name "$BOT_NAME" \
-              --app-type MultiTenant \
+              --app-type SingleTenant \
+              --tenant-id "${{ secrets.AZURE_TENANT_ID }}" \
               --appid "$APP_ID" \
               --endpoint "$ENDPOINT" \
               --display-name "$BOT_DISPLAY" \
