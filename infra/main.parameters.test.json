@@ -8,6 +8,12 @@
     "deployAiServices": {
       "value": false
     },
+    "deployVM": {
+      "value": true
+    },
+    "useSpotVM": {
+      "value": true
+    },
     "aiHubName": {
       "value": "knowall-ai-foundry-test"
     },

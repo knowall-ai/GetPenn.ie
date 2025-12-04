@@ -27,6 +27,12 @@ param devOpsProject string
 @description('Deploy AI services (OpenAI, Speech, AI Foundry). Set to false for test environments that share prod AI services.')
 param deployAiServices bool = true
 
+@description('Deploy Windows VM for Teams Bot. Set to true to create the VM.')
+param deployVM bool = true
+
+@description('Use Azure Spot VM for cost savings (60-80% cheaper, can be evicted by Azure)')
+param useSpotVM bool = false
+
 @description('Tags to apply to all resources')
 param tags object = {
   Environment: environmentName
@@ -59,7 +65,8 @@ module aiServices './modules/ai-services.bicep' = if (deployAiServices) {
 }
 
 // Module: Windows VM (Teams Media Bot + Node.js MCP Server)
-module windowsVM './modules/windows-vm.bicep' = {
+// Optional: Can be disabled for environments that don't need a VM
+module windowsVM './modules/windows-vm.bicep' = if (deployVM) {
   name: 'windows-vm-deployment'
   params: {
     location: location
@@ -67,6 +74,7 @@ module windowsVM './modules/windows-vm.bicep' = {
     applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
     devOpsOrg: devOpsOrg
     devOpsProject: devOpsProject
+    useSpotVM: useSpotVM
     tags: tags
   }
 }
@@ -81,6 +89,6 @@ output aiHubName string = deployAiServices ? aiServices.outputs.aiHubName : 'not
 output aiProjectName string = deployAiServices ? aiServices.outputs.aiProjectName : 'not-deployed'
 output speechServiceEndpoint string = deployAiServices ? aiServices.outputs.speechServiceEndpoint : 'not-deployed'
 output openAiEndpoint string = deployAiServices ? aiServices.outputs.openAiEndpoint : 'not-deployed'
-output vmName string = windowsVM.outputs.vmName
-output vmPublicIP string = windowsVM.outputs.vmPublicIP
-output vmPrivateIP string = windowsVM.outputs.vmPrivateIP
+output vmName string = deployVM ? windowsVM.outputs.vmName : 'not-deployed'
+output vmPublicIP string = deployVM ? windowsVM.outputs.vmPublicIP : 'not-deployed'
+output vmPrivateIP string = deployVM ? windowsVM.outputs.vmPrivateIP : 'not-deployed'
