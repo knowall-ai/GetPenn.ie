@@ -39,26 +39,32 @@ jobs:
       environment: ${{ steps.set-env.outputs.environment }}
       is_production: ${{ steps.set-env.outputs.is_production }}
       deployment_enabled: ${{ steps.set-env.outputs.deployment_enabled }}
+      resource_group: ${{ steps.set-env.outputs.resource_group }}
     steps:
       - name: Determine environment
         id: set-env
         run: |
           # Manual dispatch uses input
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
-            if [[ "${{ github.event.inputs.environment }}" == "prod" ]]; then
+            ENV="${{ github.event.inputs.environment }}"
+            echo "environment=$ENV" >> $GITHUB_OUTPUT
+            if [[ "$ENV" == "prod" ]]; then
               echo "is_production=true" >> $GITHUB_OUTPUT
+              echo "resource_group=TMinus15Agents" >> $GITHUB_OUTPUT
             else
               echo "is_production=false" >> $GITHUB_OUTPUT
+              echo "resource_group=TMinus15Agents-${ENV^}" >> $GITHUB_OUTPUT
             fi
           # Tags starting with v deploy to production
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "environment=prod" >> $GITHUB_OUTPUT
             echo "is_production=true" >> $GITHUB_OUTPUT
+            echo "resource_group=TMinus15Agents" >> $GITHUB_OUTPUT
           # Push to main deploys to test (when test VM exists)
           else
             echo "environment=test" >> $GITHUB_OUTPUT
             echo "is_production=false" >> $GITHUB_OUTPUT
+            echo "resource_group=TMinus15Agents-Test" >> $GITHUB_OUTPUT
           fi
 
           # Output deployment enabled flag (from environment variable)
@@ -109,7 +115,7 @@ jobs:
         uses: azure/arm-deploy@v2
         with:
           subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          resourceGroupName: ${{ needs.set-environment.outputs.resource_group }}
           template: ./infra/main.bicep
           parameters: >
             @./infra/main.parameters.${{ needs.set-environment.outputs.environment }}.json
@@ -129,7 +135,7 @@ jobs:
           # Azure Bot Service registration is required for Teams messaging
           # This creates the bot registration if it doesn't exist
           ENV="${{ needs.set-environment.outputs.environment }}"
-          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
+          RG="${{ needs.set-environment.outputs.resource_group }}"
           APP_ID="${{ secrets.TEAMS_APP_ID }}"
 
           if [ "$ENV" = "prod" ]; then
@@ -289,7 +295,7 @@ jobs:
       - name: Deploy to Windows VM
         run: |
           $vmName = "pennie-vm-${{ github.event.inputs.environment || 'test' }}"
-          $rgName = "${{ secrets.AZURE_RESOURCE_GROUP }}"
+          $rgName = "${{ needs.set-environment.outputs.resource_group }}"
           $packageUrl = $env:PACKAGE_URL
 
           Write-Host "Deploying to VM: $vmName in RG: $rgName"
@@ -455,7 +461,7 @@ jobs:
       - name: Verify bot responds to health check
         run: |
           ENV="${{ needs.set-environment.outputs.environment }}"
-          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
+          RG="${{ needs.set-environment.outputs.resource_group }}"
 
           # Get bot FQDN
           VM_FQDN=$(az network public-ip show \
