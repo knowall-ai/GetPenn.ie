@@ -211,66 +211,79 @@ jobs:
           $urlBase64 = [Convert]::ToBase64String($urlBytes)
           Write-Host "URL encoded to Base64 ($($urlBase64.Length) chars)"
 
-          # Download and extract package on VM, preserving appsettings.json
-          # The URL is Base64 encoded to avoid special character issues
-          $uploadScript = @"
-          Write-Host 'Starting deployment script...'
-          `$TempDir = 'C:\Temp'
-          `$PackagePath = 'C:\Temp\pennie-bot.zip'
-          `$ExtractPath = 'C:\Pennie\bot'
-          `$AppSettingsPath = 'C:\Pennie\bot\appsettings.json'
-          `$AppSettingsBackup = 'C:\Temp\appsettings.json.backup'
+          # Write script to temp file to avoid PowerShell escaping issues
+          $scriptPath = "$env:TEMP\deploy-upload.ps1"
 
-          # Decode Base64 URL
-          `$urlBase64 = '$urlBase64'
-          `$urlBytes = [Convert]::FromBase64String(`$urlBase64)
-          `$PackageUrl = [System.Text.Encoding]::UTF8.GetString(`$urlBytes)
-          Write-Host "Package URL decoded: `$(`$PackageUrl.Substring(0, [Math]::Min(80, `$PackageUrl.Length)))..."
+          # Build the script content with the Base64 URL embedded
+          $scriptContent = @'
+          Write-Host 'Starting deployment script...'
+          $TempDir = 'C:\Temp'
+          $PackagePath = 'C:\Temp\pennie-bot.zip'
+          $ExtractPath = 'C:\Pennie\bot'
+          $AppSettingsPath = 'C:\Pennie\bot\appsettings.json'
+          $AppSettingsBackup = 'C:\Temp\appsettings.json.backup'
+
+          # Decode Base64 URL - URL_BASE64_PLACEHOLDER will be replaced
+          $urlBase64 = 'URL_BASE64_PLACEHOLDER'
+          Write-Host "Base64 length: $($urlBase64.Length)"
+          $urlBytes = [Convert]::FromBase64String($urlBase64)
+          $PackageUrl = [System.Text.Encoding]::UTF8.GetString($urlBytes)
+          Write-Host "Package URL decoded: $($PackageUrl.Substring(0, [Math]::Min(80, $PackageUrl.Length)))..."
 
           Write-Host 'Creating directories...'
-          New-Item -ItemType Directory -Path `$TempDir -Force | Out-Null
-          New-Item -ItemType Directory -Path `$ExtractPath -Force | Out-Null
+          New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $ExtractPath -Force | Out-Null
 
           # CRITICAL: Backup appsettings.json before deployment
-          if (Test-Path `$AppSettingsPath) {
+          if (Test-Path $AppSettingsPath) {
               Write-Host 'Backing up existing appsettings.json...'
-              Copy-Item -Path `$AppSettingsPath -Destination `$AppSettingsBackup -Force
+              Copy-Item -Path $AppSettingsPath -Destination $AppSettingsBackup -Force
           }
 
           Write-Host 'Downloading deployment package...'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           try {
-              Invoke-WebRequest -Uri `$PackageUrl -OutFile `$PackagePath -UseBasicParsing -ErrorAction Stop
-              Write-Host "Package downloaded: `$(Get-Item `$PackagePath | Select-Object -ExpandProperty Length) bytes"
+              Invoke-WebRequest -Uri $PackageUrl -OutFile $PackagePath -UseBasicParsing -ErrorAction Stop
+              Write-Host "Package downloaded: $(Get-Item $PackagePath | Select-Object -ExpandProperty Length) bytes"
           } catch {
-              Write-Host "ERROR downloading package: `$_"
+              Write-Host "ERROR downloading package: $_"
               throw
           }
 
-          Write-Host "Extracting to `$ExtractPath..."
-          Expand-Archive -Path `$PackagePath -DestinationPath `$ExtractPath -Force
+          Write-Host "Extracting to $ExtractPath..."
+          Expand-Archive -Path $PackagePath -DestinationPath $ExtractPath -Force
 
           Write-Host 'Extracted files:'
-          Get-ChildItem `$ExtractPath | ForEach-Object { Write-Host "  - `$(`$_.Name)" }
+          Get-ChildItem $ExtractPath | ForEach-Object { Write-Host "  - $($_.Name)" }
 
           # CRITICAL: Restore appsettings.json after deployment
-          if (Test-Path `$AppSettingsBackup) {
+          if (Test-Path $AppSettingsBackup) {
               Write-Host 'Restoring appsettings.json from backup...'
-              Copy-Item -Path `$AppSettingsBackup -Destination `$AppSettingsPath -Force
-              Remove-Item -Path `$AppSettingsBackup -Force
+              Copy-Item -Path $AppSettingsBackup -Destination $AppSettingsPath -Force
+              Remove-Item -Path $AppSettingsBackup -Force
               Write-Host 'appsettings.json restored successfully'
           } else {
               Write-Host 'WARNING: No appsettings.json backup found - manual configuration required'
           }
 
           Write-Host 'Upload complete'
-          "@
+          '@
+
+          # Replace placeholder with actual Base64 URL
+          $scriptContent = $scriptContent.Replace('URL_BASE64_PLACEHOLDER', $urlBase64)
+
+          # Write to temp file
+          $scriptContent | Out-File -FilePath $scriptPath -Encoding UTF8
+          Write-Host "Script written to $scriptPath ($((Get-Item $scriptPath).Length) bytes)"
+
+          # Read back and pass to az CLI
+          $scriptToRun = Get-Content -Path $scriptPath -Raw
 
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts $uploadScript
+            --scripts $scriptToRun
 
           # Run deployment script (now included in the extracted package)
           $runDeployScript = 'C:\Pennie\bot\deploy-bot-to-vm.ps1'
