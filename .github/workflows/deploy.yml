@@ -407,18 +407,17 @@ jobs:
           Write-Host "  OpenAI Assistant ID: $($openAiAssistantIdB64.Length) chars"
 
           # Run the configure script on the VM with ALL values Base64-encoded
-          # This avoids any character escaping issues with URLs and special chars
+          # Values are embedded directly in the script (--parameters flag doesn't work reliably)
           $configResult = az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts "param([string]`$AppIdB64, [string]`$PasswordB64, [string]`$Fqdn, [string]`$Backend, [string]`$OpenAiEndpointB64, [string]`$OpenAiAssistantIdB64) `
-              try { `
+            --scripts "try { `
                 Write-Host 'Decoding Base64 values...'; `
-                `$appId = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$AppIdB64)); `
-                `$password = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$PasswordB64)); `
-                `$openAiEndpoint = if (`$OpenAiEndpointB64) { [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$OpenAiEndpointB64)) } else { '' }; `
-                `$openAiAssistantId = if (`$OpenAiAssistantIdB64) { [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$OpenAiAssistantIdB64)) } else { '' }; `
+                `$appId = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$teamsAppIdB64')); `
+                `$password = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$teamsAppPasswordB64')); `
+                `$openAiEndpoint = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$openAiEndpointB64')); `
+                `$openAiAssistantId = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$openAiAssistantIdB64')); `
                 Write-Host ('Decoded - Teams App ID: ' + `$appId.Length + ' chars'); `
                 Write-Host ('Decoded - OpenAI Endpoint: ' + `$openAiEndpoint.Length + ' chars'); `
                 Write-Host ('Decoded - OpenAI Assistant ID: ' + `$openAiAssistantId.Length + ' chars'); `
@@ -426,16 +425,15 @@ jobs:
                   -ConfigPath 'C:\Pennie\bot\appsettings.json' `
                   -TeamsAppId `$appId `
                   -TeamsAppPassword `$password `
-                  -VmFqdn `$Fqdn `
-                  -BackendUrl `$Backend `
+                  -VmFqdn '$vmFqdn' `
+                  -BackendUrl '$backendUrl' `
                   -AzureOpenAiEndpoint `$openAiEndpoint `
                   -AzureOpenAiAssistantId `$openAiAssistantId; `
                 Write-Host 'Configuration script completed'; `
               } catch { `
                 Write-Host ('ERROR: ' + `$_.Exception.Message); `
                 throw; `
-              }" `
-            --parameters "AppIdB64=$teamsAppIdB64" "PasswordB64=$teamsAppPasswordB64" "Fqdn=$vmFqdn" "Backend=$backendUrl" "OpenAiEndpointB64=$openAiEndpointB64" "OpenAiAssistantIdB64=$openAiAssistantIdB64"
+              }"
 
           # Show full config result for debugging
           Write-Host "Config result:"
