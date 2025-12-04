@@ -111,9 +111,9 @@ if ($KeyVaultName) {
         Write-Host "  Ensure the secret exists and the VM has access to the Key Vault" -ForegroundColor Red
     }
 
-    $speechKey = az keyvault secret show --vault-name $KeyVaultName --name "AZURE-SPEECH-KEY" --query value -o tsv
+    $speechKey = az keyvault secret show --vault-name $KeyVaultName --name "AZURE_SPEECH_KEY" --query value -o tsv
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "WARNING: AZURE-SPEECH-KEY not found in Key Vault (speech features may not work)" -ForegroundColor Yellow
+        Write-Host "WARNING: AZURE_SPEECH_KEY not found in Key Vault (speech features may not work)" -ForegroundColor Yellow
     }
 
     if (-not $teamsAppId -or -not $teamsAppPassword) {

@@ -27,13 +27,13 @@
   },
 
   "// Speech Services": "Get key from Azure Portal > Speech Services > Keys",
-  "AZURE-SPEECH-KEY": "",
-  "AZURE-LOCATION": "uksouth",
+  "AZURE_SPEECH_KEY": "",
+  "AZURE_LOCATION": "uksouth",
   "SpeechRecognitionLanguage": "en-GB",
 
   "// Pennie Agent": "Get from AI Foundry or scripts/deploy-agent.sh output",
-  "AZURE-OPENAI-ENDPOINT": "https://YOUR-RESOURCE.openai.azure.com",
-  "AZURE-OPENAI-ASSISTANT-ID": "asst_YOUR_ASSISTANT_ID",
+  "AZURE_OPENAI_ENDPOINT": "https://YOUR-RESOURCE.openai.azure.com",
+  "AZURE_OPENAI_ASSISTANT_ID": "asst_YOUR_ASSISTANT_ID",
 
   "// Backend": "Use prod backend or run locally with 'func start' in backend/",
   "AZURE_FUNCTIONS_BACKEND_URL": "https://pennie-backend-prod.azurewebsites.net"

@@ -25,13 +25,13 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
         _logger = logger;
         _configuration = configuration;
 
-        // Log Speech configuration at startup to verify Key Vault loading
-        var speechKey = configuration["AZURE-SPEECH-KEY"];
-        var speechRegion = configuration["AZURE-LOCATION"] ?? "uksouth";
+        // Log Speech configuration at startup to verify loading
+        var speechKey = configuration["AZURE_SPEECH_KEY"];
+        var speechRegion = configuration["AZURE_LOCATION"] ?? "uksouth";
 
         if (string.IsNullOrEmpty(speechKey))
         {
-            _logger.LogWarning("STARTUP: AZURE-SPEECH-KEY is NOT configured - transcription will be disabled");
+            _logger.LogWarning("STARTUP: AZURE_SPEECH_KEY is NOT configured - transcription will be disabled");
         }
         else
         {
@@ -61,10 +61,10 @@ public class SpeechTranscriptionService : ISpeechTranscriptionService, IDisposab
         {
             _logger.LogInformation("Starting transcription for meeting {MeetingId}", meetingId);
 
-            // Create Speech configuration (uses dashes for Key Vault compatibility)
-            var speechKey = _configuration["AZURE-SPEECH-KEY"]
-                ?? throw new InvalidOperationException("AZURE-SPEECH-KEY not configured");
-            var speechRegion = _configuration["AZURE-LOCATION"] ?? "uksouth";
+            // Create Speech configuration
+            var speechKey = _configuration["AZURE_SPEECH_KEY"]
+                ?? throw new InvalidOperationException("AZURE_SPEECH_KEY not configured");
+            var speechRegion = _configuration["AZURE_LOCATION"] ?? "uksouth";
 
             // Get speech language from configuration, default to en-GB for UK users
             var speechLanguage = _configuration["SpeechRecognitionLanguage"] ?? "en-GB";

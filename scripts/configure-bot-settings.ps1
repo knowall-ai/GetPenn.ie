@@ -102,13 +102,12 @@ try {
 
     # Set Azure OpenAI settings if provided (required for Pennie AI responses)
     if (-not [string]::IsNullOrWhiteSpace($AzureOpenAiEndpoint)) {
-        # Use hyphen format as expected by PennieAgentClient.cs
-        $config | Add-Member -NotePropertyName 'AZURE-OPENAI-ENDPOINT' -NotePropertyValue $AzureOpenAiEndpoint -Force
+        $config | Add-Member -NotePropertyName 'AZURE_OPENAI_ENDPOINT' -NotePropertyValue $AzureOpenAiEndpoint -Force
         Write-Host "  - Azure OpenAI Endpoint: $AzureOpenAiEndpoint"
     }
 
     if (-not [string]::IsNullOrWhiteSpace($AzureOpenAiAssistantId)) {
-        $config | Add-Member -NotePropertyName 'AZURE-OPENAI-ASSISTANT-ID' -NotePropertyValue $AzureOpenAiAssistantId -Force
+        $config | Add-Member -NotePropertyName 'AZURE_OPENAI_ASSISTANT_ID' -NotePropertyValue $AzureOpenAiAssistantId -Force
         Write-Host "  - Azure OpenAI Assistant ID: $($AzureOpenAiAssistantId.Substring(0, [Math]::Min(15, $AzureOpenAiAssistantId.Length)))..."
     }
 

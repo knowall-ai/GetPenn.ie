@@ -452,10 +452,10 @@ jobs:
             --name $vmName `
             --command-id RunPowerShellScript `
             --scripts "`$config = Get-Content 'C:\Pennie\bot\appsettings.json' -Raw | ConvertFrom-Json; `
-              `$endpoint = `$config.'AZURE-OPENAI-ENDPOINT'; `
-              `$assistantId = `$config.'AZURE-OPENAI-ASSISTANT-ID'; `
-              Write-Host ('AZURE-OPENAI-ENDPOINT: ' + (`$endpoint -replace '.', '*')); `
-              Write-Host ('AZURE-OPENAI-ASSISTANT-ID: ' + (`$assistantId -replace '.', '*')); `
+              `$endpoint = `$config.'AZURE_OPENAI_ENDPOINT'; `
+              `$assistantId = `$config.'AZURE_OPENAI_ASSISTANT_ID'; `
+              Write-Host ('AZURE_OPENAI_ENDPOINT: ' + (`$endpoint -replace '.', '*')); `
+              Write-Host ('AZURE_OPENAI_ASSISTANT_ID: ' + (`$assistantId -replace '.', '*')); `
               if ([string]::IsNullOrEmpty(`$endpoint) -or [string]::IsNullOrEmpty(`$assistantId)) { `
                 Write-Host 'WARNING: OpenAI settings are empty!'; `
                 exit 1; `
