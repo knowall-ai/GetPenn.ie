@@ -91,6 +91,20 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
           destinationAddressPrefix: '*'
         }
       }
+      {
+        name: 'AllowHTTP'
+        properties: {
+          priority: 110
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '80'
+          sourceAddressPrefix: '*'
+          destinationAddressPrefix: '*'
+          description: 'Required for Let''s Encrypt ACME challenge'
+        }
+      }
     ], !empty(allowedRdpSourceIP) ? [
       {
         name: 'AllowRDP'
