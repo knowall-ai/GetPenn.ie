@@ -366,13 +366,15 @@ jobs:
             --name $vmName `
             --command-id RunPowerShellScript `
             --scripts "param([string]`$fqdn) `
-              `$certExists = Get-ChildItem Cert:\LocalMachine\My | Where-Object { `$_.Subject -like \"*`$fqdn*\" }; `
+              `$certExists = Get-ChildItem Cert:\LocalMachine\My | Where-Object { `$_.Subject -like '*' + `$fqdn + '*' }; `
               if (-not `$certExists) { `
                 Write-Host 'Creating self-signed SSL certificate...'; `
                 `$cert = New-SelfSignedCertificate -DnsName `$fqdn -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddYears(2); `
-                Write-Host \"Created certificate with thumbprint: `$(`$cert.Thumbprint)\"; `
+                `$thumbprint = `$cert.Thumbprint; `
+                Write-Host ('Created certificate with thumbprint: ' + `$thumbprint); `
               } else { `
-                Write-Host \"Using existing certificate: `$(`$certExists.Thumbprint)\"; `
+                `$thumbprint = `$certExists.Thumbprint; `
+                Write-Host ('Using existing certificate: ' + `$thumbprint); `
               }; `
               Write-Host 'Configuring Kestrel HTTPS in appsettings.json...'; `
               `$configPath = 'C:\Pennie\bot\appsettings.json'; `
