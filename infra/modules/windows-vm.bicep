@@ -102,7 +102,7 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
           destinationPortRange: '80'
           sourceAddressPrefix: '*'
           destinationAddressPrefix: '*'
-          description: 'Required for Let''s Encrypt ACME challenge'
+          description: 'Required for ACME HTTP-01 challenge (SSL certificate)'
         }
       }
     ], !empty(allowedRdpSourceIP) ? [
