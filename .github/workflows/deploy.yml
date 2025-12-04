@@ -175,11 +175,11 @@ jobs:
               2>/dev/null || echo "::warning::Could not update bot endpoint"
           else
             echo "Creating bot registration '$BOT_NAME'..."
-            # Bot channel registration: --kind registration (no --app-type or --sku)
+            # Azure Bot registration with MultiTenant app type
             az bot create \
               --resource-group "$RG" \
               --name "$BOT_NAME" \
-              --kind registration \
+              --app-type MultiTenant \
               --appid "$APP_ID" \
               --endpoint "$ENDPOINT" \
               --display-name "$BOT_DISPLAY" \
