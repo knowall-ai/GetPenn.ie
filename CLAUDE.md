@@ -105,13 +105,25 @@ Pennie uses Microsoft's official Azure DevOps MCP Server for work item operation
 
 ## Deployment Strategy
 
-### Target Environment (KnowAll Ltd - Internal Deployment)
-- **Resource Group**: `TMinus15Agents` (existing in KnowAll Ltd tenant)
+### Target Environments (KnowAll Ltd - Internal Deployment)
+
+**CRITICAL: Each environment uses a SEPARATE resource group. Never deploy test to prod or vice versa.**
+
+| Environment | Resource Group | VM Name | Description |
+|-------------|----------------|---------|-------------|
+| **Production** | `TMinus15Agents` | `pennie-vm-prod` | Live production environment |
+| **Test** | `TMinus15Agents-Test` | `pennie-vm-test` | Test/staging environment (uses Spot VM) |
+
 - **Location**: `uksouth` (single-region deployment for UK data residency)
 - **Subscription**: See `.env` file (not committed to Git)
 - **AI Hub**: `knowall-ai-foundry` (existing, UK South)
 - **AI Project**: `T-Minus-15 Agents` (existing)
 - **OpenAI Model**: GPT-4o (2024-08-06) - verified available in UK South
+
+**GitHub Environment Configuration**:
+- Each GitHub environment (`prod`, `test`) has its own `AZURE_RESOURCE_GROUP` secret
+- The workflow reads from the environment-scoped secret, not a repo-level secret
+- Test environment uses Spot VM (`useSpotVM: true`) for 60-80% cost savings
 
 **Note for Other Deployers**: This is KnowAll's internal configuration. Choose your own region based on compliance needs. GPT-4o is available in UK South, East US 2, Sweden Central, and other regions.
 
