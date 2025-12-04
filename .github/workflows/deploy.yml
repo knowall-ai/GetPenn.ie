@@ -297,6 +297,22 @@ jobs:
 
       - name: Deploy to Windows VM
         run: |
+          # Mask all secrets to prevent accidental exposure in logs (fixes #73)
+          # Note: GitHub auto-masks values referenced as ${{ secrets.X }}, but
+          # values decoded from Base64 or passed to scripts need explicit masking
+          $teamsAppId = "${{ secrets.TEAMS_APP_ID }}"
+          $teamsAppPassword = "${{ secrets.TEAMS_APP_PASSWORD }}"
+          $azureOpenAiEndpoint = "${{ secrets.AZURE_OPENAI_ENDPOINT }}"
+          $azureOpenAiAssistantId = "${{ secrets.AZURE_OPENAI_ASSISTANT_ID }}"
+          $leEmail = "${{ secrets.LE_EMAIL }}"
+
+          # Add masks for all sensitive values
+          Write-Output "::add-mask::$teamsAppId"
+          Write-Output "::add-mask::$teamsAppPassword"
+          if ($azureOpenAiEndpoint) { Write-Output "::add-mask::$azureOpenAiEndpoint" }
+          if ($azureOpenAiAssistantId) { Write-Output "::add-mask::$azureOpenAiAssistantId" }
+          if ($leEmail) { Write-Output "::add-mask::$leEmail" }
+
           $vmName = "pennie-vm-${{ github.event.inputs.environment || 'test' }}"
           $rgName = "${{ needs.set-environment.outputs.resource_group }}"
           $packageUrl = $env:PACKAGE_URL
@@ -393,12 +409,7 @@ jobs:
           Write-Host "Backend URL: $backendUrl"
 
           # Encode ALL credentials as Base64 to avoid escaping issues in remote script
-          # This includes URLs which contain special characters (://, .)
-          $teamsAppId = "${{ secrets.TEAMS_APP_ID }}"
-          $teamsAppPassword = "${{ secrets.TEAMS_APP_PASSWORD }}"
-          $azureOpenAiEndpoint = "${{ secrets.AZURE_OPENAI_ENDPOINT }}"
-          $azureOpenAiAssistantId = "${{ secrets.AZURE_OPENAI_ASSISTANT_ID }}"
-
+          # Note: Variables $teamsAppId, etc. are already defined and masked at start of step
           $teamsAppIdB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($teamsAppId))
           $teamsAppPasswordB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($teamsAppPassword))
           $openAiEndpointB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($azureOpenAiEndpoint))
@@ -423,7 +434,7 @@ jobs:
                 `$password = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$PasswordB64)); `
                 `$openAiEndpoint = if (`$OpenAiEndpointB64) { [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$OpenAiEndpointB64)) } else { '' }; `
                 `$openAiAssistantId = if (`$OpenAiAssistantIdB64) { [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$OpenAiAssistantIdB64)) } else { '' }; `
-                Write-Host ('Decoded - Teams App ID: ' + `$appId.Substring(0, [Math]::Min(8, `$appId.Length)) + '...'); `
+                Write-Host ('Decoded - Teams App ID: ' + `$appId.Length + ' chars'); `
                 Write-Host ('Decoded - OpenAI Endpoint: ' + `$openAiEndpoint.Length + ' chars'); `
                 Write-Host ('Decoded - OpenAI Assistant ID: ' + `$openAiAssistantId.Length + ' chars'); `
                 & 'C:\Pennie\bot\configure-bot-settings.ps1' `

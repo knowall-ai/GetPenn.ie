@@ -39,8 +39,8 @@ param autoShutdownTime string = '1900'
 @description('Auto-shutdown timezone')
 param autoShutdownTimezone string = 'GMT Standard Time'
 
-@description('Resource ID of an existing Azure OpenAI resource for RBAC (optional, for cross-region deployments)')
-param existingOpenAiResourceId string = ''
+// NOTE: If you need to grant VM access to an existing Azure OpenAI resource, use Azure CLI after deployment:
+// az role assignment create --assignee <vm-principal-id> --role "Cognitive Services OpenAI Contributor" --scope <openai-resource-id>
 
 // Virtual Network
 resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
@@ -152,7 +152,7 @@ resource nic 'Microsoft.Network/networkInterfaces@2023-05-01' = {
 resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
   name: 'pennie-vm-${environmentName}'
   location: location
-  tags: union(tags, useSpotVM ? { 'SpotVM': 'true' } : {})
+  tags: union(tags, useSpotVM ? { SpotVM: 'true' } : {})
   identity: {
     type: 'SystemAssigned'
   }
