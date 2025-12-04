@@ -212,88 +212,52 @@ jobs:
           Write-Host "URL encoded to Base64 ($($urlBase64.Length) chars)"
 
           # Step 1: Write Base64 URL to a file on the VM
-          Write-Host "Writing Base64 URL to VM file..."
-          $writeUrlScript = "Set-Content -Path 'C:\Temp\package-url.txt' -Value '$urlBase64' -Force; Write-Host 'Base64 URL written to C:\Temp\package-url.txt'"
-
+          Write-Host "Step 1: Writing Base64 URL to VM file..."
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts "New-Item -ItemType Directory -Path 'C:\Temp' -Force | Out-Null; $writeUrlScript"
+            --scripts "New-Item -ItemType Directory -Path 'C:\Temp' -Force | Out-Null; Set-Content -Path 'C:\Temp\package-url.txt' -Value '$urlBase64' -Force; Write-Host 'URL file created'"
 
-          # Step 2: Run the deployment script that reads URL from file
-          Write-Host "Running deployment script on VM..."
-          $deployScript = @'
-          Write-Host 'Starting deployment script...'
-          $TempDir = 'C:\Temp'
-          $PackagePath = 'C:\Temp\pennie-bot.zip'
-          $ExtractPath = 'C:\Pennie\bot'
-          $AppSettingsPath = 'C:\Pennie\bot\appsettings.json'
-          $AppSettingsBackup = 'C:\Temp\appsettings.json.backup'
-
-          # Read Base64 URL from file
-          Write-Host 'Reading Base64 URL from file...'
-          $urlBase64 = Get-Content -Path 'C:\Temp\package-url.txt' -Raw
-          $urlBase64 = $urlBase64.Trim()
-          Write-Host "Base64 length: $($urlBase64.Length)"
-
-          $urlBytes = [Convert]::FromBase64String($urlBase64)
-          $PackageUrl = [System.Text.Encoding]::UTF8.GetString($urlBytes)
-          Write-Host "Package URL decoded: $($PackageUrl.Substring(0, [Math]::Min(80, $PackageUrl.Length)))..."
-
-          Write-Host 'Creating directories...'
-          New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
-          New-Item -ItemType Directory -Path $ExtractPath -Force | Out-Null
-
-          # CRITICAL: Backup appsettings.json before deployment
-          if (Test-Path $AppSettingsPath) {
-              Write-Host 'Backing up existing appsettings.json...'
-              Copy-Item -Path $AppSettingsPath -Destination $AppSettingsBackup -Force
-          }
-
-          Write-Host 'Downloading deployment package...'
-          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          try {
-              Invoke-WebRequest -Uri $PackageUrl -OutFile $PackagePath -UseBasicParsing -ErrorAction Stop
-              Write-Host "Package downloaded: $(Get-Item $PackagePath | Select-Object -ExpandProperty Length) bytes"
-          } catch {
-              Write-Host "ERROR downloading package: $_"
-              throw
-          }
-
-          Write-Host "Extracting to $ExtractPath..."
-          Expand-Archive -Path $PackagePath -DestinationPath $ExtractPath -Force
-
-          Write-Host 'Extracted files:'
-          Get-ChildItem $ExtractPath | ForEach-Object { Write-Host "  - $($_.Name)" }
-
-          # CRITICAL: Restore appsettings.json after deployment
-          if (Test-Path $AppSettingsBackup) {
-              Write-Host 'Restoring appsettings.json from backup...'
-              Copy-Item -Path $AppSettingsBackup -Destination $AppSettingsPath -Force
-              Remove-Item -Path $AppSettingsBackup -Force
-              Write-Host 'appsettings.json restored successfully'
-          } else {
-              Write-Host 'WARNING: No appsettings.json backup found - manual configuration required'
-          }
-
-          Write-Host 'Upload complete'
-          '@
-
+          # Step 2: Decode URL and download package
+          Write-Host "Step 2: Downloading package on VM..."
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts $deployScript
+            --scripts "`$b64 = (Get-Content 'C:\Temp\package-url.txt' -Raw).Trim(); `$url = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$b64)); [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri `$url -OutFile 'C:\Temp\pennie-bot.zip' -UseBasicParsing; Write-Host ('Downloaded: ' + (Get-Item 'C:\Temp\pennie-bot.zip').Length + ' bytes')"
 
-          # Step 3: Run the service deployment script
-          $runDeployScript = 'C:\Pennie\bot\deploy-bot-to-vm.ps1'
-
+          # Step 3: Backup appsettings.json if exists
+          Write-Host "Step 3: Backing up appsettings.json..."
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts "& $runDeployScript"
+            --scripts "if (Test-Path 'C:\Pennie\bot\appsettings.json') { Copy-Item 'C:\Pennie\bot\appsettings.json' 'C:\Temp\appsettings.backup' -Force; Write-Host 'Backup created' } else { Write-Host 'No existing appsettings.json' }"
+
+          # Step 4: Extract package
+          Write-Host "Step 4: Extracting package..."
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts "New-Item -ItemType Directory -Path 'C:\Pennie\bot' -Force | Out-Null; Expand-Archive -Path 'C:\Temp\pennie-bot.zip' -DestinationPath 'C:\Pennie\bot' -Force; Write-Host 'Extracted files:'; Get-ChildItem 'C:\Pennie\bot' | ForEach-Object { Write-Host `$_.Name }"
+
+          # Step 5: Restore appsettings.json from backup
+          Write-Host "Step 5: Restoring appsettings.json..."
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts "if (Test-Path 'C:\Temp\appsettings.backup') { Copy-Item 'C:\Temp\appsettings.backup' 'C:\Pennie\bot\appsettings.json' -Force; Remove-Item 'C:\Temp\appsettings.backup' -Force; Write-Host 'Restored appsettings.json' } else { Write-Host 'No backup to restore' }"
+
+          # Step 6: Run the service deployment script (stop service, copy files, start service)
+          Write-Host "Step 6: Running service deployment..."
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts "& 'C:\Pennie\bot\deploy-bot-to-vm.ps1'"
 
           Write-Host "✅ Bot deployed successfully to $vmName"
 
