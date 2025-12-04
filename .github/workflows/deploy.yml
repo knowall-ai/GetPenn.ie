@@ -180,6 +180,7 @@ jobs:
               --name "$BOT_NAME" \
               --kind registration \
               --sku F0 \
+              --app-type MultiTenant \
               --appid "$APP_ID" \
               --endpoint "$ENDPOINT" \
               --display-name "$BOT_DISPLAY" \
