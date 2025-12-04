@@ -393,6 +393,18 @@ jobs:
           $backendUrl = "https://pennie-backend-$env.azurewebsites.net"
           Write-Host "Backend URL: $backendUrl"
 
+          # Debug: Show lengths of original secrets BEFORE encoding
+          Write-Host "DEBUG - Original secret lengths (before Base64):"
+          Write-Host "  TEAMS_APP_ID: $($teamsAppId.Length) chars"
+          Write-Host "  TEAMS_APP_PASSWORD: $($teamsAppPassword.Length) chars"
+          Write-Host "  AZURE_OPENAI_ENDPOINT: $($azureOpenAiEndpoint.Length) chars"
+          Write-Host "  AZURE_OPENAI_ASSISTANT_ID: $($azureOpenAiAssistantId.Length) chars"
+
+          # Fail early if required secrets are missing
+          if ($teamsAppId.Length -eq 0) {
+            Write-Error "TEAMS_APP_ID secret is empty. Check environment secrets."
+          }
+
           # Encode ALL credentials as Base64 to avoid escaping issues in remote script
           # Note: Variables $teamsAppId, etc. are already defined and masked at start of step
           $teamsAppIdB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($teamsAppId))
