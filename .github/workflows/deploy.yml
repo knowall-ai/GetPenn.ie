@@ -154,8 +154,10 @@ jobs:
 
       - name: Create deployment package
         run: |
+          # Include deploy script in the package
+          Copy-Item ./scripts/deploy-bot-to-vm.ps1 ./publish/
           Compress-Archive -Path ./publish/* -DestinationPath ./pennie-bot.zip
-          Write-Host "Created deployment package: pennie-bot.zip"
+          Write-Host "Created deployment package: pennie-bot.zip (includes deploy script)"
 
       - name: Upload to Azure Storage
         run: |
@@ -247,14 +249,14 @@ jobs:
             --scripts $uploadScript `
             --parameters "PackageUrl=$env:PACKAGE_URL"
 
-          # Run deployment script
-          $deployScript = Get-Content ./scripts/deploy-bot-to-vm.ps1 -Raw
+          # Run deployment script (now included in the extracted package)
+          $runDeployScript = 'C:\Pennie\bot\deploy-bot-to-vm.ps1'
 
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts $deployScript
+            --scripts "& $runDeployScript"
 
           Write-Host "✅ Bot deployed successfully to $vmName"
 
