@@ -341,41 +341,26 @@ jobs:
             --command-id RunPowerShellScript `
             --scripts "`$b64 = (Get-Content 'C:\Temp\package-url.txt' -Raw).Trim(); `$url = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$b64)); [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri `$url -OutFile 'C:\Temp\pennie-bot.zip' -UseBasicParsing; Write-Host ('Downloaded: ' + (Get-Item 'C:\Temp\pennie-bot.zip').Length + ' bytes')"
 
-          # Step 3: Backup appsettings.json if exists
-          Write-Host "Step 3: Backing up appsettings.json..."
-          az vm run-command invoke `
-            --resource-group $rgName `
-            --name $vmName `
-            --command-id RunPowerShellScript `
-            --scripts "if (Test-Path 'C:\Pennie\bot\appsettings.json') { Copy-Item 'C:\Pennie\bot\appsettings.json' 'C:\Temp\appsettings.backup' -Force; Write-Host 'Backup created' } else { Write-Host 'No existing appsettings.json' }"
-
-          # Step 4: Extract package
-          Write-Host "Step 4: Extracting package..."
+          # Step 3: Extract package (uses fresh appsettings.json from repo)
+          # Note: Backup/restore removed - all config now comes from GitHub Secrets via configure-bot-settings.ps1
+          Write-Host "Step 3: Extracting package..."
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
             --scripts "New-Item -ItemType Directory -Path 'C:\Pennie\bot' -Force | Out-Null; Expand-Archive -Path 'C:\Temp\pennie-bot.zip' -DestinationPath 'C:\Pennie\bot' -Force; Write-Host 'Extracted files:'; Get-ChildItem 'C:\Pennie\bot' | ForEach-Object { Write-Host `$_.Name }"
 
-          # Step 5: Restore appsettings.json from backup
-          Write-Host "Step 5: Restoring appsettings.json..."
-          az vm run-command invoke `
-            --resource-group $rgName `
-            --name $vmName `
-            --command-id RunPowerShellScript `
-            --scripts "if (Test-Path 'C:\Temp\appsettings.backup') { Copy-Item 'C:\Temp\appsettings.backup' 'C:\Pennie\bot\appsettings.json' -Force; Remove-Item 'C:\Temp\appsettings.backup' -Force; Write-Host 'Restored appsettings.json' } else { Write-Host 'No backup to restore' }"
-
-          # Step 6: Run the service deployment script (stop service, copy files, start service)
-          Write-Host "Step 6: Running service deployment..."
+          # Step 4: Run the service deployment script (stop service, copy files, start service)
+          Write-Host "Step 4: Running service deployment..."
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
             --scripts "& 'C:\Pennie\bot\deploy-bot-to-vm.ps1'"
 
-          # Step 7: Setup SSL certificate using Let's Encrypt
+          # Step 5: Setup SSL certificate using Let's Encrypt
           # Requires LE_EMAIL secret to be configured
-          Write-Host "Step 7: Setting up Let's Encrypt SSL certificate..."
+          Write-Host "Step 5: Setting up Let's Encrypt SSL certificate..."
 
           # Get VM FQDN (needed for certificate)
           $vmFqdn = az network public-ip show --resource-group $rgName --name "pennie-pip-${{ github.event.inputs.environment || 'test' }}" --query "dnsSettings.fqdn" -o tsv
@@ -399,9 +384,9 @@ jobs:
             --command-id RunPowerShellScript `
             --scripts "& 'C:\Pennie\bot\configure-ssl.ps1' -Fqdn '$vmFqdn' -Email '$leEmail'"
 
-          # Step 8: Configure bot credentials and URLs from GitHub Secrets
-          Write-Host "Step 8: Configuring bot credentials..."
-          # (vmFqdn already set in step 7)
+          # Step 6: Configure bot credentials and URLs from GitHub Secrets
+          Write-Host "Step 6: Configuring bot credentials..."
+          # (vmFqdn already set in step 5)
 
           # Use environment-specific backend URL (test uses test backend, prod uses prod)
           $env = "${{ github.event.inputs.environment || 'test' }}"
@@ -456,7 +441,7 @@ jobs:
           Write-Host "Config result:"
           Write-Host $configResult
 
-          # Step 8b: Verify configuration was applied
+          # Step 6b: Verify configuration was applied
           Write-Host "Verifying OpenAI configuration..."
           $verifyResult = az vm run-command invoke `
             --resource-group $rgName `
@@ -476,8 +461,8 @@ jobs:
           Write-Host "Verify result:"
           Write-Host $verifyResult
 
-          # Step 9: Restart service to apply new configuration
-          Write-Host "Step 9: Restarting service..."
+          # Step 7: Restart service to apply new configuration
+          Write-Host "Step 7: Restarting service..."
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
