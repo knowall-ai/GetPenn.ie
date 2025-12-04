@@ -199,12 +199,18 @@ jobs:
 
       - name: Deploy to Windows VM
         run: |
-          $vmName = "pennie-vm-${{ github.event.inputs.environment || 'prod' }}"
+          $vmName = "pennie-vm-${{ github.event.inputs.environment || 'test' }}"
           $rgName = "${{ secrets.AZURE_RESOURCE_GROUP }}"
+          $packageUrl = $env:PACKAGE_URL
+
+          Write-Host "Deploying to VM: $vmName in RG: $rgName"
+          Write-Host "Package URL length: $($packageUrl.Length) chars"
 
           # Download and extract package on VM, preserving appsettings.json
+          # NOTE: $args[0] receives the parameter from --parameters
           $uploadScript = @'
-          param([string]$PackageUrl)
+          $PackageUrl = $args[0]
+          Write-Host "Received package URL: $($PackageUrl.Substring(0, [Math]::Min(50, $PackageUrl.Length)))..."
 
           $TempDir = "C:\Temp"
           $PackagePath = "$TempDir\pennie-bot.zip"
@@ -212,6 +218,7 @@ jobs:
           $AppSettingsPath = "$ExtractPath\appsettings.json"
           $AppSettingsBackup = "$TempDir\appsettings.json.backup"
 
+          Write-Host "Creating directories..."
           New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
           New-Item -ItemType Directory -Path $ExtractPath -Force | Out-Null
 
@@ -223,10 +230,15 @@ jobs:
           }
 
           Write-Host "Downloading deployment package..."
-          Invoke-WebRequest -Uri $PackageUrl -OutFile $PackagePath
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Invoke-WebRequest -Uri $PackageUrl -OutFile $PackagePath -UseBasicParsing
 
+          Write-Host "Package downloaded: $(Get-Item $PackagePath | Select-Object -ExpandProperty Length) bytes"
           Write-Host "Extracting to $ExtractPath..."
           Expand-Archive -Path $PackagePath -DestinationPath $ExtractPath -Force
+
+          Write-Host "Extracted files:"
+          Get-ChildItem $ExtractPath | ForEach-Object { Write-Host "  - $($_.Name)" }
 
           # CRITICAL: Restore appsettings.json after deployment
           # The deployed package contains template values, not production configuration
@@ -247,7 +259,7 @@ jobs:
             --name $vmName `
             --command-id RunPowerShellScript `
             --scripts $uploadScript `
-            --parameters "PackageUrl=$env:PACKAGE_URL"
+            --parameters $packageUrl
 
           # Run deployment script (now included in the extracted package)
           $runDeployScript = 'C:\Pennie\bot\deploy-bot-to-vm.ps1'
