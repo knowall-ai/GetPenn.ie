@@ -211,11 +211,19 @@ jobs:
           $urlBase64 = [Convert]::ToBase64String($urlBytes)
           Write-Host "URL encoded to Base64 ($($urlBase64.Length) chars)"
 
-          # Write script to temp file to avoid PowerShell escaping issues
-          $scriptPath = "$env:TEMP\deploy-upload.ps1"
+          # Step 1: Write Base64 URL to a file on the VM
+          Write-Host "Writing Base64 URL to VM file..."
+          $writeUrlScript = "Set-Content -Path 'C:\Temp\package-url.txt' -Value '$urlBase64' -Force; Write-Host 'Base64 URL written to C:\Temp\package-url.txt'"
 
-          # Build the script content with the Base64 URL embedded
-          $scriptContent = @'
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts "New-Item -ItemType Directory -Path 'C:\Temp' -Force | Out-Null; $writeUrlScript"
+
+          # Step 2: Run the deployment script that reads URL from file
+          Write-Host "Running deployment script on VM..."
+          $deployScript = @'
           Write-Host 'Starting deployment script...'
           $TempDir = 'C:\Temp'
           $PackagePath = 'C:\Temp\pennie-bot.zip'
@@ -223,9 +231,12 @@ jobs:
           $AppSettingsPath = 'C:\Pennie\bot\appsettings.json'
           $AppSettingsBackup = 'C:\Temp\appsettings.json.backup'
 
-          # Decode Base64 URL - URL_BASE64_PLACEHOLDER will be replaced
-          $urlBase64 = 'URL_BASE64_PLACEHOLDER'
+          # Read Base64 URL from file
+          Write-Host 'Reading Base64 URL from file...'
+          $urlBase64 = Get-Content -Path 'C:\Temp\package-url.txt' -Raw
+          $urlBase64 = $urlBase64.Trim()
           Write-Host "Base64 length: $($urlBase64.Length)"
+
           $urlBytes = [Convert]::FromBase64String($urlBase64)
           $PackageUrl = [System.Text.Encoding]::UTF8.GetString($urlBytes)
           Write-Host "Package URL decoded: $($PackageUrl.Substring(0, [Math]::Min(80, $PackageUrl.Length)))..."
@@ -269,23 +280,13 @@ jobs:
           Write-Host 'Upload complete'
           '@
 
-          # Replace placeholder with actual Base64 URL
-          $scriptContent = $scriptContent.Replace('URL_BASE64_PLACEHOLDER', $urlBase64)
-
-          # Write to temp file
-          $scriptContent | Out-File -FilePath $scriptPath -Encoding UTF8
-          Write-Host "Script written to $scriptPath ($((Get-Item $scriptPath).Length) bytes)"
-
-          # Read back and pass to az CLI
-          $scriptToRun = Get-Content -Path $scriptPath -Raw
-
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts $scriptToRun
+            --scripts $deployScript
 
-          # Run deployment script (now included in the extracted package)
+          # Step 3: Run the service deployment script
           $runDeployScript = 'C:\Pennie\bot\deploy-bot-to-vm.ps1'
 
           az vm run-command invoke `
