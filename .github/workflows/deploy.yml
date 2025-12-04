@@ -425,26 +425,61 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Azure Login
+        uses: azure/login@v2
         with:
-          python-version: '3.10'
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Install dependencies
+      - name: Run endpoint connectivity tests
         run: |
-          pip install pytest requests
+          ENV="${{ needs.set-environment.outputs.environment }}"
+          echo "Running smoke tests for $ENV environment..."
 
-      - name: Run smoke tests
+          # Make test script executable and run it
+          chmod +x ./tests/bot-endpoint-test.sh
+          ./tests/bot-endpoint-test.sh "$ENV"
+
+      - name: Verify bot responds to health check
         run: |
-          # TODO: Implement smoke tests
-          # pytest tests/smoke/ --env=${{ github.event.inputs.environment || 'prod' }}
-          echo "Smoke tests would run here"
+          ENV="${{ needs.set-environment.outputs.environment }}"
+          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
+
+          # Get bot FQDN
+          VM_FQDN=$(az network public-ip show \
+            --resource-group "$RG" \
+            --name "pennie-pip-${ENV}" \
+            --query "dnsSettings.fqdn" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VM_FQDN" ]; then
+            echo "::warning::Could not get VM FQDN"
+            exit 0
+          fi
+
+          # Wait for bot to be ready (up to 60 seconds)
+          echo "Waiting for bot health endpoint..."
+          for i in {1..12}; do
+            HEALTH=$(curl -s -k "https://${VM_FQDN}/health" 2>/dev/null || echo "")
+            if [ "$HEALTH" = "Healthy" ]; then
+              echo "✅ Bot health check passed"
+              exit 0
+            fi
+            echo "Attempt $i/12: Bot not ready yet..."
+            sleep 5
+          done
+
+          echo "::error::Bot health check failed after 60 seconds"
+          exit 1
 
       - name: Notify on failure
         if: failure()
         run: |
-          echo "Deployment smoke tests failed! Rolling back..."
-          # TODO: Implement rollback logic
+          echo "::error::Deployment smoke tests failed!"
+          echo ""
+          echo "Troubleshooting steps:"
+          echo "  1. Check bot logs: ./scripts/bot-logs.sh ${{ needs.set-environment.outputs.environment }}"
+          echo "  2. Restart service: ./scripts/bot-restart.sh ${{ needs.set-environment.outputs.environment }}"
+          echo "  3. Run endpoint tests: ./tests/bot-endpoint-test.sh ${{ needs.set-environment.outputs.environment }}"
+          # Note: Rollback would require storing previous deployment artifact
 
   notify-deployment:
     name: Notify Deployment Status
