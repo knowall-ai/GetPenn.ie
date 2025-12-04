@@ -3,7 +3,7 @@
     Configures bot appsettings.json with credentials and URLs.
 .DESCRIPTION
     Updates the bot's appsettings.json with Teams credentials, backend URL,
-    and media platform settings. Includes null safety checks.
+    media platform settings, and Azure OpenAI settings. Includes null safety checks.
 .PARAMETER ConfigPath
     Path to appsettings.json file
 .PARAMETER TeamsAppId
@@ -14,6 +14,10 @@
     Fully qualified domain name of the VM
 .PARAMETER BackendUrl
     URL of the Azure Functions backend
+.PARAMETER AzureOpenAiEndpoint
+    Azure OpenAI endpoint URL for Pennie AI (optional)
+.PARAMETER AzureOpenAiAssistantId
+    Azure OpenAI Assistant ID for Pennie AI (optional)
 #>
 param(
     [Parameter(Mandatory=$true)]
@@ -29,7 +33,13 @@ param(
     [string]$VmFqdn,
 
     [Parameter(Mandatory=$true)]
-    [string]$BackendUrl
+    [string]$BackendUrl,
+
+    [Parameter(Mandatory=$false)]
+    [string]$AzureOpenAiEndpoint = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$AzureOpenAiAssistantId = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -89,6 +99,18 @@ try {
 
     # Set backend URL
     $config.AZURE_FUNCTIONS_BACKEND_URL = $BackendUrl
+
+    # Set Azure OpenAI settings if provided (required for Pennie AI responses)
+    if (-not [string]::IsNullOrWhiteSpace($AzureOpenAiEndpoint)) {
+        # Use hyphen format as expected by PennieAgentClient.cs
+        $config | Add-Member -NotePropertyName 'AZURE-OPENAI-ENDPOINT' -NotePropertyValue $AzureOpenAiEndpoint -Force
+        Write-Host "  - Azure OpenAI Endpoint: $AzureOpenAiEndpoint"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($AzureOpenAiAssistantId)) {
+        $config | Add-Member -NotePropertyName 'AZURE-OPENAI-ASSISTANT-ID' -NotePropertyValue $AzureOpenAiAssistantId -Force
+        Write-Host "  - Azure OpenAI Assistant ID: $($AzureOpenAiAssistantId.Substring(0, [Math]::Min(15, $AzureOpenAiAssistantId.Length)))..."
+    }
 
     # Write back to file
     $config | ConvertTo-Json -Depth 10 | Set-Content $ConfigPath -Encoding UTF8
