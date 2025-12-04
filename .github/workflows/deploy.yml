@@ -420,12 +420,12 @@ jobs:
 
           # Run the configure script on the VM with ALL values Base64-encoded
           # Values are embedded directly in the script (--parameters flag doesn't work reliably)
+          # NOTE: Avoid curly braces in inline scripts - they get corrupted by az vm run-command
           $configResult = az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts "try { `
-                Write-Host 'Decoding Base64 values...'; `
+            --scripts "Write-Host 'Decoding Base64 values...'; `
                 `$appId = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$teamsAppIdB64')); `
                 `$password = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$teamsAppPasswordB64')); `
                 `$openAiEndpoint = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$openAiEndpointB64')); `
@@ -441,17 +441,14 @@ jobs:
                   -BackendUrl '$backendUrl' `
                   -AzureOpenAiEndpoint `$openAiEndpoint `
                   -AzureOpenAiAssistantId `$openAiAssistantId; `
-                Write-Host 'Configuration script completed'; `
-              } catch { `
-                Write-Host ('ERROR: ' + `$_.Exception.Message); `
-                throw; `
-              }"
+                Write-Host 'Configuration script completed'"
 
           # Show full config result for debugging
           Write-Host "Config result:"
           Write-Host $configResult
 
           # Step 6b: Verify configuration was applied
+          # NOTE: Avoid curly braces in inline scripts - they get corrupted by az vm run-command
           Write-Host "Verifying OpenAI configuration..."
           $verifyResult = az vm run-command invoke `
             --resource-group $rgName `
@@ -460,14 +457,10 @@ jobs:
             --scripts "`$config = Get-Content 'C:\Pennie\bot\appsettings.json' -Raw | ConvertFrom-Json; `
               `$endpoint = `$config.'AZURE_OPENAI_ENDPOINT'; `
               `$assistantId = `$config.'AZURE_OPENAI_ASSISTANT_ID'; `
-              Write-Host ('AZURE_OPENAI_ENDPOINT: ' + (`$endpoint -replace '.', '*')); `
-              Write-Host ('AZURE_OPENAI_ASSISTANT_ID: ' + (`$assistantId -replace '.', '*')); `
-              if ([string]::IsNullOrEmpty(`$endpoint) -or [string]::IsNullOrEmpty(`$assistantId)) { `
-                Write-Host 'WARNING: OpenAI settings are empty!'; `
-                exit 1; `
-              } else { `
-                Write-Host 'OpenAI settings configured successfully'; `
-              }"
+              Write-Host ('AZURE_OPENAI_ENDPOINT length: ' + `$endpoint.Length + ' chars'); `
+              Write-Host ('AZURE_OPENAI_ASSISTANT_ID length: ' + `$assistantId.Length + ' chars'); `
+              `$isEmpty = [string]::IsNullOrEmpty(`$endpoint) -or [string]::IsNullOrEmpty(`$assistantId); `
+              Write-Host ('Settings configured: ' + (-not `$isEmpty))"
           Write-Host "Verify result:"
           Write-Host $verifyResult
 
