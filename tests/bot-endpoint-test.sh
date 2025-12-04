@@ -7,15 +7,32 @@ set -e
 
 ENV="${1:-prod}"
 
+# Set environment-specific values
 if [ "$ENV" = "test" ]; then
-    BOT_URL="https://pennie-test-vgn7kzlubtavo.uksouth.cloudapp.azure.com"
     RG_NAME="TMinus15Agents-Test"
     VM_NAME="pennie-vm-test"
+    PIP_NAME="pennie-pip-test"
 else
-    BOT_URL="https://pennie-prod-mmdxqm3w7kjwm.uksouth.cloudapp.azure.com"
     RG_NAME="TMinus15Agents"
     VM_NAME="pennie-vm-prod"
+    PIP_NAME="pennie-pip-prod"
 fi
+
+# Dynamically resolve FQDN from Azure (avoids hardcoding unique suffixes)
+if command -v az &> /dev/null; then
+    VM_FQDN=$(az network public-ip show \
+        --resource-group "$RG_NAME" \
+        --name "$PIP_NAME" \
+        --query "dnsSettings.fqdn" -o tsv 2>/dev/null || echo "")
+fi
+
+# Fall back to pattern if Azure CLI unavailable or query failed
+if [ -z "$VM_FQDN" ]; then
+    echo "WARNING: Could not resolve FQDN from Azure, using pattern-based URL"
+    VM_FQDN="pennie-${ENV}.uksouth.cloudapp.azure.com"
+fi
+
+BOT_URL="https://${VM_FQDN}"
 
 echo "Bot Endpoint Connectivity Test"
 echo "Environment: $ENV"

@@ -112,8 +112,8 @@ try {
         Write-Host "  - Azure OpenAI Assistant ID: $($AzureOpenAiAssistantId.Substring(0, [Math]::Min(15, $AzureOpenAiAssistantId.Length)))..."
     }
 
-    # Write back to file
-    $config | ConvertTo-Json -Depth 10 | Set-Content $ConfigPath -Encoding UTF8
+    # Write back to file (depth 20 to handle deeply nested objects like Kestrel config)
+    $config | ConvertTo-Json -Depth 20 | Set-Content $ConfigPath -Encoding UTF8
 
     Write-Host "Configuration updated successfully:"
     Write-Host "  - TeamsAppId: $($TeamsAppId.Substring(0, 8))..."
