@@ -51,9 +51,9 @@ internal static class MeetingHelpers
             }
         }
 
-        // Pattern 2: Look for a sequence of numbers that could be a meeting ID (10-30 digits)
+        // Pattern 2: Look for a sequence of numbers that could be a meeting ID (10-30 characters including spaces)
         var numberPattern = new Regex(
-            @"(\d[\d\s]{9,30})",
+            @"(\d[\d\s]{9,29})",
             RegexOptions.None,
             RegexTimeout);
 
