@@ -282,8 +282,8 @@ jobs:
             --command-id RunPowerShellScript `
             --scripts "& 'C:\Pennie\bot\deploy-bot-to-vm.ps1'"
 
-          # Step 7: Setup SSL certificate and HTTPS binding
-          Write-Host "Step 7: Setting up SSL certificate..."
+          # Step 7: Setup SSL certificate and Kestrel HTTPS configuration
+          Write-Host "Step 7: Setting up SSL certificate and Kestrel config..."
 
           # Get VM FQDN first (needed for certificate SAN)
           $vmFqdn = az network public-ip show --resource-group $rgName --name "pennie-pip-${{ github.event.inputs.environment || 'test' }}" --query "dnsSettings.fqdn" -o tsv
@@ -293,8 +293,8 @@ jobs:
           }
           Write-Host "VM FQDN: $vmFqdn"
 
-          # Create self-signed SSL certificate and bind to port 443
-          # This is idempotent - skips if cert already exists for this FQDN
+          # Create self-signed SSL certificate and configure Kestrel to use it
+          # The bot uses Kestrel (not HTTP.sys), so we add certificate config to appsettings.json
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
@@ -304,25 +304,18 @@ jobs:
               if (-not `$certExists) { `
                 Write-Host 'Creating self-signed SSL certificate...'; `
                 `$cert = New-SelfSignedCertificate -DnsName `$fqdn -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddYears(2); `
-                `$thumbprint = `$cert.Thumbprint; `
-                Write-Host \"Created certificate with thumbprint: `$thumbprint\"; `
+                Write-Host \"Created certificate with thumbprint: `$(`$cert.Thumbprint)\"; `
               } else { `
-                `$thumbprint = `$certExists.Thumbprint; `
-                Write-Host \"Using existing certificate: `$thumbprint\"; `
+                Write-Host \"Using existing certificate: `$(`$certExists.Thumbprint)\"; `
               }; `
-              `$existingBinding = netsh http show sslcert ipport=0.0.0.0:443 2>&1; `
-              if (`$existingBinding -match 'error' -or `$existingBinding -match 'cannot find') { `
-                Write-Host 'Binding certificate to port 443...'; `
-                netsh http add sslcert ipport=0.0.0.0:443 certhash=`$thumbprint appid='{00000000-0000-0000-0000-000000000000}'; `
-              } else { `
-                Write-Host 'SSL binding already exists on port 443'; `
-              }; `
-              `$env = [Environment]::GetEnvironmentVariable('ASPNETCORE_URLS', 'Machine'); `
-              if (-not `$env -or `$env -notmatch 'https://0.0.0.0:443') { `
-                Write-Host 'Setting ASPNETCORE_URLS...'; `
-                [Environment]::SetEnvironmentVariable('ASPNETCORE_URLS', 'https://0.0.0.0:443;http://0.0.0.0:5000', 'Machine'); `
-              }; `
-              Write-Host 'SSL setup complete'" `
+              Write-Host 'Configuring Kestrel HTTPS in appsettings.json...'; `
+              `$configPath = 'C:\Pennie\bot\appsettings.json'; `
+              `$config = Get-Content `$configPath -Raw | ConvertFrom-Json; `
+              `$kestrel = @{ Endpoints = @{ Https = @{ Url = 'https://0.0.0.0:443'; Certificate = @{ Subject = `$fqdn; Store = 'My'; Location = 'LocalMachine'; AllowInvalid = `$true } }; Http = @{ Url = 'http://0.0.0.0:5000' } } }; `
+              `$config | Add-Member -NotePropertyName 'Kestrel' -NotePropertyValue `$kestrel -Force; `
+              `$config | ConvertTo-Json -Depth 10 | Set-Content `$configPath -Encoding UTF8; `
+              [Environment]::SetEnvironmentVariable('ASPNETCORE_URLS', `$null, 'Machine'); `
+              Write-Host 'Kestrel HTTPS configuration complete'" `
             --parameters "fqdn=$vmFqdn"
 
           # Step 8: Configure bot credentials and URLs from GitHub Secrets
