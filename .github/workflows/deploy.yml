@@ -412,8 +412,11 @@ jobs:
           # Azure OpenAI settings for Pennie AI (required for AI responses)
           $azureOpenAiEndpoint = "${{ secrets.AZURE_OPENAI_ENDPOINT }}"
           $azureOpenAiAssistantId = "${{ secrets.AZURE_OPENAI_ASSISTANT_ID }}"
-          $azureOpenAiEndpointB64 = if ($azureOpenAiEndpoint) { [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($azureOpenAiEndpoint)) } else { "" }
-          $azureOpenAiAssistantIdB64 = if ($azureOpenAiAssistantId) { [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($azureOpenAiAssistantId)) } else { "" }
+          # Always encode - empty string encodes to empty base64
+          $azureOpenAiEndpointB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($azureOpenAiEndpoint))
+          $azureOpenAiAssistantIdB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($azureOpenAiAssistantId))
+          Write-Host "OpenAI Endpoint B64 length: $($azureOpenAiEndpointB64.Length)"
+          Write-Host "OpenAI Assistant ID B64 length: $($azureOpenAiAssistantIdB64.Length)"
 
           # Run the configure script on the VM (includes null safety checks)
           az vm run-command invoke `
@@ -423,8 +426,10 @@ jobs:
             --scripts "param([string]`$AppIdB64, [string]`$PasswordB64, [string]`$Fqdn, [string]`$Backend, [string]`$OpenAiEndpointB64, [string]`$OpenAiAssistantIdB64) `
               `$appId = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$AppIdB64)); `
               `$password = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$PasswordB64)); `
-              `$openAiEndpoint = if (`$OpenAiEndpointB64) { [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$OpenAiEndpointB64)) } else { '' }; `
-              `$openAiAssistantId = if (`$OpenAiAssistantIdB64) { [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$OpenAiAssistantIdB64)) } else { '' }; `
+              `$openAiEndpoint = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$OpenAiEndpointB64)); `
+              `$openAiAssistantId = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$OpenAiAssistantIdB64)); `
+              Write-Host 'OpenAI Endpoint: ' `$openAiEndpoint.Length ' chars'; `
+              Write-Host 'OpenAI Assistant ID: ' `$openAiAssistantId.Length ' chars'; `
               & 'C:\Pennie\bot\configure-bot-settings.ps1' `
                 -ConfigPath 'C:\Pennie\bot\appsettings.json' `
                 -TeamsAppId `$appId `
