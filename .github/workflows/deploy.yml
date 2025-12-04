@@ -207,59 +207,61 @@ jobs:
           Write-Host "Package URL length: $($packageUrl.Length) chars"
 
           # Download and extract package on VM, preserving appsettings.json
-          # NOTE: $args[0] receives the parameter from --parameters
-          $uploadScript = @'
-          $PackageUrl = $args[0]
-          Write-Host "Received package URL: $($PackageUrl.Substring(0, [Math]::Min(50, $PackageUrl.Length)))..."
+          # NOTE: URL is embedded directly in script using double-quoted here-string
+          $uploadScript = @"
+          `$TempDir = "C:\Temp"
+          `$PackagePath = "`$TempDir\pennie-bot.zip"
+          `$ExtractPath = "C:\Pennie\bot"
+          `$AppSettingsPath = "`$ExtractPath\appsettings.json"
+          `$AppSettingsBackup = "`$TempDir\appsettings.json.backup"
+          `$PackageUrl = "$packageUrl"
 
-          $TempDir = "C:\Temp"
-          $PackagePath = "$TempDir\pennie-bot.zip"
-          $ExtractPath = "C:\Pennie\bot"
-          $AppSettingsPath = "$ExtractPath\appsettings.json"
-          $AppSettingsBackup = "$TempDir\appsettings.json.backup"
+          Write-Host "Package URL: `$(`$PackageUrl.Substring(0, [Math]::Min(80, `$PackageUrl.Length)))..."
 
           Write-Host "Creating directories..."
-          New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
-          New-Item -ItemType Directory -Path $ExtractPath -Force | Out-Null
+          New-Item -ItemType Directory -Path `$TempDir -Force | Out-Null
+          New-Item -ItemType Directory -Path `$ExtractPath -Force | Out-Null
 
           # CRITICAL: Backup appsettings.json before deployment
-          # This file contains VM-specific configuration (AppId, TenantId, KeyVault name)
-          if (Test-Path $AppSettingsPath) {
+          if (Test-Path `$AppSettingsPath) {
               Write-Host "Backing up existing appsettings.json..."
-              Copy-Item -Path $AppSettingsPath -Destination $AppSettingsBackup -Force
+              Copy-Item -Path `$AppSettingsPath -Destination `$AppSettingsBackup -Force
           }
 
           Write-Host "Downloading deployment package..."
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          Invoke-WebRequest -Uri $PackageUrl -OutFile $PackagePath -UseBasicParsing
+          try {
+              Invoke-WebRequest -Uri `$PackageUrl -OutFile `$PackagePath -UseBasicParsing -ErrorAction Stop
+              Write-Host "Package downloaded: `$(Get-Item `$PackagePath | Select-Object -ExpandProperty Length) bytes"
+          } catch {
+              Write-Host "ERROR downloading package: `$_"
+              throw
+          }
 
-          Write-Host "Package downloaded: $(Get-Item $PackagePath | Select-Object -ExpandProperty Length) bytes"
-          Write-Host "Extracting to $ExtractPath..."
-          Expand-Archive -Path $PackagePath -DestinationPath $ExtractPath -Force
+          Write-Host "Extracting to `$ExtractPath..."
+          Expand-Archive -Path `$PackagePath -DestinationPath `$ExtractPath -Force
 
           Write-Host "Extracted files:"
-          Get-ChildItem $ExtractPath | ForEach-Object { Write-Host "  - $($_.Name)" }
+          Get-ChildItem `$ExtractPath | ForEach-Object { Write-Host "  - `$(`$_.Name)" }
 
           # CRITICAL: Restore appsettings.json after deployment
-          # The deployed package contains template values, not production configuration
-          if (Test-Path $AppSettingsBackup) {
+          if (Test-Path `$AppSettingsBackup) {
               Write-Host "Restoring appsettings.json from backup..."
-              Copy-Item -Path $AppSettingsBackup -Destination $AppSettingsPath -Force
-              Remove-Item -Path $AppSettingsBackup -Force
+              Copy-Item -Path `$AppSettingsBackup -Destination `$AppSettingsPath -Force
+              Remove-Item -Path `$AppSettingsBackup -Force
               Write-Host "appsettings.json restored successfully"
           } else {
               Write-Host "WARNING: No appsettings.json backup found - manual configuration required"
           }
 
           Write-Host "Upload complete"
-          '@
+          "@
 
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts $uploadScript `
-            --parameters $packageUrl
+            --scripts $uploadScript
 
           # Run deployment script (now included in the extracted package)
           $runDeployScript = 'C:\Pennie\bot\deploy-bot-to-vm.ps1'
