@@ -214,7 +214,7 @@ jobs:
           `$ExtractPath = 'C:\Pennie\bot'
           `$AppSettingsPath = 'C:\Pennie\bot\appsettings.json'
           `$AppSettingsBackup = 'C:\Temp\appsettings.json.backup'
-          `$PackageUrl = '$packageUrl'
+          `$PackageUrl = "$packageUrl"
 
           Write-Host "Package URL: `$(`$PackageUrl.Substring(0, [Math]::Min(80, `$PackageUrl.Length)))..."
 
