@@ -206,29 +206,38 @@ jobs:
           Write-Host "Deploying to VM: $vmName in RG: $rgName"
           Write-Host "Package URL length: $($packageUrl.Length) chars"
 
+          # Encode URL as Base64 to safely pass through (URL contains special chars)
+          $urlBytes = [System.Text.Encoding]::UTF8.GetBytes($packageUrl)
+          $urlBase64 = [Convert]::ToBase64String($urlBytes)
+          Write-Host "URL encoded to Base64 ($($urlBase64.Length) chars)"
+
           # Download and extract package on VM, preserving appsettings.json
-          # NOTE: URL is embedded directly in script. Using single quotes for paths.
+          # The URL is Base64 encoded to avoid special character issues
           $uploadScript = @"
+          Write-Host 'Starting deployment script...'
           `$TempDir = 'C:\Temp'
           `$PackagePath = 'C:\Temp\pennie-bot.zip'
           `$ExtractPath = 'C:\Pennie\bot'
           `$AppSettingsPath = 'C:\Pennie\bot\appsettings.json'
           `$AppSettingsBackup = 'C:\Temp\appsettings.json.backup'
-          `$PackageUrl = "$packageUrl"
 
-          Write-Host "Package URL: `$(`$PackageUrl.Substring(0, [Math]::Min(80, `$PackageUrl.Length)))..."
+          # Decode Base64 URL
+          `$urlBase64 = '$urlBase64'
+          `$urlBytes = [Convert]::FromBase64String(`$urlBase64)
+          `$PackageUrl = [System.Text.Encoding]::UTF8.GetString(`$urlBytes)
+          Write-Host "Package URL decoded: `$(`$PackageUrl.Substring(0, [Math]::Min(80, `$PackageUrl.Length)))..."
 
-          Write-Host "Creating directories..."
+          Write-Host 'Creating directories...'
           New-Item -ItemType Directory -Path `$TempDir -Force | Out-Null
           New-Item -ItemType Directory -Path `$ExtractPath -Force | Out-Null
 
           # CRITICAL: Backup appsettings.json before deployment
           if (Test-Path `$AppSettingsPath) {
-              Write-Host "Backing up existing appsettings.json..."
+              Write-Host 'Backing up existing appsettings.json...'
               Copy-Item -Path `$AppSettingsPath -Destination `$AppSettingsBackup -Force
           }
 
-          Write-Host "Downloading deployment package..."
+          Write-Host 'Downloading deployment package...'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           try {
               Invoke-WebRequest -Uri `$PackageUrl -OutFile `$PackagePath -UseBasicParsing -ErrorAction Stop
@@ -241,20 +250,20 @@ jobs:
           Write-Host "Extracting to `$ExtractPath..."
           Expand-Archive -Path `$PackagePath -DestinationPath `$ExtractPath -Force
 
-          Write-Host "Extracted files:"
+          Write-Host 'Extracted files:'
           Get-ChildItem `$ExtractPath | ForEach-Object { Write-Host "  - `$(`$_.Name)" }
 
           # CRITICAL: Restore appsettings.json after deployment
           if (Test-Path `$AppSettingsBackup) {
-              Write-Host "Restoring appsettings.json from backup..."
+              Write-Host 'Restoring appsettings.json from backup...'
               Copy-Item -Path `$AppSettingsBackup -Destination `$AppSettingsPath -Force
               Remove-Item -Path `$AppSettingsBackup -Force
-              Write-Host "appsettings.json restored successfully"
+              Write-Host 'appsettings.json restored successfully'
           } else {
-              Write-Host "WARNING: No appsettings.json backup found - manual configuration required"
+              Write-Host 'WARNING: No appsettings.json backup found - manual configuration required'
           }
 
-          Write-Host "Upload complete"
+          Write-Host 'Upload complete'
           "@
 
           az vm run-command invoke `
