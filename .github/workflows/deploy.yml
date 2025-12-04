@@ -253,8 +253,9 @@ jobs:
           # Include deployment and configuration scripts in the package
           Copy-Item ./scripts/deploy-bot-to-vm.ps1 ./publish/
           Copy-Item ./scripts/configure-bot-settings.ps1 ./publish/
+          Copy-Item ./scripts/configure-ssl.ps1 ./publish/
           Compress-Archive -Path ./publish/* -DestinationPath ./pennie-bot.zip
-          Write-Host "Created deployment package: pennie-bot.zip (includes deploy and config scripts)"
+          Write-Host "Created deployment package: pennie-bot.zip (includes deploy, config, and SSL scripts)"
 
       - name: Upload to Azure Storage
         run: |
@@ -356,43 +357,31 @@ jobs:
             --command-id RunPowerShellScript `
             --scripts "& 'C:\Pennie\bot\deploy-bot-to-vm.ps1'"
 
-          # Step 7: Setup SSL certificate and Kestrel HTTPS configuration
-          Write-Host "Step 7: Setting up SSL certificate and Kestrel config..."
+          # Step 7: Setup SSL certificate using Let's Encrypt
+          # Requires LE_EMAIL secret to be configured
+          Write-Host "Step 7: Setting up Let's Encrypt SSL certificate..."
 
-          # Get VM FQDN first (needed for certificate SAN)
+          # Get VM FQDN (needed for certificate)
           $vmFqdn = az network public-ip show --resource-group $rgName --name "pennie-pip-${{ github.event.inputs.environment || 'test' }}" --query "dnsSettings.fqdn" -o tsv
           if (-not $vmFqdn) {
-            Write-Host "Warning: Could not get VM FQDN, using placeholder"
-            $vmFqdn = "pennie-vm-${{ github.event.inputs.environment || 'test' }}.uksouth.cloudapp.azure.com"
+            Write-Error "Could not get VM FQDN - required for SSL certificate"
+            exit 1
           }
           Write-Host "VM FQDN: $vmFqdn"
 
-          # Create self-signed SSL certificate and configure Kestrel to use it
-          # The bot uses Kestrel (not HTTP.sys), so we add certificate config to appsettings.json
+          # Verify LE_EMAIL secret is configured
+          $leEmail = "${{ secrets.LE_EMAIL }}"
+          if (-not $leEmail) {
+            Write-Error "LE_EMAIL secret not configured. Required for Let's Encrypt certificate."
+            exit 1
+          }
+
+          # Run the SSL configuration script on the VM
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts "param([string]`$fqdn) `
-              `$certExists = Get-ChildItem Cert:\LocalMachine\My | Where-Object { `$_.Subject -like '*' + `$fqdn + '*' }; `
-              if (-not `$certExists) { `
-                Write-Host 'Creating self-signed SSL certificate...'; `
-                `$cert = New-SelfSignedCertificate -DnsName `$fqdn -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddYears(2); `
-                `$thumbprint = `$cert.Thumbprint; `
-                Write-Host ('Created certificate with thumbprint: ' + `$thumbprint); `
-              } else { `
-                `$thumbprint = `$certExists.Thumbprint; `
-                Write-Host ('Using existing certificate: ' + `$thumbprint); `
-              }; `
-              Write-Host 'Configuring Kestrel HTTPS in appsettings.json...'; `
-              `$configPath = 'C:\Pennie\bot\appsettings.json'; `
-              `$config = Get-Content `$configPath -Raw | ConvertFrom-Json; `
-              `$kestrel = @{ Endpoints = @{ Https = @{ Url = 'https://0.0.0.0:443'; Certificate = @{ Subject = `$fqdn; Store = 'My'; Location = 'LocalMachine'; AllowInvalid = `$true } }; Http = @{ Url = 'http://0.0.0.0:5000' } } }; `
-              `$config | Add-Member -NotePropertyName 'Kestrel' -NotePropertyValue `$kestrel -Force; `
-              `$config | ConvertTo-Json -Depth 10 | Set-Content `$configPath -Encoding UTF8; `
-              [Environment]::SetEnvironmentVariable('ASPNETCORE_URLS', `$null, 'Machine'); `
-              Write-Host 'Kestrel HTTPS configuration complete'" `
-            --parameters "fqdn=$vmFqdn"
+            --scripts "& 'C:\Pennie\bot\configure-ssl.ps1' -Fqdn '$vmFqdn' -Email '$leEmail'"
 
           # Step 8: Configure bot credentials and URLs from GitHub Secrets
           Write-Host "Step 8: Configuring bot credentials..."
