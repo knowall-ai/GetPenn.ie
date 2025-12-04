@@ -124,6 +124,71 @@ jobs:
           echo "Getting deployment outputs..."
           # Extract outputs from deployment (VM IP, Key Vault name, etc.)
 
+      - name: Ensure Azure Bot registration exists
+        run: |
+          # Azure Bot Service registration is required for Teams messaging
+          # This creates the bot registration if it doesn't exist
+          ENV="${{ needs.set-environment.outputs.environment }}"
+          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
+          APP_ID="${{ secrets.TEAMS_APP_ID }}"
+
+          if [ "$ENV" = "prod" ]; then
+            BOT_NAME="pennie-bot"
+            BOT_DISPLAY="Pennie the Prepper"
+          else
+            BOT_NAME="pennie-bot-${ENV}"
+            BOT_DISPLAY="Pennie the Prepper (${ENV})"
+          fi
+
+          # Get VM FQDN for messaging endpoint
+          VM_FQDN=$(az network public-ip show \
+            --resource-group "$RG" \
+            --name "pennie-pip-${ENV}" \
+            --query "dnsSettings.fqdn" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VM_FQDN" ]; then
+            echo "::warning::Could not get VM FQDN - bot registration may need manual endpoint update"
+            VM_FQDN="pennie-${ENV}.uksouth.cloudapp.azure.com"
+          fi
+
+          ENDPOINT="https://${VM_FQDN}/api/messages"
+          echo "Bot endpoint: $ENDPOINT"
+
+          # Check if bot registration exists
+          EXISTING=$(az resource list \
+            --resource-type "Microsoft.BotService/botServices" \
+            --query "[?name=='$BOT_NAME'].name" -o tsv 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ]; then
+            echo "Bot registration '$BOT_NAME' already exists"
+            # Update endpoint if it changed
+            az bot update \
+              --resource-group "$RG" \
+              --name "$BOT_NAME" \
+              --endpoint "$ENDPOINT" \
+              2>/dev/null || echo "::warning::Could not update bot endpoint"
+          else
+            echo "Creating bot registration '$BOT_NAME'..."
+            az bot create \
+              --resource-group "$RG" \
+              --name "$BOT_NAME" \
+              --kind registration \
+              --sku F0 \
+              --appid "$APP_ID" \
+              --endpoint "$ENDPOINT" \
+              --display-name "$BOT_DISPLAY" \
+              --description "Pennie the Prepper - AI Business Analyst for Teams"
+
+            # Enable Teams channel
+            echo "Enabling Teams channel..."
+            az bot msteams create \
+              --resource-group "$RG" \
+              --name "$BOT_NAME" \
+              2>/dev/null || echo "::warning::Teams channel may already exist"
+
+            echo "✅ Bot registration '$BOT_NAME' created with Teams channel"
+          fi
+
   build-bot:
     name: Build Teams Bot
     runs-on: windows-latest
