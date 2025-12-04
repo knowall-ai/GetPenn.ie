@@ -207,14 +207,14 @@ jobs:
           Write-Host "Package URL length: $($packageUrl.Length) chars"
 
           # Download and extract package on VM, preserving appsettings.json
-          # NOTE: URL is embedded directly in script using double-quoted here-string
+          # NOTE: URL is embedded directly in script. Using single quotes for paths.
           $uploadScript = @"
-          `$TempDir = "C:\Temp"
-          `$PackagePath = "`$TempDir\pennie-bot.zip"
-          `$ExtractPath = "C:\Pennie\bot"
-          `$AppSettingsPath = "`$ExtractPath\appsettings.json"
-          `$AppSettingsBackup = "`$TempDir\appsettings.json.backup"
-          `$PackageUrl = "$packageUrl"
+          `$TempDir = 'C:\Temp'
+          `$PackagePath = 'C:\Temp\pennie-bot.zip'
+          `$ExtractPath = 'C:\Pennie\bot'
+          `$AppSettingsPath = 'C:\Pennie\bot\appsettings.json'
+          `$AppSettingsBackup = 'C:\Temp\appsettings.json.backup'
+          `$PackageUrl = '$packageUrl'
 
           Write-Host "Package URL: `$(`$PackageUrl.Substring(0, [Math]::Min(80, `$PackageUrl.Length)))..."
 
