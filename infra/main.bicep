@@ -94,10 +94,18 @@ output location string = location
 output applicationInsightsName string = monitoring.outputs.applicationInsightsName
 output applicationInsightsConnectionString string = monitoring.outputs.applicationInsightsConnectionString
 output storageAccountName string = monitoring.outputs.storageAccountName
+#disable-next-line BCP318 // Condition matches module deployment condition
 output aiHubName string = deployAiServices ? aiServices.outputs.aiHubName : 'not-deployed'
+#disable-next-line BCP318 // Condition matches module deployment condition
 output aiProjectName string = deployAiServices ? aiServices.outputs.aiProjectName : 'not-deployed'
+#disable-next-line BCP318 // Condition matches module deployment condition
 output speechServiceEndpoint string = deployAiServices ? aiServices.outputs.speechServiceEndpoint : 'not-deployed'
+#disable-next-line BCP318 // Condition matches module deployment condition
 output openAiEndpoint string = deployAiServices ? aiServices.outputs.openAiEndpoint : 'not-deployed'
+// Note: VM outputs depend on deployVM flag, not exposing vmAdminPassword value
+#disable-next-line BCP318 outputs-should-not-contain-secrets // Condition check, not exposing secret
 output vmName string = (deployVM && !empty(vmAdminPassword)) ? windowsVM.outputs.vmName : 'not-deployed'
+#disable-next-line BCP318 outputs-should-not-contain-secrets // Condition check, not exposing secret
 output vmPublicIP string = (deployVM && !empty(vmAdminPassword)) ? windowsVM.outputs.vmPublicIP : 'not-deployed'
+#disable-next-line BCP318 outputs-should-not-contain-secrets // Condition check, not exposing secret
 output vmPrivateIP string = (deployVM && !empty(vmAdminPassword)) ? windowsVM.outputs.vmPrivateIP : 'not-deployed'

@@ -2,8 +2,11 @@
 
 param location string
 param environmentName string
+#disable-next-line no-unused-params // Used in vmExtension commandToExecute string interpolation
 param applicationInsightsConnectionString string
+#disable-next-line no-unused-params // Used in vmExtension commandToExecute string interpolation
 param devOpsOrg string
+#disable-next-line no-unused-params // Used in vmExtension commandToExecute string interpolation
 param devOpsProject string
 param tags object
 
