@@ -967,8 +967,44 @@ zip pennie-app-test.zip manifest.test.json color.png outline.png
 
 [source,bash]
 ----
-./scripts/deploy-teams-app.sh bot/teams-manifest/pennie-app-test.zip
+./scripts/deploy-teams-app.sh --env test --create
 ----
+
+==== 4a. Make App Visible to Users
+
+After uploading, the app is in the catalog but users must **add** it to use it.
+
+**Where Users Find Custom Apps**:
+
+1. In Teams, go to **Apps** (left sidebar)
+2. Look for **"Built for your org"** section
+3. Find "Pennie the Prepper" and click **Add**
+
+NOTE: Custom apps do NOT appear in regular Teams search. Users must look in "Built for your org".
+
+**Pre-Install for All Users (Optional)**:
+
+To automatically install the app for everyone (so they don't need to manually add it):
+
+1. **Teams Admin Center** → **Teams apps** → **Setup policies**
+2. Edit **Global (Org-wide default)** or create a new policy
+3. Under **Installed apps**, click **Add apps**
+4. Search for "Pennie the Prepper" and add it
+5. Optionally **pin** it to make it visible in users' sidebar
+
+[cols="1,2"]
+|===
+|Action |Who it affects
+
+|Upload to Admin Center
+|Makes app **available** in org catalog
+
+|User clicks "Add"
+|Installs app **for that user only**
+
+|Admin pins via Setup Policy
+|Pre-installs for **everyone** in policy
+|===
 
 ==== 5. Configure GitHub Environment Secrets
 
@@ -1426,25 +1462,46 @@ Located at: `scripts/deploy-teams-app.sh`
 
 **What It Does**:
 
-1. Creates Teams app package from manifest.json and icons (with `--create` flag)
-2. Gets access token for Microsoft Graph API
-3. Checks if app already exists in catalog
-4. Uploads new app or updates existing app
-5. Provides manual upload instructions on failure
+1. Selects environment-specific manifest (`manifest.prod.json` or `manifest.test.json`)
+2. Creates Teams app package with correct `manifest.json` inside (with `--create` flag)
+3. Gets access token for Microsoft Graph API
+4. Checks if app already exists in catalog
+5. Uploads new app or updates existing app
+6. Provides manual upload instructions on failure
 
 **Usage**:
 
 [source,bash]
 ----
-# Deploy existing package
-./scripts/deploy-teams-app.sh
+# Build and deploy production package
+./scripts/deploy-teams-app.sh --env prod --create
 
-# Create package then deploy
-./scripts/deploy-teams-app.sh --create
+# Build and deploy test package
+./scripts/deploy-teams-app.sh --env test --create
+
+# Deploy existing package (defaults to prod)
+./scripts/deploy-teams-app.sh --env prod
 
 # Show help
 ./scripts/deploy-teams-app.sh --help
 ----
+
+**Environment-Specific Manifests**:
+
+[cols="1,2,2"]
+|===
+|Environment |Manifest File |Package Created
+
+|prod
+|`manifest.prod.json`
+|`pennie-app-prod-v1.6.0.zip`
+
+|test
+|`manifest.test.json`
+|`pennie-app-test-v1.6.0.zip`
+|===
+
+NOTE: Teams requires the manifest to be named exactly `manifest.json` inside the zip. The script handles this automatically by copying the environment-specific manifest.
 
 **Required Permissions**:
 

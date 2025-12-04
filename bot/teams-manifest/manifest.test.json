@@ -1,8 +1,8 @@
 {
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
   "manifestVersion": "1.17",
-  "version": "1.0.0",
-  "id": "{{BOT_APP_ID}}",
+  "version": "1.6.0",
+  "id": "0f3c7372-d0f6-4da4-8334-dd03feb521c9",
   "developer": {
     "name": "KnowAll Ltd",
     "websiteUrl": "https://getpenn.ie",
@@ -10,12 +10,12 @@
     "termsOfUseUrl": "https://getpenn.ie/terms"
   },
   "name": {
-    "short": "Pennie Test",
-    "full": "Pennie the Prepper (Test Environment)"
+    "short": "Pennie the Prepper (Test)",
+    "full": "Pennie the Prepper - Azure DevOps Assistant (Test)"
   },
   "description": {
-    "short": "TEST - AI assistant for Azure DevOps backlog management",
-    "full": "TEST ENVIRONMENT - Pennie the Prepper is an AI-powered assistant that helps you manage Azure DevOps projects."
+    "short": "AI assistant for Azure DevOps backlog management (TEST)",
+    "full": "Pennie the Prepper is an AI-powered assistant that helps you manage Azure DevOps projects. Ask questions like 'What projects do we have in DevOps?' and get instant answers. This is the TEST environment."
   },
   "icons": {
     "color": "color.png",
@@ -24,7 +24,7 @@
   "accentColor": "#9C27B0",
   "bots": [
     {
-      "botId": "{{BOT_APP_ID}}",
+      "botId": "131b79ec-a659-4b35-aaf8-92185d97e457",
       "scopes": [
         "personal",
         "team",
@@ -57,7 +57,7 @@
   ],
   "configurableTabs": [
     {
-      "configurationUrl": "{{BOT_BASE_URL}}/config.html",
+      "configurationUrl": "https://pennie-test-vgn7kzlubtavo.uksouth.cloudapp.azure.com/config.html",
       "canUpdateConfiguration": true,
       "scopes": ["team", "groupChat"],
       "context": [
@@ -72,11 +72,11 @@
     "messageTeamMembers"
   ],
   "validDomains": [
-    "{{BOT_DOMAIN}}"
+    "pennie-test-vgn7kzlubtavo.uksouth.cloudapp.azure.com"
   ],
   "webApplicationInfo": {
-    "id": "{{BOT_APP_ID}}",
-    "resource": "api://botid-{{BOT_APP_ID}}"
+    "id": "131b79ec-a659-4b35-aaf8-92185d97e457",
+    "resource": "api://botid-131b79ec-a659-4b35-aaf8-92185d97e457"
   },
   "authorization": {
     "permissions": {

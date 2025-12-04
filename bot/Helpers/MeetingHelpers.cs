@@ -43,8 +43,8 @@ internal static class MeetingHelpers
             {
                 id = id.Substring(0, passcodeIndex).Trim();
             }
-            // Remove any non-digit/space chars at the end
-            id = Regex.Replace(id, @"[^\d\s]+$", "").Trim();
+            // Remove any non-digit/space chars at the end (with timeout for ReDoS protection)
+            id = Regex.Replace(id, @"[^\d\s]+$", "", RegexOptions.None, RegexTimeout).Trim();
             if (IsValidMeetingIdFormat(id))
             {
                 return id;
