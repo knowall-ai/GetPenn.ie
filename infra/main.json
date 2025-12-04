@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.38.33.27573",
-      "templateHash": "1251764891236423214"
+      "templateHash": "8376742722193489235"
     }
   },
   "parameters": {
@@ -53,12 +53,6 @@
       "type": "string",
       "metadata": {
         "description": "Azure DevOps project name"
-      }
-    },
-    "teamsAppId": {
-      "type": "securestring",
-      "metadata": {
-        "description": "Teams bot app ID (from Azure AD app registration)"
       }
     },
     "tags": {
@@ -221,134 +215,6 @@
             "storageAccountId": {
               "type": "string",
               "value": "[resourceId('Microsoft.Storage/storageAccounts', format('penniestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
-            }
-          }
-        }
-      },
-      "dependsOn": [
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('resourceGroupName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2025-04-01",
-      "name": "keyvault-deployment",
-      "resourceGroup": "[parameters('resourceGroupName')]",
-      "properties": {
-        "expressionEvaluationOptions": {
-          "scope": "inner"
-        },
-        "mode": "Incremental",
-        "parameters": {
-          "location": {
-            "value": "[parameters('location')]"
-          },
-          "environmentName": {
-            "value": "[parameters('environmentName')]"
-          },
-          "tags": {
-            "value": "[parameters('tags')]"
-          },
-          "teamsAppId": {
-            "value": "[parameters('teamsAppId')]"
-          }
-        },
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "metadata": {
-            "_generator": {
-              "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "6266515167588546900"
-            }
-          },
-          "parameters": {
-            "location": {
-              "type": "string"
-            },
-            "environmentName": {
-              "type": "string"
-            },
-            "tags": {
-              "type": "object"
-            },
-            "teamsAppId": {
-              "type": "securestring"
-            }
-          },
-          "resources": [
-            {
-              "type": "Microsoft.KeyVault/vaults",
-              "apiVersion": "2023-02-01",
-              "name": "[format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]",
-              "location": "[parameters('location')]",
-              "tags": "[parameters('tags')]",
-              "properties": {
-                "sku": {
-                  "family": "A",
-                  "name": "standard"
-                },
-                "tenantId": "[subscription().tenantId]",
-                "enableRbacAuthorization": true,
-                "enableSoftDelete": true,
-                "softDeleteRetentionInDays": 90,
-                "enablePurgeProtection": true,
-                "networkAcls": {
-                  "defaultAction": "Allow",
-                  "bypass": "AzureServices"
-                }
-              }
-            },
-            {
-              "type": "Microsoft.KeyVault/vaults/secrets",
-              "apiVersion": "2023-02-01",
-              "name": "[format('{0}/{1}', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)), 'teams-app-id')]",
-              "properties": {
-                "value": "[parameters('teamsAppId')]",
-                "contentType": "text/plain"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
-              ]
-            },
-            {
-              "type": "Microsoft.KeyVault/vaults/secrets",
-              "apiVersion": "2023-02-01",
-              "name": "[format('{0}/{1}', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)), 'teams-app-password')]",
-              "properties": {
-                "value": "PLACEHOLDER-SET-VIA-PIPELINE",
-                "contentType": "text/plain"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
-              ]
-            },
-            {
-              "type": "Microsoft.KeyVault/vaults/secrets",
-              "apiVersion": "2023-02-01",
-              "name": "[format('{0}/{1}', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)), 'devops-pat')]",
-              "properties": {
-                "value": "PLACEHOLDER-SET-VIA-PIPELINE",
-                "contentType": "text/plain"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
-              ]
-            }
-          ],
-          "outputs": {
-            "keyVaultName": {
-              "type": "string",
-              "value": "[format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]"
-            },
-            "keyVaultId": {
-              "type": "string",
-              "value": "[resourceId('Microsoft.KeyVault/vaults', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
-            },
-            "keyVaultUri": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))), '2023-02-01').vaultUri]"
             }
           }
         }
@@ -578,9 +444,6 @@
           "environmentName": {
             "value": "[parameters('environmentName')]"
           },
-          "keyVaultName": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'keyvault-deployment'), '2025-04-01').outputs.keyVaultName.value]"
-          },
           "applicationInsightsConnectionString": {
             "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'monitoring-deployment'), '2025-04-01').outputs.applicationInsightsConnectionString.value]"
           },
@@ -601,7 +464,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.38.33.27573",
-              "templateHash": "15961813009083017178"
+              "templateHash": "8358108851875092257"
             }
           },
           "parameters": {
@@ -609,9 +472,6 @@
               "type": "string"
             },
             "environmentName": {
-              "type": "string"
-            },
-            "keyVaultName": {
               "type": "string"
             },
             "applicationInsightsConnectionString": {
@@ -638,6 +498,59 @@
               "defaultValue": "Standard_D2s_v3",
               "metadata": {
                 "description": "VM size for the Windows Server"
+              }
+            },
+            "useSpotVM": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Use Azure Spot VM for cost savings (can be evicted)"
+              }
+            },
+            "spotEvictionPolicy": {
+              "type": "string",
+              "defaultValue": "Deallocate",
+              "allowedValues": [
+                "Deallocate",
+                "Delete"
+              ],
+              "metadata": {
+                "description": "Spot VM eviction policy: Deallocate (preserve disk) or Delete"
+              }
+            },
+            "spotMaxPrice": {
+              "type": "int",
+              "defaultValue": -1,
+              "metadata": {
+                "description": "Max price for Spot VM (-1 = up to on-demand price)"
+              }
+            },
+            "enableAutoShutdown": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Enable auto-shutdown schedule"
+              }
+            },
+            "autoShutdownTime": {
+              "type": "string",
+              "defaultValue": "1900",
+              "metadata": {
+                "description": "Auto-shutdown time in 24h format (e.g., 1900 for 7pm)"
+              }
+            },
+            "autoShutdownTimezone": {
+              "type": "string",
+              "defaultValue": "GMT Standard Time",
+              "metadata": {
+                "description": "Auto-shutdown timezone"
+              }
+            },
+            "existingOpenAiResourceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of an existing Azure OpenAI resource for RBAC (optional, for cross-region deployments)"
               }
             }
           },
@@ -759,7 +672,7 @@
               "apiVersion": "2023-09-01",
               "name": "[format('pennie-vm-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
-              "tags": "[parameters('tags')]",
+              "tags": "[union(parameters('tags'), if(parameters('useSpotVM'), createObject('SpotVM', 'true'), createObject()))]",
               "identity": {
                 "type": "SystemAssigned"
               },
@@ -767,6 +680,9 @@
                 "hardwareProfile": {
                   "vmSize": "[parameters('vmSize')]"
                 },
+                "priority": "[if(parameters('useSpotVM'), 'Spot', 'Regular')]",
+                "evictionPolicy": "[if(parameters('useSpotVM'), parameters('spotEvictionPolicy'), null())]",
+                "billingProfile": "[if(parameters('useSpotVM'), createObject('maxPrice', parameters('spotMaxPrice')), null())]",
                 "osProfile": {
                   "computerName": "[format('pennie-{0}', parameters('environmentName'))]",
                   "adminUsername": "[parameters('adminUsername')]",
@@ -816,6 +732,29 @@
               ]
             },
             {
+              "condition": "[parameters('enableAutoShutdown')]",
+              "type": "Microsoft.DevTestLab/schedules",
+              "apiVersion": "2018-09-15",
+              "name": "[format('shutdown-computevm-{0}', format('pennie-vm-{0}', parameters('environmentName')))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "status": "Enabled",
+                "taskType": "ComputeVmShutdownTask",
+                "dailyRecurrence": {
+                  "time": "[parameters('autoShutdownTime')]"
+                },
+                "timeZoneId": "[parameters('autoShutdownTimezone')]",
+                "targetResourceId": "[resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName')))]",
+                "notificationSettings": {
+                  "status": "Disabled"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName')))]"
+              ]
+            },
+            {
               "type": "Microsoft.Compute/virtualMachines/extensions",
               "apiVersion": "2023-09-01",
               "name": "[format('{0}/{1}', format('pennie-vm-{0}', parameters('environmentName')), 'InstallDependencies')]",
@@ -831,20 +770,6 @@
                 "protectedSettings": {
                   "commandToExecute": "        powershell.exe -ExecutionPolicy Bypass -Command \"\n          # Install Chocolatey\n          Set-ExecutionPolicy Bypass -Scope Process -Force;\n          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;\n          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'));\n\n          # Install Node.js LTS\n          choco install nodejs-lts -y;\n\n          # Install .NET 8.0 SDK\n          choco install dotnet-sdk -y;\n\n          # Install NSSM (for running services)\n          choco install nssm -y;\n\n          # Refresh environment variables\n          refreshenv;\n\n          # Install Azure DevOps MCP Server globally\n          npm install -g @azure-devops/mcp;\n\n          # Create application directories\n          New-Item -ItemType Directory -Path 'C:\\\\Pennie' -Force;\n          New-Item -ItemType Directory -Path 'C:\\\\Pennie\\\\bot' -Force;\n          New-Item -ItemType Directory -Path 'C:\\\\Pennie\\\\mcp' -Force;\n          New-Item -ItemType Directory -Path 'C:\\\\Pennie\\\\logs' -Force;\n\n          # Set environment variables\n          [System.Environment]::SetEnvironmentVariable('AZURE_DEVOPS_ORG', '${devOpsOrg}', 'Machine');\n          [System.Environment]::SetEnvironmentVariable('AZURE_DEVOPS_PROJECT', '${devOpsProject}', 'Machine');\n          [System.Environment]::SetEnvironmentVariable('APPLICATIONINSIGHTS_CONNECTION_STRING', '${applicationInsightsConnectionString}', 'Machine');\n\n          Write-Host 'Dependencies installed successfully';\n        \"\n      "
                 }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName')))]"
-              ]
-            },
-            {
-              "type": "Microsoft.Authorization/roleAssignments",
-              "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('keyVaultName'))]",
-              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName'))), 'Key Vault Secrets User')]",
-              "properties": {
-                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]",
-                "principalId": "[reference(resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName'))), '2023-09-01', 'full').identity.principalId]",
-                "principalType": "ServicePrincipal"
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName')))]"
@@ -875,12 +800,19 @@
             "vmPrincipalId": {
               "type": "string",
               "value": "[reference(resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName'))), '2023-09-01', 'full').identity.principalId]"
+            },
+            "isSpotVM": {
+              "type": "bool",
+              "value": "[parameters('useSpotVM')]"
+            },
+            "autoShutdownEnabled": {
+              "type": "bool",
+              "value": "[parameters('enableAutoShutdown')]"
             }
           }
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'keyvault-deployment')]",
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'monitoring-deployment')]",
         "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('resourceGroupName'))]"
       ]
@@ -894,10 +826,6 @@
     "location": {
       "type": "string",
       "value": "[parameters('location')]"
-    },
-    "keyVaultName": {
-      "type": "string",
-      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'keyvault-deployment'), '2025-04-01').outputs.keyVaultName.value]"
     },
     "applicationInsightsName": {
       "type": "string",

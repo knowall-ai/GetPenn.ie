@@ -10,6 +10,13 @@ param tags object
 @description('Admin username for the VM')
 param adminUsername string = 'pennieadmin'
 
+@description('Admin password for the VM - REQUIRED: Must be provided via GitHub Secrets or parameters')
+@secure()
+param adminPassword string
+
+@description('Allowed source IP/CIDR for RDP access. Resolve your dynamic DNS hostname to IP before deployment. Default blocks all RDP.')
+param allowedRdpSourceIP string = ''
+
 @description('VM size for the Windows Server')
 param vmSize string = 'Standard_D2s_v3' // 2 vCPU, 8 GB RAM
 
@@ -61,12 +68,13 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
 }
 
 // Network Security Group
+// RDP rule is only created if allowedRdpSourceIP is provided (security best practice)
 resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
   name: 'pennie-nsg-${environmentName}'
   location: location
   tags: tags
   properties: {
-    securityRules: [
+    securityRules: concat([
       {
         name: 'AllowHTTPS'
         properties: {
@@ -80,6 +88,7 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
           destinationAddressPrefix: '*'
         }
       }
+    ], !empty(allowedRdpSourceIP) ? [
       {
         name: 'AllowRDP'
         properties: {
@@ -89,11 +98,11 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
           protocol: 'Tcp'
           sourcePortRange: '*'
           destinationPortRange: '3389'
-          sourceAddressPrefix: '*' // Restrict to your IP in production
+          sourceAddressPrefix: allowedRdpSourceIP
           destinationAddressPrefix: '*'
         }
       }
-    ]
+    ] : [])
   }
 }
 
@@ -160,7 +169,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
     osProfile: {
       computerName: 'pennie-${environmentName}'
       adminUsername: adminUsername
-      adminPassword: 'P@ssw0rd!${uniqueString(resourceGroup().id)}' // Change via GitHub Secrets in deployment
+      adminPassword: adminPassword
       windowsConfiguration: {
         enableAutomaticUpdates: true
         provisionVMAgent: true

@@ -84,6 +84,27 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Resolve RDP source IP from dynamic DNS
+        id: resolve-dns
+        run: |
+          # Resolve dynamic DNS hostname to IP for RDP access restriction
+          # Uses ADMIN_DDNS_HOSTNAME secret (e.g., bank.knowall.ai)
+          DDNS_HOSTNAME="${{ secrets.ADMIN_DDNS_HOSTNAME }}"
+          if [ -n "$DDNS_HOSTNAME" ]; then
+            echo "Resolving $DDNS_HOSTNAME..."
+            RESOLVED_IP=$(dig +short "$DDNS_HOSTNAME" | head -1)
+            if [ -n "$RESOLVED_IP" ]; then
+              echo "Resolved to: $RESOLVED_IP"
+              echo "rdp_source_ip=$RESOLVED_IP" >> $GITHUB_OUTPUT
+            else
+              echo "::warning::Could not resolve $DDNS_HOSTNAME - RDP will be disabled"
+              echo "rdp_source_ip=" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No ADMIN_DDNS_HOSTNAME configured - RDP will be disabled"
+            echo "rdp_source_ip=" >> $GITHUB_OUTPUT
+          fi
+
       - name: Deploy Bicep templates
         uses: azure/arm-deploy@v2
         with:
@@ -93,6 +114,8 @@ jobs:
           parameters: >
             @./infra/main.parameters.${{ needs.set-environment.outputs.environment }}.json
             environmentName=${{ needs.set-environment.outputs.environment }}
+            vmAdminPassword=${{ secrets.VM_ADMIN_PASSWORD }}
+            allowedRdpSourceIP=${{ steps.resolve-dns.outputs.rdp_source_ip }}
           failOnStdErr: false
 
       - name: Get deployment outputs
@@ -259,16 +282,52 @@ jobs:
             --command-id RunPowerShellScript `
             --scripts "& 'C:\Pennie\bot\deploy-bot-to-vm.ps1'"
 
-          # Step 7: Configure bot credentials and URLs from GitHub Secrets
-          Write-Host "Step 7: Configuring bot credentials..."
+          # Step 7: Setup SSL certificate and HTTPS binding
+          Write-Host "Step 7: Setting up SSL certificate..."
 
-          # Get VM FQDN
+          # Get VM FQDN first (needed for certificate SAN)
           $vmFqdn = az network public-ip show --resource-group $rgName --name "pennie-pip-${{ github.event.inputs.environment || 'test' }}" --query "dnsSettings.fqdn" -o tsv
           if (-not $vmFqdn) {
             Write-Host "Warning: Could not get VM FQDN, using placeholder"
             $vmFqdn = "pennie-vm-${{ github.event.inputs.environment || 'test' }}.uksouth.cloudapp.azure.com"
           }
           Write-Host "VM FQDN: $vmFqdn"
+
+          # Create self-signed SSL certificate and bind to port 443
+          # This is idempotent - skips if cert already exists for this FQDN
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts "param([string]`$fqdn) `
+              `$certExists = Get-ChildItem Cert:\LocalMachine\My | Where-Object { `$_.Subject -like \"*`$fqdn*\" }; `
+              if (-not `$certExists) { `
+                Write-Host 'Creating self-signed SSL certificate...'; `
+                `$cert = New-SelfSignedCertificate -DnsName `$fqdn -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddYears(2); `
+                `$thumbprint = `$cert.Thumbprint; `
+                Write-Host \"Created certificate with thumbprint: `$thumbprint\"; `
+              } else { `
+                `$thumbprint = `$certExists.Thumbprint; `
+                Write-Host \"Using existing certificate: `$thumbprint\"; `
+              }; `
+              `$existingBinding = netsh http show sslcert ipport=0.0.0.0:443 2>&1; `
+              if (`$existingBinding -match 'error' -or `$existingBinding -match 'cannot find') { `
+                Write-Host 'Binding certificate to port 443...'; `
+                netsh http add sslcert ipport=0.0.0.0:443 certhash=`$thumbprint appid='{00000000-0000-0000-0000-000000000000}'; `
+              } else { `
+                Write-Host 'SSL binding already exists on port 443'; `
+              }; `
+              `$env = [Environment]::GetEnvironmentVariable('ASPNETCORE_URLS', 'Machine'); `
+              if (-not `$env -or `$env -notmatch 'https://0.0.0.0:443') { `
+                Write-Host 'Setting ASPNETCORE_URLS...'; `
+                [Environment]::SetEnvironmentVariable('ASPNETCORE_URLS', 'https://0.0.0.0:443;http://0.0.0.0:5000', 'Machine'); `
+              }; `
+              Write-Host 'SSL setup complete'" `
+            --parameters "fqdn=$vmFqdn"
+
+          # Step 8: Configure bot credentials and URLs from GitHub Secrets
+          Write-Host "Step 8: Configuring bot credentials..."
+          # (vmFqdn already set in step 7)
 
           # Encode credentials as Base64 to avoid escaping issues
           $teamsAppId = "${{ secrets.TEAMS_APP_ID }}"
@@ -282,8 +341,8 @@ jobs:
             --command-id RunPowerShellScript `
             --scripts "`$configPath = 'C:\Pennie\bot\appsettings.json'; `$config = Get-Content `$configPath -Raw | ConvertFrom-Json; `$teamsId = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$teamsAppIdB64')); `$teamsPwd = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$teamsAppPasswordB64')); `$config.TeamsAppId = `$teamsId; `$config.TeamsAppPassword = `$teamsPwd; `$config.MicrosoftAppId = `$teamsId; `$config.MicrosoftAppPassword = `$teamsPwd; `$config.BotBaseUrl = 'https://$vmFqdn'; `$config.MediaPlatform.ServiceFqdn = '$vmFqdn'; `$config.MediaPlatform.CallNotificationUrl = 'https://$vmFqdn/api/calling'; `$config.MediaPlatform.MediaDnsName = '$vmFqdn'; `$config.MediaPlatform.UseApplicationHostedMedia = `$false; `$config.AZURE_FUNCTIONS_BACKEND_URL = 'https://pennie-backend-prod.azurewebsites.net'; `$config | ConvertTo-Json -Depth 10 | Set-Content `$configPath -Encoding UTF8; Write-Host 'Configured bot credentials and URLs'"
 
-          # Step 8: Restart service to apply new configuration
-          Write-Host "Step 8: Restarting service..."
+          # Step 9: Restart service to apply new configuration
+          Write-Host "Step 9: Restarting service..."
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `

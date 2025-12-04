@@ -33,6 +33,13 @@ param deployVM bool = true
 @description('Use Azure Spot VM for cost savings (60-80% cheaper, can be evicted by Azure)')
 param useSpotVM bool = false
 
+@description('Admin password for VM - provide via GitHub Secrets')
+@secure()
+param vmAdminPassword string = ''
+
+@description('Allowed source IP for RDP access (resolve dynamic DNS to IP before deployment)')
+param allowedRdpSourceIP string = ''
+
 @description('Tags to apply to all resources')
 param tags object = {
   Environment: environmentName
@@ -66,7 +73,7 @@ module aiServices './modules/ai-services.bicep' = if (deployAiServices) {
 
 // Module: Windows VM (Teams Media Bot + Node.js MCP Server)
 // Optional: Can be disabled for environments that don't need a VM
-module windowsVM './modules/windows-vm.bicep' = if (deployVM) {
+module windowsVM './modules/windows-vm.bicep' = if (deployVM && !empty(vmAdminPassword)) {
   name: 'windows-vm-deployment'
   params: {
     location: location
@@ -75,6 +82,8 @@ module windowsVM './modules/windows-vm.bicep' = if (deployVM) {
     devOpsOrg: devOpsOrg
     devOpsProject: devOpsProject
     useSpotVM: useSpotVM
+    adminPassword: vmAdminPassword
+    allowedRdpSourceIP: allowedRdpSourceIP
     tags: tags
   }
 }
