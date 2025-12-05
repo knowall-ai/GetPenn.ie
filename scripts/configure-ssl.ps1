@@ -112,6 +112,22 @@ if ($service -and $service.Status -eq 'Running') {
     Start-Sleep -Seconds 5
 }
 
+# Ensure Windows Firewall allows port 80 for ACME challenge
+$firewallRuleName = "ACME HTTP-01 Challenge"
+$existingRule = Get-NetFirewallRule -DisplayName $firewallRuleName -ErrorAction SilentlyContinue
+if (-not $existingRule) {
+    Write-Host "Creating Windows Firewall rule for port 80 (ACME challenge)..."
+    New-NetFirewallRule -DisplayName $firewallRuleName `
+        -Direction Inbound `
+        -Protocol TCP `
+        -LocalPort 80 `
+        -Action Allow `
+        -Profile Any | Out-Null
+    Write-Host "Firewall rule '$firewallRuleName' created"
+} else {
+    Write-Host "Firewall rule '$firewallRuleName' already exists"
+}
+
 try {
     # Run win-acme with HTTP-01 validation
     $wacmeArgs = @(
