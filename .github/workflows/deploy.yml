@@ -130,6 +130,47 @@ jobs:
           echo "Getting deployment outputs..."
           # Extract outputs from deployment (VM IP, Key Vault name, etc.)
 
+      - name: Grant VM access to Azure OpenAI
+        run: |
+          # VM's managed identity needs "Cognitive Services OpenAI User" role to call Azure OpenAI
+          ENV="${{ needs.set-environment.outputs.environment }}"
+          RG="${{ needs.set-environment.outputs.resource_group }}"
+
+          # Get VM's managed identity principal ID
+          VM_PRINCIPAL_ID=$(az vm show \
+            --resource-group "$RG" \
+            --name "pennie-vm-${ENV}" \
+            --query "identity.principalId" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VM_PRINCIPAL_ID" ]; then
+            echo "::warning::Could not get VM principal ID - Azure OpenAI access may need manual setup"
+            exit 0
+          fi
+
+          echo "VM Principal ID: $VM_PRINCIPAL_ID"
+
+          # Azure OpenAI resource is in TMinus15Agents resource group (shared by all environments)
+          OPENAI_RESOURCE_ID="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/tminus15agents/providers/Microsoft.CognitiveServices/accounts/benw-mgan4638-eastus2"
+
+          # Check if role assignment already exists
+          EXISTING=$(az role assignment list \
+            --assignee "$VM_PRINCIPAL_ID" \
+            --role "Cognitive Services OpenAI User" \
+            --scope "$OPENAI_RESOURCE_ID" \
+            --query "[].id" -o tsv 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ]; then
+            echo "Role assignment already exists"
+          else
+            echo "Creating role assignment..."
+            az role assignment create \
+              --assignee "$VM_PRINCIPAL_ID" \
+              --role "Cognitive Services OpenAI User" \
+              --scope "$OPENAI_RESOURCE_ID" \
+              2>/dev/null || echo "::warning::Failed to create role assignment - may need manual setup"
+            echo "Role assignment created"
+          fi
+
       - name: Ensure Azure Bot registration exists
         run: |
           # Azure Bot Service registration is required for Teams messaging
