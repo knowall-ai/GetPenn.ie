@@ -149,20 +149,51 @@ if ($KeyVaultName) {
 Write-Host ""
 Write-Host "Step 4: Installing bot as Windows Service..." -ForegroundColor Cyan
 
-# Check and install NSSM if needed
-$nssmPath = Get-Command nssm -ErrorAction SilentlyContinue
-if (-not $nssmPath) {
+# Check for NSSM in multiple locations (Chocolatey installs to different paths)
+$nssmExe = $null
+$nssmLocations = @(
+    "C:\ProgramData\chocolatey\bin\nssm.exe",
+    "C:\ProgramData\chocolatey\lib\nssm\tools\nssm.exe",
+    "C:\Tools\nssm\nssm.exe"
+)
+
+foreach ($location in $nssmLocations) {
+    if (Test-Path $location) {
+        $nssmExe = $location
+        Write-Host "  Found NSSM at: $location" -ForegroundColor Green
+        break
+    }
+}
+
+# Also check PATH if not found in known locations
+if (-not $nssmExe) {
+    $nssmCmd = Get-Command nssm -ErrorAction SilentlyContinue
+    if ($nssmCmd) {
+        $nssmExe = $nssmCmd.Source
+        Write-Host "  Found NSSM in PATH: $nssmExe" -ForegroundColor Green
+    }
+}
+
+if (-not $nssmExe) {
     Write-Host "  NSSM not found - installing..." -ForegroundColor Yellow
 
-    $nssmZipUrl = "https://nssm.cc/release/nssm-2.24.zip"
+    # Use GitHub mirror instead of nssm.cc which can be unreliable
+    $nssmZipUrl = "https://github.com/win-acme/win-acme/releases/download/v2.2.4.1500/nssm-2.24.zip"
     $nssmZipPath = Join-Path $env:TEMP "nssm.zip"
     $nssmExtractPath = Join-Path $env:TEMP "nssm"
     $nssmInstallPath = "C:\Tools\nssm"
 
     # Download NSSM
-    Write-Host "  Downloading NSSM..."
+    Write-Host "  Downloading NSSM from GitHub..."
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $nssmZipUrl -OutFile $nssmZipPath -UseBasicParsing
+    try {
+        Invoke-WebRequest -Uri $nssmZipUrl -OutFile $nssmZipPath -UseBasicParsing
+    } catch {
+        # Fallback to nssm.cc if GitHub fails
+        Write-Host "  GitHub download failed, trying nssm.cc..." -ForegroundColor Yellow
+        $nssmZipUrl = "https://nssm.cc/release/nssm-2.24.zip"
+        Invoke-WebRequest -Uri $nssmZipUrl -OutFile $nssmZipPath -UseBasicParsing
+    }
 
     # Extract
     Write-Host "  Extracting NSSM..."
@@ -172,11 +203,10 @@ if (-not $nssmPath) {
     New-Item -ItemType Directory -Path $nssmInstallPath -Force | Out-Null
     Copy-Item -Path "$nssmExtractPath\nssm-2.24\win64\nssm.exe" -Destination $nssmInstallPath -Force
 
-    # Add to PATH for this session
-    $env:PATH = "$nssmInstallPath;$env:PATH"
+    $nssmExe = "$nssmInstallPath\nssm.exe"
 
     # Verify installation
-    if (Test-Path "$nssmInstallPath\nssm.exe") {
+    if (Test-Path $nssmExe) {
         Write-Host "  NSSM installed successfully to $nssmInstallPath" -ForegroundColor Green
     } else {
         Write-Host "ERROR: NSSM installation failed" -ForegroundColor Red
@@ -186,8 +216,6 @@ if (-not $nssmPath) {
     # Cleanup
     Remove-Item -Path $nssmZipPath -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $nssmExtractPath -Recurse -Force -ErrorAction SilentlyContinue
-} else {
-    Write-Host "  NSSM already installed" -ForegroundColor Green
 }
 
 $botExePath = Join-Path $BotDirectory "PennieBot.exe"
@@ -197,15 +225,15 @@ if (-not (Test-Path $botExePath)) {
 }
 
 Write-Host "  Installing service: $ServiceName"
-& nssm install $ServiceName $botExePath
+& $nssmExe install $ServiceName $botExePath
 
-# Configure service - use & nssm to respect PATH changes
+# Configure service using full path to NSSM
 Write-Host "  Configuring service..."
-& nssm set $ServiceName AppDirectory $BotDirectory
-& nssm set $ServiceName AppEnvironmentExtra "ASPNETCORE_ENVIRONMENT=Production"
-& nssm set $ServiceName DisplayName "Pennie the Prepper Teams Bot"
-& nssm set $ServiceName Description "AI-powered Teams bot for Azure DevOps backlog creation"
-& nssm set $ServiceName Start SERVICE_AUTO_START
+& $nssmExe set $ServiceName AppDirectory $BotDirectory
+& $nssmExe set $ServiceName AppEnvironmentExtra "ASPNETCORE_ENVIRONMENT=Production"
+& $nssmExe set $ServiceName DisplayName "Pennie the Prepper Teams Bot"
+& $nssmExe set $ServiceName Description "AI-powered Teams bot for Azure DevOps backlog creation"
+& $nssmExe set $ServiceName Start SERVICE_AUTO_START
 
 # Create logs directory
 $logsDir = "C:\Pennie\logs"
@@ -214,11 +242,11 @@ if (-not (Test-Path $logsDir)) {
     Write-Host "  Created logs directory: $logsDir"
 }
 
-& nssm set $ServiceName AppStdout "$logsDir\bot-stdout.log"
-& nssm set $ServiceName AppStderr "$logsDir\bot-stderr.log"
-& nssm set $ServiceName AppRotateFiles 1
-& nssm set $ServiceName AppRotateOnline 1
-& nssm set $ServiceName AppRotateBytes 10485760  # 10MB
+& $nssmExe set $ServiceName AppStdout "$logsDir\bot-stdout.log"
+& $nssmExe set $ServiceName AppStderr "$logsDir\bot-stderr.log"
+& $nssmExe set $ServiceName AppRotateFiles 1
+& $nssmExe set $ServiceName AppRotateOnline 1
+& $nssmExe set $ServiceName AppRotateBytes 10485760  # 10MB
 
 Write-Host "  Service installed successfully" -ForegroundColor Green
 
