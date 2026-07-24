@@ -287,8 +287,11 @@ def create_work_item(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Extract metadata from description if present (speaker, timestamp, meeting ID)
-        tags = []
+        # Tags carry the T-Minus-15 triage type when the process template has no native
+        # work item type for it (e.g. Enhancement -> Task+tag, Risk/Question -> Issue+tag).
+        tags = req_body.get("tags") or []
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(";") if t.strip()]
         custom_fields = {}
 
         # Get DevOps client and create work item
