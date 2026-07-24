@@ -1,5 +1,5 @@
 @description('Name of the Azure Function App')
-param functionAppName string = 'pennie-backend'
+param functionAppName string = 'preppie-backend'
 
 @description('Location for all resources')
 param location string = resourceGroup().location
@@ -17,11 +17,15 @@ param devOpsPAT string
 @description('Application Insights Connection String')
 param appInsightsConnectionString string = ''
 
-var storageAccountName = 'penniebe${uniqueString(resourceGroup().id)}'
+@description('Python version for the Flex Consumption runtime')
+param pythonVersion string = '3.11'
+
+var storageAccountName = 'preppiebe${uniqueString(resourceGroup().id)}'
 var hostingPlanName = '${functionAppName}-plan'
 var functionAppNameFull = '${functionAppName}-${environmentName}'
+var deploymentContainerName = 'app-package'
 
-// Storage Account for Azure Functions
+// Storage Account for Azure Functions (deployment package + runtime state)
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName
   location: location
@@ -36,50 +40,67 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   }
 }
 
-// App Service Plan (Consumption) - Linux for Python
-resource hostingPlan 'Microsoft.Web/serverfarms@2023-01-01' = {
+// Blob container that Flex Consumption uses to hold the deployed app package.
+resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  name: '${storageAccount.name}/default/${deploymentContainerName}'
+}
+
+// App Service Plan - Flex Consumption (FC1).
+// NOTE: this replaces the previous Y1 "Dynamic" (classic Consumption) plan. On this subscription
+// Y1 Linux Consumption fails preflight with SubscriptionIsOverQuotaForSku / "Total VMs: 0";
+// Flex Consumption (FC1) is the SKU that actually provisions, and is what the app runs on today.
+resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: hostingPlanName
   location: location
+  kind: 'functionapp'
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
+    name: 'FC1'
+    tier: 'FlexConsumption'
   }
-  kind: 'linux'
   properties: {
-    reserved: true  // Required for Linux
+    reserved: true // Linux
   }
 }
 
-// Azure Function App - Linux Python
-resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
+// Azure Function App - Flex Consumption, Linux Python.
+// Flex configures the runtime and deployment source under `functionAppConfig` rather than via
+// linuxFxVersion / FUNCTIONS_* app settings (those are classic-Consumption only).
+resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   name: functionAppNameFull
   location: location
   kind: 'functionapp,linux'
   properties: {
     serverFarmId: hostingPlan.id
-    reserved: true  // Required for Linux
+    httpsOnly: true
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${storageAccount.properties.primaryEndpoints.blob}${deploymentContainerName}'
+          authentication: {
+            type: 'StorageAccountConnectionString'
+            storageAccountConnectionStringName: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
+          }
+        }
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: 100
+        instanceMemoryMB: 2048
+      }
+      runtime: {
+        name: 'python'
+        version: pythonVersion
+      }
+    }
     siteConfig: {
-      linuxFxVersion: 'Python|3.11'  // Required for Linux Python apps
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
           value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
         }
         {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
+          name: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
           value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
-        }
-        {
-          name: 'WEBSITE_CONTENTSHARE'
-          value: toLower(functionAppNameFull)
-        }
-        {
-          name: 'FUNCTIONS_EXTENSION_VERSION'
-          value: '~4'
-        }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'python'
         }
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
@@ -105,12 +126,15 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         ]
       }
     }
-    httpsOnly: true
   }
+  dependsOn: [
+    deploymentContainer
+  ]
 }
 
 output functionAppName string = functionApp.name
 output functionAppUrl string = 'https://${functionApp.properties.defaultHostName}'
 output functionAppResourceId string = functionApp.id
-output witCreateWorkItemUrl string = 'https://${functionApp.properties.defaultHostName}/api/wit_create_work_item'
-output witAddChildWorkItemsUrl string = 'https://${functionApp.properties.defaultHostName}/api/wit_add_child_work_items'
+// Backend endpoints the Foundry agent's tools call (match src/function_app.py routes).
+output createWorkItemUrl string = 'https://${functionApp.properties.defaultHostName}/api/create_work_item'
+output readProjectsUrl string = 'https://${functionApp.properties.defaultHostName}/api/read_projects'
