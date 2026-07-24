@@ -1,6 +1,6 @@
-# Pennie the Prepper - Design Assets
+# Preppie the Prepper - Design Assets
 
-This directory contains all design assets for Pennie the Prepper, including avatars, icons, banners, and branding materials.
+This directory contains all design assets for Preppie the Prepper, including avatars, icons, banners, and branding materials.
 
 **Brand Guide**: See [docs/BRAND_GUIDE.md](../docs/BRAND_GUIDE.md) for complete brand guidelines, color palette, and typography.
 
@@ -49,24 +49,24 @@ assets/
 
 ### 1. Avatars & Profile Images
 
-#### ✅ `avatars/pennie_avatar.png`
+#### ✅ `avatars/preppie_avatar.png`
 - **Size**: 512x512 pixels
 - **Status**: 🎨 Draft placeholder (blue gradient with white "P")
 - **Usage**: Teams bot, AI Foundry agent, documentation
 - **Format**: PNG
 - **Next**: Replace with professional avatar featuring KnowAll lime green
 
-#### ⏳ `avatars/pennie_avatar_round.png`
+#### ⏳ `avatars/preppie_avatar_round.png`
 - **Size**: 512x512 pixels (circular mask)
 - **Status**: Needed
 - **Usage**: Teams profile, circular avatar displays
 
-#### ⏳ `avatars/pennie_avatar_small.png`
+#### ⏳ `avatars/preppie_avatar_small.png`
 - **Size**: 96x96 pixels
 - **Status**: Needed
 - **Usage**: Notifications, thumbnails, small displays
 
-#### ⏳ `avatars/pennie_avatar_large.png`
+#### ⏳ `avatars/preppie_avatar_large.png`
 - **Size**: 1024x1024 pixels
 - **Status**: Needed
 - **Usage**: Marketing materials, presentations, print
@@ -75,7 +75,7 @@ assets/
 
 ### 2. App Icons
 
-#### ✅ `icons/pennie_icon_16.png` → `icons/pennie_icon_512.png`
+#### ✅ `icons/preppie_icon_16.png` → `icons/preppie_icon_512.png`
 - **Sizes**: 16, 32, 64, 128, 192, 512 pixels
 - **Status**: ✅ Created (Phase 1 draft)
 - **Design**: Lime green circle with white "P"
@@ -112,7 +112,7 @@ assets/
 #### ⏳ `teams/wide_logo.png`
 - **Size**: 300x100 pixels
 - **Status**: Needed for Teams app submission
-- **Design**: Horizontal logo: Icon + "Pennie the Prepper" wordmark
+- **Design**: Horizontal logo: Icon + "Preppie the Prepper" wordmark
 - **Usage**: Teams app details page header
 - **Format**: PNG
 
@@ -120,11 +120,11 @@ assets/
 
 ### 4. Banners & Hero Images
 
-#### ⏳ `banners/pennie_hero.png`
+#### ⏳ `banners/preppie_hero.png`
 - **Size**: 1920x600 pixels
 - **Status**: Needed (Phase 2)
 - **Usage**: GitHub README, documentation homepage
-- **Content**: Pennie in action during Teams meeting
+- **Content**: Preppie in action during Teams meeting
 - **Style**: Dark background with lime green accents
 
 #### ⏳ `banners/feature_meeting_capture.png`
@@ -149,7 +149,7 @@ assets/
 #### ⏳ `diagrams/architecture.svg`
 - **Status**: Needed (Phase 2)
 - **Usage**: SOLUTION_DESIGN.adoc architecture section
-- **Content**: Teams → Pennie Agent → Azure Functions → DevOps API
+- **Content**: Teams → Preppie Agent → Azure Functions → DevOps API
 - **Format**: SVG (scalable) + PNG export (1600x900)
 - **Style**: Dark theme with lime green highlights
 
@@ -178,12 +178,12 @@ assets/
 #### ⏳ `social/og_default.png`
 - **Size**: 1200x630 pixels (Open Graph standard)
 - **Usage**: Default social share image (Twitter, LinkedIn, Facebook)
-- **Content**: Pennie logo + tagline: "AI Meeting Assistant for Azure DevOps"
+- **Content**: Preppie logo + tagline: "AI Meeting Assistant for Azure DevOps"
 
 #### ⏳ `social/og_launch.png`
 - **Size**: 1200x630 pixels
 - **Usage**: Launch announcement share image
-- **Content**: "Introducing Pennie the Prepper" with key features
+- **Content**: "Introducing Preppie the Prepper" with key features
 
 #### ⏳ `social/social_avatar.png`
 - **Size**: 400x400 pixels
@@ -193,12 +193,12 @@ assets/
 #### ⏳ `social/linkedin_cover.png`
 - **Size**: 1584x396 pixels
 - **Usage**: LinkedIn company page banner
-- **Content**: Pennie branding with KnowAll integration
+- **Content**: Preppie branding with KnowAll integration
 
 #### ⏳ `social/twitter_banner.png`
 - **Size**: 1500x500 pixels
 - **Usage**: Twitter/X profile header
-- **Content**: Pennie + T-Minus-15 branding
+- **Content**: Preppie + T-Minus-15 branding
 
 ---
 
@@ -206,7 +206,7 @@ assets/
 
 #### ⏳ `icons/status_listening.png`
 - **Size**: 24x24 pixels
-- **Usage**: Meeting status - Pennie actively listening
+- **Usage**: Meeting status - Preppie actively listening
 - **Icon**: Waveform or microphone
 - **Color**: Lime green
 
@@ -238,7 +238,7 @@ assets/
 
 ### 8. Animations (Future Phase)
 
-#### ⏳ `animations/pennie_spinner.gif`
+#### ⏳ `animations/preppie_spinner.gif`
 - **Usage**: Loading indicator for async operations
 - **Animation**: Rotating/pulsing lime green circle
 - **Duration**: Seamless loop
@@ -248,12 +248,12 @@ assets/
 - **Animation**: Checkmark draw-in animation
 - **Duration**: 600ms
 
-#### ⏳ `animations/pennie_listening.json` (Lottie)
+#### ⏳ `animations/preppie_listening.json` (Lottie)
 - **Usage**: Real-time listening state in meeting
 - **Animation**: Sound wave visualization
 - **Format**: Lottie JSON for web/mobile
 
-#### ⏳ `animations/pennie_thinking.json` (Lottie)
+#### ⏳ `animations/preppie_thinking.json` (Lottie)
 - **Usage**: AI processing/analyzing state
 - **Animation**: Pulsing brain or connected dots
 - **Format**: Lottie JSON
@@ -359,11 +359,11 @@ assets/
 
 Follow these patterns for consistency:
 
-**Avatars**: `pennie_avatar_{variant}.png`
-- Examples: `pennie_avatar_round.png`, `pennie_avatar_small.png`
+**Avatars**: `preppie_avatar_{variant}.png`
+- Examples: `preppie_avatar_round.png`, `preppie_avatar_small.png`
 
-**Icons**: `pennie_icon_{size}.png`
-- Examples: `pennie_icon_16.png`, `pennie_icon_192.png`
+**Icons**: `preppie_icon_{size}.png`
+- Examples: `preppie_icon_16.png`, `preppie_icon_192.png`
 
 **Teams**: `{type}_icon.png`
 - Examples: `color_icon.png`, `outline_icon.png`, `wide_logo.png`
@@ -391,7 +391,7 @@ When replacing placeholder assets:
    - SVG: Use SVGO
    - Target: <50KB per icon, <500KB per banner
 5. **Update this README** - Change status from ⏳ to ✅
-6. **Commit with descriptive message**: "Update: Professional Pennie avatar"
+6. **Commit with descriptive message**: "Update: Professional Preppie avatar"
 
 ---
 
@@ -444,10 +444,10 @@ When replacing placeholder assets:
 
 ## 📜 License
 
-All design assets are proprietary to the Pennie the Prepper project.
+All design assets are proprietary to the Preppie the Prepper project.
 
 **Allowed**:
-- ✅ Use in Pennie documentation and marketing
+- ✅ Use in Preppie documentation and marketing
 - ✅ Teams bot integration
 - ✅ Presentations and demos
 

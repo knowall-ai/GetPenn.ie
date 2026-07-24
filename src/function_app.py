@@ -1,5 +1,5 @@
 """
-Pennie the Prepper - Azure Function Backend
+Preppie the Prepper - Azure Function Backend
 Handles function calls from Azure AI Foundry Agent and creates Azure DevOps work items
 """
 
@@ -189,7 +189,7 @@ class AzureDevOpsClient:
 
         # Default comment based on link type
         if comment is None:
-            comment = f"Linked by Pennie the Prepper ({link_type})"
+            comment = f"Linked by Preppie the Prepper ({link_type})"
 
         for target_id in target_ids:
             url = f"{base_url}/wit/workitems/{source_id}?api-version={self.api_version}"
@@ -241,7 +241,7 @@ class AzureDevOpsClient:
             source_id=parent_id,
             target_ids=child_ids,
             link_type="System.LinkTypes.Hierarchy-Forward",
-            comment="Linked by Pennie the Prepper (parent-child)"
+            comment="Linked by Preppie the Prepper (parent-child)"
         )
 
 
@@ -261,7 +261,7 @@ def get_devops_client() -> AzureDevOpsClient:
 def create_work_item(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function endpoint to create work items
-    Handles function calls from Pennie the Prepper agent
+    Handles function calls from Preppie the Prepper agent
     """
     logger.info("Received create_work_item request")
 
@@ -340,7 +340,7 @@ def create_work_item(req: func.HttpRequest) -> func.HttpResponse:
 def link_work_items_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function endpoint to link work items with flexible link types
-    Handles function calls from Pennie the Prepper agent
+    Handles function calls from Preppie the Prepper agent
 
     Parameters:
     - project (required): Project name
@@ -637,7 +637,7 @@ def read_work_items(req: func.HttpRequest) -> func.HttpResponse:
 def read_projects(req: func.HttpRequest) -> func.HttpResponse:
     """
     Read all Azure DevOps projects
-    Helps Pennie discover available client projects
+    Helps Preppie discover available client projects
     """
     logger.info("Received read_projects request")
 
@@ -684,7 +684,7 @@ def read_projects(req: func.HttpRequest) -> func.HttpResponse:
 def read_teams(req: func.HttpRequest) -> func.HttpResponse:
     """
     Read all teams in a specific Azure DevOps project
-    Helps Pennie understand team structure
+    Helps Preppie understand team structure
     """
     logger.info("Received read_teams request")
 
@@ -741,7 +741,7 @@ def read_teams(req: func.HttpRequest) -> func.HttpResponse:
 def read_work_item_types(req: func.HttpRequest) -> func.HttpResponse:
     """
     Get available work item types for a project
-    Useful for Pennie to discover what types are available (Epic, Feature, User Story, etc.)
+    Useful for Preppie to discover what types are available (Epic, Feature, User Story, etc.)
     """
     try:
         req_body = req.get_json()
@@ -910,7 +910,7 @@ def search_work_items(req: func.HttpRequest) -> func.HttpResponse:
 def read_link_types(req: func.HttpRequest) -> func.HttpResponse:
     """
     Get available work item link types
-    Returns common Azure DevOps link types that Pennie can use
+    Returns common Azure DevOps link types that Preppie can use
     """
     try:
         # Return standard Azure DevOps link types
@@ -998,7 +998,7 @@ def read_link_types(req: func.HttpRequest) -> func.HttpResponse:
 def health_check(req: func.HttpRequest) -> func.HttpResponse:
     """Health check endpoint"""
     return func.HttpResponse(
-        json.dumps({"status": "healthy", "service": "Pennie Backend"}),
+        json.dumps({"status": "healthy", "service": "Preppie Backend"}),
         status_code=200,
         mimetype="application/json"
     )

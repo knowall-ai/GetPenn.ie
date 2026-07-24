@@ -1,8 +1,8 @@
-= Test Strategy: Pennie the Prepper
+= Test Strategy: Preppie the Prepper
 
 == Overview
 
-This document defines the comprehensive testing strategy for Pennie the Prepper, ensuring reliability, accuracy, and quality across all components of the real-time Teams meeting AI agent system.
+This document defines the comprehensive testing strategy for Preppie the Prepper, ensuring reliability, accuracy, and quality across all components of the real-time Teams meeting AI agent system.
 
 == Test Pyramid
 
@@ -311,7 +311,7 @@ def test_mcp_server_creates_epic():
 * Stream audio to real Speech Services
 * Verify diarization accuracy with known speakers
 
-=== AI Foundry Agent (Pennie)
+=== AI Foundry Agent (Preppie)
 
 **Unit Tests**:
 * Requirement classification logic (Epic/Feature/Story)
@@ -554,7 +554,7 @@ Speaker: Ben Weeks | Timestamp: 00:02:10 | Text: Let's support both OAuth and SA
 **Duration**: 1 week before production release
 
 **Approach**:
-* Real project meetings with Pennie
+* Real project meetings with Preppie
 * Team members act naturally (not scripted)
 * Review work items created after each meeting
 * Provide feedback on:
@@ -710,6 +710,6 @@ Speaker: Ben Weeks | Timestamp: 00:02:10 | Text: Let's support both OAuth and SA
 === Phase 3
 
 * **A/B Testing**: Compare different agent prompts and models
-* **User Behavior Analytics**: Track how teams use Pennie
+* **User Behavior Analytics**: Track how teams use Preppie
 * **Model Accuracy Tuning**: Fine-tune on organization-specific terminology
 * **Automated Regression**: Expand test suite to 100+ scenarios

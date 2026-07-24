@@ -7,13 +7,13 @@ param aiProjectName string = 'T-Minus-15-Agents'
 param environmentName string = 'prod'
 param tags object = {
   Environment: 'prod'
-  Project: 'Pennie'
+  Project: 'Preppie'
   ManagedBy: 'Bicep'
 }
 
 // Storage Account (required for AI Hub)
 resource storage 'Microsoft.Storage/storageAccounts@2023-01-01' = {
-  name: 'pennie${uniqueString(resourceGroup().id)}'
+  name: 'preppie${uniqueString(resourceGroup().id)}'
   location: location
   tags: tags
   sku: {
@@ -29,7 +29,7 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-01-01' = {
 
 // Key Vault (required for AI Hub)
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: 'pennie-kv-${uniqueString(resourceGroup().id)}'
+  name: 'preppie-kv-${uniqueString(resourceGroup().id)}'
   location: location
   tags: tags
   properties: {
@@ -46,7 +46,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 
 // Application Insights (required for AI Hub)
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
-  name: 'pennie-logs-${uniqueString(resourceGroup().id)}'
+  name: 'preppie-logs-${uniqueString(resourceGroup().id)}'
   location: location
   tags: tags
   properties: {
@@ -58,7 +58,7 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
 }
 
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
-  name: 'pennie-insights-${uniqueString(resourceGroup().id)}'
+  name: 'preppie-insights-${uniqueString(resourceGroup().id)}'
   location: location
   tags: tags
   kind: 'web'
@@ -82,7 +82,7 @@ resource aiHub 'Microsoft.MachineLearningServices/workspaces@2024-04-01' = {
   }
   properties: {
     friendlyName: aiHubName
-    description: 'AI Foundry Hub for Pennie the Prepper'
+    description: 'AI Foundry Hub for Preppie the Prepper'
     storageAccount: storage.id
     keyVault: keyVault.id
     applicationInsights: appInsights.id
@@ -93,7 +93,7 @@ resource aiHub 'Microsoft.MachineLearningServices/workspaces@2024-04-01' = {
 
 // Azure AI Foundry Project (connected to hub)
 resource aiProject 'Microsoft.MachineLearningServices/workspaces@2024-04-01' = {
-  name: 'pennie-project-${environmentName}'
+  name: 'preppie-project-${environmentName}'
   location: location
   tags: tags
   identity: {
@@ -105,7 +105,7 @@ resource aiProject 'Microsoft.MachineLearningServices/workspaces@2024-04-01' = {
   }
   properties: {
     friendlyName: aiProjectName
-    description: 'AI Foundry Project for Pennie Agent'
+    description: 'AI Foundry Project for Preppie Agent'
     hubResourceId: aiHub.id
     storageAccount: storage.id
     keyVault: keyVault.id

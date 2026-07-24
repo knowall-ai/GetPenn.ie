@@ -1,10 +1,10 @@
-# Pennie the Prepper - Brand Guidelines
+# Preppie the Prepper - Brand Guidelines
 
 **Version**: 1.0
 **Last Updated**: 2025-10-11
 **Status**: Draft
 
-This document defines the visual identity, brand colors, typography, and design principles for Pennie the Prepper.
+This document defines the visual identity, brand colors, typography, and design principles for Preppie the Prepper.
 
 ---
 
@@ -12,7 +12,7 @@ This document defines the visual identity, brand colors, typography, and design 
 
 ### Brand Positioning
 
-**Pennie the Prepper** is an AI-powered meeting assistant that transforms Teams meetings into actionable Azure DevOps work items using the T-Minus-15 methodology.
+**Preppie the Prepper** is an AI-powered meeting assistant that transforms Teams meetings into actionable Azure DevOps work items using the T-Minus-15 methodology.
 
 **Brand Personality:**
 - **Professional**: Enterprise-grade, reliable, trustworthy
@@ -52,9 +52,9 @@ Dark Lime:      #65A30D  (Tailwind lime-600)
 
 **CSS Variables:**
 ```css
---pennie-lime-light: #BEF264;
---pennie-lime:       #84CC16;
---pennie-lime-dark:  #65A30D;
+--preppie-lime-light: #BEF264;
+--preppie-lime:       #84CC16;
+--preppie-lime-dark:  #65A30D;
 ```
 
 #### Azure Blue (Microsoft Ecosystem)
@@ -72,9 +72,9 @@ Teams Blue:     #6264A7  (Microsoft Teams purple-blue)
 
 **CSS Variables:**
 ```css
---pennie-azure:      #0078D4;
---pennie-azure-light: #50E6FF;
---pennie-teams:      #6264A7;
+--preppie-azure:      #0078D4;
+--preppie-azure-light: #50E6FF;
+--preppie-teams:      #6264A7;
 ```
 
 ---
@@ -264,7 +264,7 @@ code {
 ### Logo Variations
 
 **Primary Logo:**
-- Full color version with "Pennie the Prepper" wordmark
+- Full color version with "Preppie the Prepper" wordmark
 - Minimum size: 120px width
 - Clear space: 20px on all sides
 
@@ -440,7 +440,7 @@ Slow:    400-600ms (major state changes)
 ### Writing Style
 
 **Do:**
-- ✅ Use active voice ("Pennie creates work items")
+- ✅ Use active voice ("Preppie creates work items")
 - ✅ Be concise and direct
 - ✅ Use "you" and "your" (second person)
 - ✅ Explain technical terms when first used
@@ -456,7 +456,7 @@ Slow:    400-600ms (major state changes)
 ### Example Copy
 
 **Good:**
-> "Pennie listens to your Teams meeting and automatically creates Azure DevOps work items. You'll see Epics, Features, and User Stories appear in real-time as decisions are made."
+> "Preppie listens to your Teams meeting and automatically creates Azure DevOps work items. You'll see Epics, Features, and User Stories appear in real-time as decisions are made."
 
 **Bad:**
 > "Leveraging advanced NLP algorithms, our solution facilitates the transformation of verbal discourse into structured work item artifacts within your project management ecosystem."
@@ -497,7 +497,7 @@ All brand assets are located in `/assets/` directory:
 
 ```
 assets/
-├── avatars/          # Pennie avatars (512x512)
+├── avatars/          # Preppie avatars (512x512)
 ├── icons/            # App icons (16-512px)
 ├── teams/            # Teams-specific assets
 ├── banners/          # Marketing banners

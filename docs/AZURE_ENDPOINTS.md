@@ -1,4 +1,4 @@
-# Azure Endpoints for Pennie the Prepper
+# Azure Endpoints for Preppie the Prepper
 
 ## East US 2 Resources
 
@@ -17,7 +17,7 @@
 
 ## API Access Patterns
 
-### For OpenAI Assistants (Pennie Agent)
+### For OpenAI Assistants (Preppie Agent)
 Use the **OpenAI Resource endpoint** (NOT the AI Services endpoint):
 
 ```bash
@@ -66,7 +66,7 @@ curl "$PROJECT_ENDPOINT/agents?api-version=2024-05-01-preview" \
 
 ## Current Deployment
 
-### Pennie Agent
+### Preppie Agent
 - **Agent ID**: `asst_NpRS5WvtJOW8DeWgIKz11JA8`
 - **Location**: East US 2
 - **Endpoint**: `https://benw-mgan4638-eastus2.openai.azure.com`

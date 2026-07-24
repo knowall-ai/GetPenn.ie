@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-# Deploy Pennie AI Foundry Agent to Azure
+# Deploy Preppie AI Foundry Agent to Azure
 #
-# This script deploys the Pennie agent to Azure AI Foundry using the Assistants API.
+# This script deploys the Preppie agent to Azure AI Foundry using the Assistants API.
 # Based on the Edmund deployment pattern from T-Minus-15.
 #
 # Prerequisites:
@@ -13,7 +13,7 @@ set -e
 # Usage:
 #     ./scripts/deploy-agent.sh
 
-echo "🚀 Deploying Pennie the Prepper to Azure AI Foundry"
+echo "🚀 Deploying Preppie the Prepper to Azure AI Foundry"
 echo ""
 
 # Load environment variables from .env if available
@@ -122,7 +122,7 @@ jq --arg deployment_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
    --arg version "$AGENT_VERSION" \
    '{
   name: .name,
-  description: "Pennie the Prepper - AI agent for Microsoft Teams meetings that creates Azure DevOps work items from meeting transcripts",
+  description: "Preppie the Prepper - AI agent for Microsoft Teams meetings that creates Azure DevOps work items from meeting transcripts",
   model: .model.deployment_name,
   instructions: .instructions,
   temperature: .model.temperature,
@@ -169,9 +169,9 @@ jq --arg deployment_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     deployed_by: $deployed_by,
     source: "GetPenn.ie"
   }
-}' agent-config.json > /tmp/pennie-agent-payload.json
+}' agent-config.json > /tmp/preppie-agent-payload.json
 
-echo "✅ Agent payload created: /tmp/pennie-agent-payload.json"
+echo "✅ Agent payload created: /tmp/preppie-agent-payload.json"
 
 # Deploy agent to Azure AI Foundry
 echo ""
@@ -180,7 +180,7 @@ echo "🚀 Deploying agent to Azure AI Foundry..."
 RESPONSE=$(curl -s -X POST "$AI_FOUNDRY_ENDPOINT/openai/assistants?api-version=2024-12-01-preview" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H "Content-Type: application/json" \
-    -d @/tmp/pennie-agent-payload.json)
+    -d @/tmp/preppie-agent-payload.json)
 
 # Check for errors
 if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then

@@ -1,4 +1,4 @@
-// Main Bicep orchestration for Pennie the Prepper
+// Main Bicep orchestration for Preppie the Prepper
 // Deploys all infrastructure in single Azure region
 
 targetScope = 'subscription'
@@ -32,7 +32,7 @@ param teamsAppId string
 @description('Tags to apply to all resources')
 param tags object = {
   Environment: environmentName
-  Project: 'Pennie'
+  Project: 'Preppie'
   ManagedBy: 'Bicep'
   CostCenter: 'AI-Agents'
 }

@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "Pennie Backend - Azure DevOps Integration",
+    "title": "Preppie Backend - Azure DevOps Integration",
     "description": "Azure Functions backend providing HTTP endpoints for Azure DevOps work item operations",
     "version": "1.0.0"
   },

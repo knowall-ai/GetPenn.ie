@@ -1,10 +1,10 @@
-# Pennie the Prepper
+# Preppie the Prepper
 
-Pennie is an AI-powered business analyst that joins Microsoft Teams meetings as a real-time participant. She listens to conversations using advanced speech-to-text with speaker diarization, identifies requirements, asks clarification questions, and creates high-quality Epics, Features, and User Stories in Azure DevOps — all using the T-Minus-15 methodology.
+Preppie is an AI-powered business analyst that joins Microsoft Teams meetings as a real-time participant. She listens to conversations using advanced speech-to-text with speaker diarization, identifies requirements, asks clarification questions, and creates high-quality Epics, Features, and User Stories in Azure DevOps — all using the T-Minus-15 methodology.
 
-Pennie is built using [Azure AI Foundry](https://learn.microsoft.com/en-us/azure/ai-services/ai-foundry/overview), Graph Communications API for real-time audio access, and Azure Speech Services for transcription with speaker identification. The entire solution is deployed via GitHub Actions and is fully defined as code, enabling secure, reproducible, and tenant-agnostic deployments.
+Preppie is built using [Azure AI Foundry](https://learn.microsoft.com/en-us/azure/ai-services/ai-foundry/overview), Graph Communications API for real-time audio access, and Azure Speech Services for transcription with speaker identification. The entire solution is deployed via GitHub Actions and is fully defined as code, enabling secure, reproducible, and tenant-agnostic deployments.
 
-![Pennie Social Preview](https://github.com/user-attachments/assets/fbaed48a-a129-4d28-a565-66b91b27f5f6)
+![Preppie Social Preview](https://github.com/user-attachments/assets/fbaed48a-a129-4d28-a565-66b91b27f5f6)
 
 ## Features
 
@@ -20,7 +20,7 @@ Pennie is built using [Azure AI Foundry](https://learn.microsoft.com/en-us/azure
 - 📍 **Traceability** — Every work item tagged with speaker name, timestamp, and meeting context
 
 ### Optional Advanced Features
-- 🗣️ **Voice interaction** — Pennie can speak clarifying questions (text-to-speech)
+- 🗣️ **Voice interaction** — Preppie can speak clarifying questions (text-to-speech)
 - 👤 **Visual presence** — Optional Azure AI Avatar for animated meeting participant
 - 📈 **Real-time notifications** — Posts links to created work items in meeting chat
 - 🔄 **Backlog updates** — Can update existing work items based on meeting discussion
@@ -36,14 +36,14 @@ Microsoft Teams Meeting (Live Audio)
 │  │ Teams Media Bot (C#)                           │  │
 │  │ - Graph Communications SDK                     │  │
 │  │ - Real-time audio capture                      │  │
-│  │ - Function Call Handler (intercepts Pennie's  │  │
+│  │ - Function Call Handler (intercepts Preppie's  │  │
 │  │   function calls and proxies to backend)       │  │
 │  └────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────┘
            ↓ RTP Audio
 Azure Speech Services (MeetingTranscriber + Diarization)
            ↓ Transcribed Text + Speaker Names
-Azure AI Foundry Agent (Pennie with GPT-4o, East US 2)
+Azure AI Foundry Agent (Preppie with GPT-4o, East US 2)
            ↓ Function Calling (requires_action)
 Function Call Handler (in Teams Bot)
            ↓ HTTP Requests
@@ -57,9 +57,9 @@ Azure DevOps Boards (Epics, Features, Stories, Questions)
 **Current Deployment Architecture**:
 - **Windows Server VM**: Hosts Teams Media Bot with function call handler
 - **Azure Functions Backend**: Python 3.11 on Linux (9 HTTP endpoints)
-- **OpenAI Assistant**: Pennie deployed in East US 2 (`asst_6Xp8voe3wn4BnIRBqM9CPl5Y`)
+- **OpenAI Assistant**: Preppie deployed in East US 2 (`asst_6Xp8voe3wn4BnIRBqM9CPl5Y`)
   - Uses **OpenAI resource-level assistant** (not AI Foundry project agent) for `Azure.AI.OpenAI.Assistants` SDK compatibility
-- **Function Calling Pattern**: OpenAI Assistants API - Pennie calls functions, application code handles them
+- **Function Calling Pattern**: OpenAI Assistants API - Preppie calls functions, application code handles them
 - **Backend Region**: UK South for Azure DevOps proximity
 - **Agent Region**: East US 2 (model availability)
 
@@ -75,7 +75,7 @@ See [docs/SOLUTION_DESIGN.adoc](docs/SOLUTION_DESIGN.adoc) for detailed architec
 
 ```
 /
-├── agent-config.json          # Pennie's AI agent configuration (system prompt, tools, model)
+├── agent-config.json          # Preppie's AI agent configuration (system prompt, tools, model)
 ├── .env.example               # Environment variables template
 ├── .env                       # Local environment configuration (gitignored)
 ├── /docs/
@@ -97,9 +97,9 @@ See [docs/SOLUTION_DESIGN.adoc](docs/SOLUTION_DESIGN.adoc) for detailed architec
 │   ├── Program.cs             # Bot application entry point
 │   ├── MediaBot.cs            # Media stream handling
 │   ├── SpeechTranscriber.cs   # Azure Speech Services integration
-│   └── PennieAgentClient.cs   # Function call handler for Pennie
+│   └── PreppieAgentClient.cs   # Function call handler for Preppie
 ├── /scripts/                  # Deployment and management scripts
-│   ├── deploy-agent.sh        # Deploy Pennie AI Foundry agent
+│   ├── deploy-agent.sh        # Deploy Preppie AI Foundry agent
 │   └── deploy-backend.sh      # Deploy Azure Functions backend
 ├── /.github/workflows/
 │   └── deploy.yml             # GitHub Actions deployment pipeline
@@ -168,11 +168,11 @@ Alternatively, use GitHub Actions:
 ```bash
 # Create Azure AD App Registration for bot
 az ad app create \
-  --display-name "Pennie the Prepper Bot" \
+  --display-name "Preppie the Prepper Bot" \
   --sign-in-audience AzureADMyOrg
 
 # Grant admin consent for Graph API permissions
-# (via Azure Portal: Entra ID > App Registrations > Pennie > API Permissions > Grant admin consent)
+# (via Azure Portal: Entra ID > App Registrations > Preppie > API Permissions > Grant admin consent)
 ```
 
 ### 4. Deploy Azure Functions Backend
@@ -185,14 +185,14 @@ cd infra
 az deployment group create \
   --resource-group TMinus15Agents \
   --template-file deploy-function-app.bicep \
-  --parameters functionAppName="pennie-backend" location="uksouth" environmentName="prod"
+  --parameters functionAppName="preppie-backend" location="uksouth" environmentName="prod"
 
 # Deploy function code
 cd ..
 func azure functionapp publish pennie-backend-prod --python
 ```
 
-The backend provides these 9 HTTP endpoints for Pennie:
+The backend provides these 9 HTTP endpoints for Preppie:
 - `read_projects` - List all Azure DevOps projects
 - `read_teams` - List teams in a project
 - `read_work_item` - Get a single work item by ID
@@ -205,9 +205,9 @@ The backend provides these 9 HTTP endpoints for Pennie:
 
 **Backend URL**: https://pennie-backend-prod.azurewebsites.net
 
-### 5. Deploy Pennie AI Foundry Agent
+### 5. Deploy Preppie AI Foundry Agent
 
-Deploy Pennie as an AI Foundry agent with function calling:
+Deploy Preppie as an AI Foundry agent with function calling:
 
 ```bash
 # Deploy agent to East US 2 (Agents feature available)
@@ -221,19 +221,19 @@ This creates an AI Foundry agent with:
 - **Region**: East US 2
 - **API Version**: 2025-05-15-preview
 
-### 6. Test Pennie
+### 6. Test Preppie
 
 1. Create a Teams meeting
-2. Invite Pennie to the meeting (via meeting options or @mention)
-3. Pennie joins and begins listening
-4. Discuss requirements — Pennie will create work items in real-time
+2. Invite Preppie to the meeting (via meeting options or @mention)
+3. Preppie joins and begins listening
+4. Discuss requirements — Preppie will create work items in real-time
 5. Check Teams chat for links to created DevOps items
 
 ## Usage
 
 ### During Meetings
 
-**Pennie automatically:**
+**Preppie automatically:**
 - Listens to all conversation audio
 - Transcribes speech with speaker identification
 - Identifies requirements (Epics, Features, Stories)
@@ -247,14 +247,14 @@ This creates an AI Foundry agent with:
 Ben: "We need an epic for the customer portal with SSO integration"
 Sarah: "Should we support OAuth 2.0 and SAML?"
 
-[Pennie in Teams Chat]
+[Preppie in Teams Chat]
 ✓ Created Epic #500: Customer Portal with SSO Integration [link]
 ❓ Question #501: Which SSO protocols should be supported? OAuth 2.0, SAML, or both?
 
 [Meeting Audio]
 Ben: "Let's support both OAuth and SAML"
 
-[Pennie in Teams Chat]
+[Preppie in Teams Chat]
 ✓ Updated Epic #500: Added acceptance criteria for OAuth 2.0 and SAML support [link]
 ✓ Created Feature #502: OAuth 2.0 Authentication [link]
 ✓ Created Feature #503: SAML Authentication [link]
@@ -390,10 +390,10 @@ TEAMS_APP_PASSWORD=your-app-password
 - [ ] Production deployment and testing
 
 ### Phase 2: Enhanced Features
-- [ ] Text-to-speech (Pennie speaks)
+- [ ] Text-to-speech (Preppie speaks)
 - [ ] Azure AI Avatar (visual presence)
 - [ ] Post-meeting summary emails
-- [ ] Voice commands ("Pennie, create an epic for...")
+- [ ] Voice commands ("Preppie, create an epic for...")
 
 ### Phase 3: Intelligence
 - [ ] Historical backlog analysis (RAG)

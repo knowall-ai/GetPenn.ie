@@ -1,11 +1,11 @@
-= Pennie the Prepper - Deployment Guide
+= Preppie the Prepper - Deployment Guide
 :toc:
 :toclevels: 3
 :sectnums:
 
 == Overview
 
-This guide provides step-by-step instructions for deploying Pennie the Prepper to your Azure environment. The deployment process is largely automated through scripts and Bicep templates, with a few manual steps for security approvals.
+This guide provides step-by-step instructions for deploying Preppie the Prepper to your Azure environment. The deployment process is largely automated through scripts and Bicep templates, with a few manual steps for security approvals.
 
 **Current Status** (November 2025): Infrastructure (Phase 1) ✅ complete. Teams bot integration (Phase 2) ✅ deployed with Key Vault integration.
 
@@ -21,7 +21,7 @@ This guide provides step-by-step instructions for deploying Pennie the Prepper t
 |✅ Deployed
 |Python 3.11 on Linux - 9 HTTP endpoints for Azure DevOps
 
-|AI Foundry Agent (Pennie)
+|AI Foundry Agent (Preppie)
 |✅ Deployed
 |GPT-4o in East US 2 with function calling
 
@@ -43,7 +43,7 @@ This guide provides step-by-step instructions for deploying Pennie the Prepper t
 
 |Function Call Handler
 |✅ Implemented
-|Proxies Pennie's function calls to backend (PennieAgentClient.cs)
+|Proxies Preppie's function calls to backend (PreppieAgentClient.cs)
 |===
 
 === Data Flow (Target Architecture)
@@ -56,9 +56,9 @@ Windows Server VM (Teams Media Bot + Graph Communications SDK)
     ↓ RTP Audio
 Azure Speech Services (Transcription + Diarization)
     ↓ Text + Speaker Name
-AI Foundry Agent (Pennie with GPT-4o, East US 2)
+AI Foundry Agent (Preppie with GPT-4o, East US 2)
     ↓ Function Calling (requires_action)
-Function Call Handler (PennieAgentClient.cs) ✅ IMPLEMENTED
+Function Call Handler (PreppieAgentClient.cs) ✅ IMPLEMENTED
     ↓ HTTP Requests
 Azure Functions Backend (UK South)
     ↓ Azure DevOps REST API
@@ -121,7 +121,7 @@ AZURE_DEVOPS_ORG=your-org-name
 AZURE_DEVOPS_PAT=your-personal-access-token
 
 # Key Vault (bot loads credentials at runtime)
-AZURE_KEY_VAULT_NAME=pennie-kv-xxxxxx
+AZURE_KEY_VAULT_NAME=preppie-kv-xxxxxx
 
 # AI Foundry (configured in Step 4)
 AZURE_AI_FOUNDRY_PROJECT=
@@ -148,7 +148,7 @@ The Windows VM will host the Teams Media Bot with Graph Communications SDK.
 
 Create parameters file (`infra/windows-vm.parameters.json`):
 
-NOTE: Replace placeholder values with your actual Azure resource names. If you deployed infrastructure first, use those resource names (e.g., Key Vault will have a generated name like `pennie-kv-{uniqueId}`).
+NOTE: Replace placeholder values with your actual Azure resource names. If you deployed infrastructure first, use those resource names (e.g., Key Vault will have a generated name like `preppie-kv-{uniqueId}`).
 
 [source,json]
 ----
@@ -163,7 +163,7 @@ NOTE: Replace placeholder values with your actual Azure resource names. If you d
       "value": "prod"
     },
     "keyVaultName": {
-      "value": "pennie-kv-{uniqueId}"
+      "value": "preppie-kv-{uniqueId}"
     },
     "applicationInsightsConnectionString": {
       "value": "InstrumentationKey=...;IngestionEndpoint=..."
@@ -176,7 +176,7 @@ NOTE: Replace placeholder values with your actual Azure resource names. If you d
     },
     "tags": {
       "value": {
-        "Project": "Pennie",
+        "Project": "Preppie",
         "Environment": "Production",
         "ManagedBy": "Bicep",
         "Purpose": "Teams Bot VM"
@@ -194,7 +194,7 @@ az deployment group create \
   --resource-group TMinus15Agents \
   --template-file infra/modules/windows-vm.bicep \
   --parameters @infra/windows-vm.parameters.json \
-  --name pennie-vm-deployment-$(date +%Y%m%d-%H%M%S)
+  --name preppie-vm-deployment-$(date +%Y%m%d-%H%M%S)
 ----
 
 **Deployment Time**: ~3-4 minutes
@@ -230,7 +230,7 @@ The backend provides HTTP endpoints for Azure DevOps integration.
 az deployment group create \
   --resource-group TMinus15Agents \
   --template-file infra/deploy-function-app.bicep \
-  --parameters functionAppName="pennie-backend" \
+  --parameters functionAppName="preppie-backend" \
               location="uksouth" \
               environmentName="prod"
 
@@ -298,7 +298,7 @@ Admin consent for Graph API permissions **cannot be automated** and must be gran
 **Azure Portal Method** (Recommended):
 
 1. Navigate to: https://portal.azure.com/
-2. Go to: **Entra ID** > **App Registrations** > **Pennie the Prepper Bot**
+2. Go to: **Entra ID** > **App Registrations** > **Preppie the Prepper Bot**
 3. Select: **API Permissions**
 4. Click: **Grant admin consent for [Your Organization]**
 5. Confirm the consent prompt
@@ -348,7 +348,7 @@ If the automated script fails, you can create the app registration manually:
 
 1. **Create App Registration**:
    - Azure Portal > Entra ID > App Registrations > New registration
-   - Name: "Pennie the Prepper Bot"
+   - Name: "Preppie the Prepper Bot"
    - Supported account types: Single tenant
    - Register
 
@@ -359,7 +359,7 @@ If the automated script fails, you can create the app registration manually:
 
 3. **Create Client Secret**:
    - Certificates & secrets > New client secret
-   - Description: "PennieBot-Prod-Secret"
+   - Description: "PreppieBot-Prod-Secret"
    - Expires: 24 months
    - Copy the secret value (only shown once)
 
@@ -373,7 +373,7 @@ If the automated script fails, you can create the app registration manually:
 5. **Update .env**:
    Add the app ID and password to your `.env` file.
 
-== Step 4: Deploy Pennie AI Foundry Agent
+== Step 4: Deploy Preppie AI Foundry Agent
 
 === Deploy Agent to East US 2
 
@@ -409,13 +409,13 @@ Update `.env` with the agent details from script output.
 1. Navigate to: https://ai.azure.com
 2. Select your project (in East US 2)
 3. Go to **Agents** section
-4. Find "Pennie the Prepper" agent
+4. Find "Preppie the Prepper" agent
 5. Open in Playground
 6. Test query: "List all projects in Azure DevOps"
 
 **Expected Behavior**:
 
-* Pennie calls `read_projects()` function
+* Preppie calls `read_projects()` function
 * Output shows empty (requires function call handler - not yet deployed)
 
 NOTE: This is expected! OpenAI Assistants use a function calling pattern where YOUR application code must intercept function calls and proxy them to the backend.
@@ -430,7 +430,7 @@ The Teams bot includes all critical components:
 
 1. **Graph Communications SDK Integration**: Meeting join/leave with RTP audio capture
 2. **Azure Speech Services**: Real-time transcription with speaker diarization
-3. **Function Call Handler**: Intercepts Pennie's `requires_action` and calls backend
+3. **Function Call Handler**: Intercepts Preppie's `requires_action` and calls backend
 4. **Service Wiring**: All components connected via dependency injection
 
 === Real-time Media Platform Requirements (ApplicationHostedMedia)
@@ -464,14 +464,14 @@ The Real-time Media Platform requires an SSL certificate for DTLS encryption:
 **Current Certificate**:
 [source]
 ----
-Subject: CN=pennie-prod-mmdxqm3w7kjwm.uksouth.cloudapp.azure.com
+Subject: CN=preppie-prod-mmdxqm3w7kjwm.uksouth.cloudapp.azure.com
 Thumbprint: ABDA24ACBBBC8F64E56EAC59525D7DC37146B857
 ----
 
 **Verify Certificate** (on VM):
 [source,powershell]
 ----
-Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -like "*pennie*" }
+Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -like "*preppie*" }
 ----
 
 ==== Network Ports (UDP for RTP Streams)
@@ -504,7 +504,7 @@ Add these NSG rules for media traffic:
 ----
 az network nsg rule create \
   --resource-group TMinus15Agents \
-  --nsg-name pennie-vm-nsg \
+  --nsg-name preppie-vm-nsg \
   --name AllowMediaRTP \
   --priority 300 \
   --direction Inbound \
@@ -520,7 +520,7 @@ Add to `appsettings.json` on VM:
 ----
 {
   "MediaPlatform": {
-    "ServiceFqdn": "pennie-prod-mmdxqm3w7kjwm.uksouth.cloudapp.azure.com",
+    "ServiceFqdn": "preppie-prod-mmdxqm3w7kjwm.uksouth.cloudapp.azure.com",
     "CertificateThumbprint": "ABDA24ACBBBC8F64E56EAC59525D7DC37146B857",
     "MediaInstanceExternalPort": 20000,
     "CallSignalingPort": 9441,
@@ -554,7 +554,7 @@ Add to `appsettings.json` on VM:
 var instanceSettings = new MediaPlatformInstanceSettings
 {
     CertificateThumbprint = "ABDA24AC...",  // From Windows cert store
-    ServiceFqdn = "pennie-prod-xxx.uksouth.cloudapp.azure.com",
+    ServiceFqdn = "preppie-prod-xxx.uksouth.cloudapp.azure.com",
     InstancePublicPort = 8445,
     InstanceInternalPort = 8445,
     InstancePublicIPAddress = IPAddress.Parse("x.x.x.x")
@@ -615,15 +615,15 @@ OpenAI Assistants use a **function calling pattern**, not HTTP tools:
 
 **How It Works**:
 
-1. Pennie receives transcript and calls a function (e.g., `read_projects()`)
+1. Preppie receives transcript and calls a function (e.g., `read_projects()`)
 2. Azure OpenAI returns `requires_action` status
-3. **Function Call Handler** (in `PennieAgentClient.cs`):
+3. **Function Call Handler** (in `PreppieAgentClient.cs`):
    * Monitors run status in polling loop
    * Detects `requires_action` status
    * Calls backend: `https://pennie-backend-prod.azurewebsites.net/api/read_projects`
    * Gets the response (26 projects)
-   * Submits result back to Pennie via Runs API
-4. Pennie processes result and creates work items
+   * Submits result back to Preppie via Runs API
+4. Preppie processes result and creates work items
 
 === Automated Deployment
 
@@ -645,11 +645,11 @@ Deploy the bot from your local machine using the automated script:
 6. Uploads to Azure Blob Storage
 7. Generates SAS URL (1-hour expiry)
 8. Deploys to VM via `az vm run-command invoke`:
-   - Stops PennieBot service
+   - Stops PreppieBot service
    - **Backs up appsettings.json** (preserves VM configuration)
    - Downloads and extracts new version
    - **Restores appsettings.json from backup**
-   - Starts PennieBot service
+   - Starts PreppieBot service
 9. Verifies health endpoint
 
 === Configuration Preservation During Deployment
@@ -732,7 +732,7 @@ The Teams app package (manifest) must be published to your organization's app ca
 cd bot/teams-manifest
 
 # Create zip package from manifest and icons
-zip pennie-app-v1.1.0.zip manifest.json color.png outline.png
+zip preppie-app-v1.1.0.zip manifest.json color.png outline.png
 ----
 
 Or use the deployment script:
@@ -766,7 +766,7 @@ If the automated script fails, upload manually:
 1. Go to: https://admin.teams.microsoft.com
 2. Navigate to: **Teams apps** → **Manage apps**
 3. Click: **Upload new app**
-4. Select: `bot/teams-manifest/pennie-app-v1.1.0.zip`
+4. Select: `bot/teams-manifest/preppie-app-v1.1.0.zip`
 5. Approve the app for your organization
 
 **Option 2 - Teams Client**:
@@ -774,7 +774,7 @@ If the automated script fails, upload manually:
 1. Open Microsoft Teams
 2. Go to: **Apps** → **Manage your apps**
 3. Click: **Upload a custom app** → **Upload for [Your Org]**
-4. Select: `bot/teams-manifest/pennie-app-v1.1.0.zip`
+4. Select: `bot/teams-manifest/preppie-app-v1.1.0.zip`
 
 ==== Teams App Manifest
 
@@ -795,12 +795,12 @@ The manifest (`bot/teams-manifest/manifest.json`) defines:
 Register the bot messaging endpoint in Teams Developer Portal:
 
 1. Go to https://dev.teams.microsoft.com/apps
-2. Create new app or select "Pennie the Prepper Bot"
+2. Create new app or select "Preppie the Prepper Bot"
 3. Navigate to **App Features** → **Bot**
 4. Configure:
    * **Bot ID:** Value from Key Vault `TEAMS-APP-ID`
    * **Messaging endpoint:** `https://<vm-fqdn>/api/messages`
-   * Example: `https://pennie-prod-abc123.uksouth.cloudapp.azure.com/api/messages`
+   * Example: `https://preppie-prod-abc123.uksouth.cloudapp.azure.com/api/messages`
 5. Save changes
 
 **Why Manual?**
@@ -815,9 +815,9 @@ Check service status:
 # Via Azure VM Run Command
 az vm run-command invoke \
   --resource-group TMinus15Agents \
-  --name pennie-vm-prod \
+  --name preppie-vm-prod \
   --command-id RunPowerShellScript \
-  --scripts "Get-Service -Name PennieBot | Format-List"
+  --scripts "Get-Service -Name PreppieBot | Format-List"
 ----
 
 Expected: `Status: Running`
@@ -833,7 +833,7 @@ Expected response:
 [source,json]
 ----
 {
-  "name": "Pennie the Prepper Bot",
+  "name": "Preppie the Prepper Bot",
   "status": "Running",
   "version": "1.0.0",
   "timestamp": "2025-10-26T..."
@@ -843,15 +843,15 @@ Expected response:
 === Test End-to-End
 
 1. **Create Teams Meeting** with 2+ participants
-2. **Invite Pennie**: Type `@Pennie the Prepper` in meeting chat
-3. **Verify Join**: Bot should announce "👋 Hi, I'm Pennie the Prepper!"
+2. **Invite Preppie**: Type `@Preppie the Prepper` in meeting chat
+3. **Verify Join**: Bot should announce "👋 Hi, I'm Preppie the Prepper!"
 4. **Speak Requirements**: "We need a customer login feature with SSO"
 5. **Check Azure DevOps**: Work items should appear with speaker attribution
 
 **Logs** (on VM):
 [source,powershell]
 ----
-Get-Content C:\Pennie\logs\bot-stdout.log -Tail 100
+Get-Content C:\Preppie\logs\bot-stdout.log -Tail 100
 ----
 
 === Troubleshooting
@@ -860,7 +860,7 @@ Get-Content C:\Pennie\logs\bot-stdout.log -Tail 100
 | Issue | Solution
 
 | Service won't start
-| Check `C:\Pennie\logs\bot-stderr.log` for errors, verify environment variables set
+| Check `C:\Preppie\logs\bot-stderr.log` for errors, verify environment variables set
 
 | Bot doesn't join meeting
 | Verify Teams App messaging endpoint URL correct, check admin consent granted
@@ -868,7 +868,7 @@ Get-Content C:\Pennie\logs\bot-stdout.log -Tail 100
 | No transcription
 | Check Azure Speech Services key in Key Vault, verify Speech Services endpoint accessible
 
-| Pennie doesn't create work items
+| Preppie doesn't create work items
 | Review function call handler logs, verify backend URL correct, check agent ID matches
 |===
 
@@ -940,7 +940,7 @@ Expected secrets:
 
 * Windows Server VM (Standard_D2s_v3) in UK South
 * Azure Functions backend (9 HTTP endpoints) in UK South
-* Pennie AI Foundry agent (GPT-4o) in East US 2
+* Preppie AI Foundry agent (GPT-4o) in East US 2
 * Azure AD app registration with Graph API permissions
 * Key Vault with bot credentials
 * Application Insights for monitoring
@@ -950,7 +950,7 @@ Expected secrets:
 * Teams Media Bot with Graph Communications SDK
 * Key Vault integration for secure credential management
 * Automated deployment script (`deploy-bot.sh`)
-* Function Call Handler (proxies Pennie's function calls)
+* Function Call Handler (proxies Preppie's function calls)
 * Speech-to-text transcription with speaker diarization
 
 === Current Completion Status
@@ -968,14 +968,14 @@ Expected secrets:
 * Fixed malformed JavaScript in meetingPanel.html
 * Added SendChatMessageAsync method to IGraphCallService interface
 * Implemented SendChatMessageAsync in GraphCallService.cs using Graph API
-* Added chat notification when Pennie joins meetings (sends "Hi! I'm Pennie the Prepper..." message)
+* Added chat notification when Preppie joins meetings (sends "Hi! I'm Preppie the Prepper..." message)
 * Deployment Status: ✅ Successful (Service Running, Health Check Passed)
 * Deployed to: https://172.166.237.134/
 
 === Next Steps
 
 1. **Test in Teams**: Send "What projects do we have in DevOps?" to the bot
-2. **Monitor & Tune**: Adjust Pennie's behavior based on real meeting data
+2. **Monitor & Tune**: Adjust Preppie's behavior based on real meeting data
 3. **Add Integration Tests**: Automated end-to-end testing for CI/CD
 
 == Troubleshooting
@@ -1009,7 +1009,7 @@ Should return `true` (Linux). If `false`, redeploy with correct OS.
 
 === Agent Function Calls Return Empty
 
-**Error**: Pennie calls functions but gets empty output in playground
+**Error**: Preppie calls functions but gets empty output in playground
 
 **Root Cause**: Function Call Handler not deployed. This is EXPECTED at this stage.
 
@@ -1151,7 +1151,7 @@ Located at: `scripts/setup-bot-app-registration.sh`
 
 Located at: `scripts/deploy-agent.sh`
 
-**Purpose**: Deploys Pennie AI Foundry agent with function calling
+**Purpose**: Deploys Preppie AI Foundry agent with function calling
 
 **What It Does**:
 
@@ -1250,7 +1250,7 @@ If automation fails, deploy components manually:
 === Create App Registration Manually
 
 1. Azure Portal > Entra ID > App Registrations > New registration
-2. Name: "Pennie the Prepper Bot"
+2. Name: "Preppie the Prepper Bot"
 3. Supported account types: Single tenant
 4. API Permissions > Add permission > Microsoft Graph > Application permissions
 5. Add: `Calls.AccessMedia.All`, `Calls.JoinGroupCall.All`, `OnlineMeetings.ReadWrite.All`

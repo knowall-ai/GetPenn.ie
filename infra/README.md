@@ -1,6 +1,6 @@
 # Infrastructure as Code (Bicep)
 
-This directory contains Azure Bicep templates for deploying Pennie the Prepper infrastructure.
+This directory contains Azure Bicep templates for deploying Preppie the Prepper infrastructure.
 
 ## Structure
 
@@ -84,48 +84,48 @@ az deployment sub create \
 
 ### Monitoring Resources
 
-- **Log Analytics Workspace**: `pennie-logs-{environmentName}`
+- **Log Analytics Workspace**: `preppie-logs-{environmentName}`
   - Retention: 90 days (prod), 30 days (test/dev)
-- **Application Insights**: `pennie-insights-{environmentName}`
+- **Application Insights**: `preppie-insights-{environmentName}`
   - Type: Web application monitoring
-- **Storage Account**: `penniestorage{environmentName}{unique}`
+- **Storage Account**: `preppiestorage{environmentName}{unique}`
   - SKU: Standard_LRS
   - Containers: `logs`
 
 ### Security Resources
 
-- **Key Vault**: `pennie-kv-{environmentName}-{unique}`
+- **Key Vault**: `preppie-kv-{environmentName}-{unique}`
   - Secrets: `teams-app-id`, `teams-app-password`, `devops-pat`
   - Soft delete enabled (90 days)
   - Purge protection enabled
 
 ### AI Services
 
-- **Speech Services**: `pennie-speech-{environmentName}`
+- **Speech Services**: `preppie-speech-{environmentName}`
   - SKU: S0 (Standard)
   - Real-time transcription with speaker diarization
-- **Azure OpenAI**: `pennie-openai-{environmentName}`
+- **Azure OpenAI**: `preppie-openai-{environmentName}`
   - SKU: S0
   - Model deployment: `gpt-4o` (version 2024-08-06)
   - Capacity: 10K TPM
 - **AI Foundry Hub**: `{aiHubName}`
   - SKU: Basic
   - Managed identity enabled
-- **AI Foundry Project**: `pennie-project-{environmentName}`
+- **AI Foundry Project**: `preppie-project-{environmentName}`
   - Connected to AI Hub
   - Project name: `{aiProjectName}`
 
 ### Compute Resources
 
-- **Virtual Network**: `pennie-vnet-{environmentName}`
+- **Virtual Network**: `preppie-vnet-{environmentName}`
   - Address space: `10.0.0.0/16`
   - Subnet: `default` (10.0.1.0/24)
-- **Network Security Group**: `pennie-nsg-{environmentName}`
+- **Network Security Group**: `preppie-nsg-{environmentName}`
   - Inbound: HTTPS (443), RDP (3389)
-- **Public IP**: `pennie-pip-{environmentName}`
+- **Public IP**: `preppie-pip-{environmentName}`
   - SKU: Standard (static)
-  - DNS: `pennie-{environmentName}-{unique}.{location}.cloudapp.azure.com`
-- **Windows Server VM**: `pennie-vm-{environmentName}`
+  - DNS: `preppie-{environmentName}-{unique}.{location}.cloudapp.azure.com`
+- **Windows Server VM**: `preppie-vm-{environmentName}`
   - Size: Standard_D2s_v3 (2 vCPU, 8 GB RAM)
   - OS: Windows Server 2022 Datacenter Azure Edition
   - Managed identity enabled
@@ -159,7 +159,7 @@ az keyvault secret set \
 # Get VM public IP
 az vm show \
   --resource-group TMinus15Agents \
-  --name pennie-vm-prod \
+  --name preppie-vm-prod \
   --show-details \
   --query publicIps -o tsv
 
@@ -181,7 +181,7 @@ npx @azure-devops/mcp YourOrg --test
 
 ### 4. Deploy Bot Application
 
-Copy the compiled bot application to `C:\Pennie\bot\` and install as Windows Service (see deployment guide).
+Copy the compiled bot application to `C:\Preppie\bot\` and install as Windows Service (see deployment guide).
 
 ## Outputs
 
@@ -231,7 +231,7 @@ Check VM extension logs:
 ```bash
 az vm extension show \
   --resource-group TMinus15Agents \
-  --vm-name pennie-vm-prod \
+  --vm-name preppie-vm-prod \
   --name InstallDependencies
 ```
 

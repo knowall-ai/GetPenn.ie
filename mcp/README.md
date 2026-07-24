@@ -1,6 +1,6 @@
 # Azure DevOps MCP Server Configuration
 
-This directory contains the configuration for Microsoft's official [Azure DevOps MCP Server](https://github.com/microsoft/azure-devops-mcp), which enables Pennie to interact with Azure DevOps work items through the Model Context Protocol.
+This directory contains the configuration for Microsoft's official [Azure DevOps MCP Server](https://github.com/microsoft/azure-devops-mcp), which enables Preppie to interact with Azure DevOps work items through the Model Context Protocol.
 
 ## Overview
 
@@ -45,7 +45,7 @@ Set these in the Windows VM environment or via `.env` file:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `AZURE_DEVOPS_ORG` | Azure DevOps organization name | `knowallai` |
-| `AZURE_DEVOPS_PROJECT` | Azure DevOps project name | `Pennie` |
+| `AZURE_DEVOPS_PROJECT` | Azure DevOps project name | `Preppie` |
 
 ## Authentication
 
@@ -85,7 +85,7 @@ The configuration loads only the `work-items` domain to optimize performance:
 ```
 
 Available domains:
-- `work-items` - Work item operations (used by Pennie)
+- `work-items` - Work item operations (used by Preppie)
 - `repositories` - Git repository operations
 - `pipelines` - CI/CD pipeline operations
 - `wiki` - Wiki page operations
@@ -105,7 +105,7 @@ npx @azure-devops/mcp ${AZURE_DEVOPS_ORG} --test
 
 ## Integration with Azure AI Foundry
 
-The MCP server is configured in Pennie's `agent-config.json`:
+The MCP server is configured in Preppie's `agent-config.json`:
 
 ```json
 {

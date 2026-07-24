@@ -65,7 +65,7 @@
       "type": "object",
       "defaultValue": {
         "Environment": "[parameters('environmentName')]",
-        "Project": "Pennie",
+        "Project": "Preppie",
         "ManagedBy": "Bicep",
         "CostCenter": "AI-Agents"
       },
@@ -128,7 +128,7 @@
             {
               "type": "Microsoft.OperationalInsights/workspaces",
               "apiVersion": "2022-10-01",
-              "name": "[format('pennie-logs-{0}', parameters('environmentName'))]",
+              "name": "[format('preppie-logs-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "properties": {
@@ -144,24 +144,24 @@
             {
               "type": "Microsoft.Insights/components",
               "apiVersion": "2020-02-02",
-              "name": "[format('pennie-insights-{0}', parameters('environmentName'))]",
+              "name": "[format('preppie-insights-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "kind": "web",
               "properties": {
                 "Application_Type": "web",
-                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('pennie-logs-{0}', parameters('environmentName')))]",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('preppie-logs-{0}', parameters('environmentName')))]",
                 "RetentionInDays": "[if(equals(parameters('environmentName'), 'prod'), 90, 30)]",
                 "IngestionMode": "LogAnalytics"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.OperationalInsights/workspaces', format('pennie-logs-{0}', parameters('environmentName')))]"
+                "[resourceId('Microsoft.OperationalInsights/workspaces', format('preppie-logs-{0}', parameters('environmentName')))]"
               ]
             },
             {
               "type": "Microsoft.Storage/storageAccounts",
               "apiVersion": "2023-01-01",
-              "name": "[format('penniestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]",
+              "name": "[format('preppiestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "sku": {
@@ -188,39 +188,39 @@
             {
               "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
               "apiVersion": "2023-01-01",
-              "name": "[format('{0}/default/logs', format('penniestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]",
+              "name": "[format('{0}/default/logs', format('preppiestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]",
               "properties": {
                 "publicAccess": "None"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', format('penniestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
+                "[resourceId('Microsoft.Storage/storageAccounts', format('preppiestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
               ]
             }
           ],
           "outputs": {
             "logAnalyticsWorkspaceId": {
               "type": "string",
-              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', format('pennie-logs-{0}', parameters('environmentName')))]"
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', format('preppie-logs-{0}', parameters('environmentName')))]"
             },
             "applicationInsightsName": {
               "type": "string",
-              "value": "[format('pennie-insights-{0}', parameters('environmentName'))]"
+              "value": "[format('preppie-insights-{0}', parameters('environmentName'))]"
             },
             "applicationInsightsInstrumentationKey": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Insights/components', format('pennie-insights-{0}', parameters('environmentName'))), '2020-02-02').InstrumentationKey]"
+              "value": "[reference(resourceId('Microsoft.Insights/components', format('preppie-insights-{0}', parameters('environmentName'))), '2020-02-02').InstrumentationKey]"
             },
             "applicationInsightsConnectionString": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Insights/components', format('pennie-insights-{0}', parameters('environmentName'))), '2020-02-02').ConnectionString]"
+              "value": "[reference(resourceId('Microsoft.Insights/components', format('preppie-insights-{0}', parameters('environmentName'))), '2020-02-02').ConnectionString]"
             },
             "storageAccountName": {
               "type": "string",
-              "value": "[format('penniestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]"
+              "value": "[format('preppiestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]"
             },
             "storageAccountId": {
               "type": "string",
-              "value": "[resourceId('Microsoft.Storage/storageAccounts', format('penniestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
+              "value": "[resourceId('Microsoft.Storage/storageAccounts', format('preppiestorage{0}{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
             }
           }
         }
@@ -281,7 +281,7 @@
             {
               "type": "Microsoft.KeyVault/vaults",
               "apiVersion": "2023-02-01",
-              "name": "[format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]",
+              "name": "[format('preppie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "properties": {
@@ -303,52 +303,52 @@
             {
               "type": "Microsoft.KeyVault/vaults/secrets",
               "apiVersion": "2023-02-01",
-              "name": "[format('{0}/{1}', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)), 'teams-app-id')]",
+              "name": "[format('{0}/{1}', format('preppie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)), 'teams-app-id')]",
               "properties": {
                 "value": "[parameters('teamsAppId')]",
                 "contentType": "text/plain"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
+                "[resourceId('Microsoft.KeyVault/vaults', format('preppie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
               ]
             },
             {
               "type": "Microsoft.KeyVault/vaults/secrets",
               "apiVersion": "2023-02-01",
-              "name": "[format('{0}/{1}', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)), 'teams-app-password')]",
+              "name": "[format('{0}/{1}', format('preppie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)), 'teams-app-password')]",
               "properties": {
                 "value": "PLACEHOLDER-SET-VIA-PIPELINE",
                 "contentType": "text/plain"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
+                "[resourceId('Microsoft.KeyVault/vaults', format('preppie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
               ]
             },
             {
               "type": "Microsoft.KeyVault/vaults/secrets",
               "apiVersion": "2023-02-01",
-              "name": "[format('{0}/{1}', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)), 'devops-pat')]",
+              "name": "[format('{0}/{1}', format('preppie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)), 'devops-pat')]",
               "properties": {
                 "value": "PLACEHOLDER-SET-VIA-PIPELINE",
                 "contentType": "text/plain"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
+                "[resourceId('Microsoft.KeyVault/vaults', format('preppie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
               ]
             }
           ],
           "outputs": {
             "keyVaultName": {
               "type": "string",
-              "value": "[format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]"
+              "value": "[format('preppie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]"
             },
             "keyVaultId": {
               "type": "string",
-              "value": "[resourceId('Microsoft.KeyVault/vaults', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
+              "value": "[resourceId('Microsoft.KeyVault/vaults', format('preppie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id)))]"
             },
             "keyVaultUri": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', format('pennie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))), '2023-02-01').vaultUri]"
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', format('preppie-kv-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))), '2023-02-01').vaultUri]"
             }
           }
         }
@@ -415,7 +415,7 @@
             {
               "type": "Microsoft.CognitiveServices/accounts",
               "apiVersion": "2023-05-01",
-              "name": "[format('pennie-speech-{0}', parameters('environmentName'))]",
+              "name": "[format('preppie-speech-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "kind": "SpeechServices",
@@ -423,7 +423,7 @@
                 "name": "S0"
               },
               "properties": {
-                "customSubDomainName": "[format('pennie-speech-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]",
+                "customSubDomainName": "[format('preppie-speech-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]",
                 "publicNetworkAccess": "Enabled",
                 "networkAcls": {
                   "defaultAction": "Allow"
@@ -433,7 +433,7 @@
             {
               "type": "Microsoft.CognitiveServices/accounts",
               "apiVersion": "2023-05-01",
-              "name": "[format('pennie-openai-{0}', parameters('environmentName'))]",
+              "name": "[format('preppie-openai-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "kind": "OpenAI",
@@ -441,7 +441,7 @@
                 "name": "S0"
               },
               "properties": {
-                "customSubDomainName": "[format('pennie-openai-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]",
+                "customSubDomainName": "[format('preppie-openai-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]",
                 "publicNetworkAccess": "Enabled",
                 "networkAcls": {
                   "defaultAction": "Allow"
@@ -451,7 +451,7 @@
             {
               "type": "Microsoft.CognitiveServices/accounts/deployments",
               "apiVersion": "2023-05-01",
-              "name": "[format('{0}/{1}', format('pennie-openai-{0}', parameters('environmentName')), 'gpt-4o')]",
+              "name": "[format('{0}/{1}', format('preppie-openai-{0}', parameters('environmentName')), 'gpt-4o')]",
               "sku": {
                 "name": "Standard",
                 "capacity": 10
@@ -466,7 +466,7 @@
                 "raiPolicyName": "Microsoft.Default"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.CognitiveServices/accounts', format('pennie-openai-{0}', parameters('environmentName')))]"
+                "[resourceId('Microsoft.CognitiveServices/accounts', format('preppie-openai-{0}', parameters('environmentName')))]"
               ]
             },
             {
@@ -484,7 +484,7 @@
               },
               "properties": {
                 "friendlyName": "[parameters('aiHubName')]",
-                "description": "AI Foundry Hub for Pennie the Prepper",
+                "description": "AI Foundry Hub for Preppie the Prepper",
                 "publicNetworkAccess": "Enabled",
                 "v1LegacyMode": false
               }
@@ -492,7 +492,7 @@
             {
               "type": "Microsoft.MachineLearningServices/workspaces",
               "apiVersion": "2024-04-01",
-              "name": "[format('pennie-project-{0}', parameters('environmentName'))]",
+              "name": "[format('preppie-project-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "identity": {
@@ -504,7 +504,7 @@
               },
               "properties": {
                 "friendlyName": "[parameters('aiProjectName')]",
-                "description": "AI Foundry Project for Pennie Agent",
+                "description": "AI Foundry Project for Preppie Agent",
                 "hubResourceId": "[resourceId('Microsoft.MachineLearningServices/workspaces', parameters('aiHubName'))]",
                 "publicNetworkAccess": "Enabled"
               },
@@ -516,27 +516,27 @@
           "outputs": {
             "speechServiceName": {
               "type": "string",
-              "value": "[format('pennie-speech-{0}', parameters('environmentName'))]"
+              "value": "[format('preppie-speech-{0}', parameters('environmentName'))]"
             },
             "speechServiceEndpoint": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', format('pennie-speech-{0}', parameters('environmentName'))), '2023-05-01').endpoint]"
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', format('preppie-speech-{0}', parameters('environmentName'))), '2023-05-01').endpoint]"
             },
             "speechServiceId": {
               "type": "string",
-              "value": "[resourceId('Microsoft.CognitiveServices/accounts', format('pennie-speech-{0}', parameters('environmentName')))]"
+              "value": "[resourceId('Microsoft.CognitiveServices/accounts', format('preppie-speech-{0}', parameters('environmentName')))]"
             },
             "openAiName": {
               "type": "string",
-              "value": "[format('pennie-openai-{0}', parameters('environmentName'))]"
+              "value": "[format('preppie-openai-{0}', parameters('environmentName'))]"
             },
             "openAiEndpoint": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', format('pennie-openai-{0}', parameters('environmentName'))), '2023-05-01').endpoint]"
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', format('preppie-openai-{0}', parameters('environmentName'))), '2023-05-01').endpoint]"
             },
             "openAiId": {
               "type": "string",
-              "value": "[resourceId('Microsoft.CognitiveServices/accounts', format('pennie-openai-{0}', parameters('environmentName')))]"
+              "value": "[resourceId('Microsoft.CognitiveServices/accounts', format('preppie-openai-{0}', parameters('environmentName')))]"
             },
             "aiHubName": {
               "type": "string",
@@ -548,11 +548,11 @@
             },
             "aiProjectName": {
               "type": "string",
-              "value": "[format('pennie-project-{0}', parameters('environmentName'))]"
+              "value": "[format('preppie-project-{0}', parameters('environmentName'))]"
             },
             "aiProjectId": {
               "type": "string",
-              "value": "[resourceId('Microsoft.MachineLearningServices/workspaces', format('pennie-project-{0}', parameters('environmentName')))]"
+              "value": "[resourceId('Microsoft.MachineLearningServices/workspaces', format('preppie-project-{0}', parameters('environmentName')))]"
             }
           }
         }
@@ -628,7 +628,7 @@
             },
             "adminUsername": {
               "type": "string",
-              "defaultValue": "pennieadmin",
+              "defaultValue": "preppieadmin",
               "metadata": {
                 "description": "Admin username for the VM"
               }
@@ -645,7 +645,7 @@
             {
               "type": "Microsoft.Network/virtualNetworks",
               "apiVersion": "2023-05-01",
-              "name": "[format('pennie-vnet-{0}', parameters('environmentName'))]",
+              "name": "[format('preppie-vnet-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "properties": {
@@ -660,20 +660,20 @@
                     "properties": {
                       "addressPrefix": "10.0.1.0/24",
                       "networkSecurityGroup": {
-                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('pennie-nsg-{0}', parameters('environmentName')))]"
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('preppie-nsg-{0}', parameters('environmentName')))]"
                       }
                     }
                   }
                 ]
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Network/networkSecurityGroups', format('pennie-nsg-{0}', parameters('environmentName')))]"
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('preppie-nsg-{0}', parameters('environmentName')))]"
               ]
             },
             {
               "type": "Microsoft.Network/networkSecurityGroups",
               "apiVersion": "2023-05-01",
-              "name": "[format('pennie-nsg-{0}', parameters('environmentName'))]",
+              "name": "[format('preppie-nsg-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "properties": {
@@ -710,7 +710,7 @@
             {
               "type": "Microsoft.Network/publicIPAddresses",
               "apiVersion": "2023-05-01",
-              "name": "[format('pennie-pip-{0}', parameters('environmentName'))]",
+              "name": "[format('preppie-pip-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "sku": {
@@ -719,14 +719,14 @@
               "properties": {
                 "publicIPAllocationMethod": "Static",
                 "dnsSettings": {
-                  "domainNameLabel": "[format('pennie-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]"
+                  "domainNameLabel": "[format('preppie-{0}-{1}', parameters('environmentName'), uniqueString(resourceGroup().id))]"
                 }
               }
             },
             {
               "type": "Microsoft.Network/networkInterfaces",
               "apiVersion": "2023-05-01",
-              "name": "[format('pennie-nic-{0}', parameters('environmentName'))]",
+              "name": "[format('preppie-nic-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "properties": {
@@ -735,29 +735,29 @@
                     "name": "ipconfig1",
                     "properties": {
                       "subnet": {
-                        "id": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('pennie-vnet-{0}', parameters('environmentName'))), '2023-05-01').subnets[0].id]"
+                        "id": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('preppie-vnet-{0}', parameters('environmentName'))), '2023-05-01').subnets[0].id]"
                       },
                       "privateIPAllocationMethod": "Dynamic",
                       "publicIPAddress": {
-                        "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('pennie-pip-{0}', parameters('environmentName')))]"
+                        "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('preppie-pip-{0}', parameters('environmentName')))]"
                       }
                     }
                   }
                 ],
                 "networkSecurityGroup": {
-                  "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('pennie-nsg-{0}', parameters('environmentName')))]"
+                  "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('preppie-nsg-{0}', parameters('environmentName')))]"
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Network/networkSecurityGroups', format('pennie-nsg-{0}', parameters('environmentName')))]",
-                "[resourceId('Microsoft.Network/publicIPAddresses', format('pennie-pip-{0}', parameters('environmentName')))]",
-                "[resourceId('Microsoft.Network/virtualNetworks', format('pennie-vnet-{0}', parameters('environmentName')))]"
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('preppie-nsg-{0}', parameters('environmentName')))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', format('preppie-pip-{0}', parameters('environmentName')))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', format('preppie-vnet-{0}', parameters('environmentName')))]"
               ]
             },
             {
               "type": "Microsoft.Compute/virtualMachines",
               "apiVersion": "2023-09-01",
-              "name": "[format('pennie-vm-{0}', parameters('environmentName'))]",
+              "name": "[format('preppie-vm-{0}', parameters('environmentName'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "identity": {
@@ -768,7 +768,7 @@
                   "vmSize": "[parameters('vmSize')]"
                 },
                 "osProfile": {
-                  "computerName": "[format('pennie-{0}', parameters('environmentName'))]",
+                  "computerName": "[format('preppie-{0}', parameters('environmentName'))]",
                   "adminUsername": "[parameters('adminUsername')]",
                   "adminPassword": "[format('P@ssw0rd!{0}', uniqueString(resourceGroup().id))]",
                   "windowsConfiguration": {
@@ -790,7 +790,7 @@
                     "version": "latest"
                   },
                   "osDisk": {
-                    "name": "[format('pennie-osdisk-{0}', parameters('environmentName'))]",
+                    "name": "[format('preppie-osdisk-{0}', parameters('environmentName'))]",
                     "caching": "ReadWrite",
                     "createOption": "FromImage",
                     "managedDisk": {
@@ -801,7 +801,7 @@
                 "networkProfile": {
                   "networkInterfaces": [
                     {
-                      "id": "[resourceId('Microsoft.Network/networkInterfaces', format('pennie-nic-{0}', parameters('environmentName')))]"
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', format('preppie-nic-{0}', parameters('environmentName')))]"
                     }
                   ]
                 },
@@ -812,13 +812,13 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Network/networkInterfaces', format('pennie-nic-{0}', parameters('environmentName')))]"
+                "[resourceId('Microsoft.Network/networkInterfaces', format('preppie-nic-{0}', parameters('environmentName')))]"
               ]
             },
             {
               "type": "Microsoft.Compute/virtualMachines/extensions",
               "apiVersion": "2023-09-01",
-              "name": "[format('{0}/{1}', format('pennie-vm-{0}', parameters('environmentName')), 'InstallDependencies')]",
+              "name": "[format('{0}/{1}', format('preppie-vm-{0}', parameters('environmentName')), 'InstallDependencies')]",
               "location": "[parameters('location')]",
               "properties": {
                 "publisher": "Microsoft.Compute",
@@ -829,52 +829,52 @@
                   "fileUris": []
                 },
                 "protectedSettings": {
-                  "commandToExecute": "        powershell.exe -ExecutionPolicy Bypass -Command \"\n          # Install Chocolatey\n          Set-ExecutionPolicy Bypass -Scope Process -Force;\n          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;\n          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'));\n\n          # Install Node.js LTS\n          choco install nodejs-lts -y;\n\n          # Install .NET 8.0 SDK\n          choco install dotnet-sdk -y;\n\n          # Install NSSM (for running services)\n          choco install nssm -y;\n\n          # Refresh environment variables\n          refreshenv;\n\n          # Install Azure DevOps MCP Server globally\n          npm install -g @azure-devops/mcp;\n\n          # Create application directories\n          New-Item -ItemType Directory -Path 'C:\\\\Pennie' -Force;\n          New-Item -ItemType Directory -Path 'C:\\\\Pennie\\\\bot' -Force;\n          New-Item -ItemType Directory -Path 'C:\\\\Pennie\\\\mcp' -Force;\n          New-Item -ItemType Directory -Path 'C:\\\\Pennie\\\\logs' -Force;\n\n          # Set environment variables\n          [System.Environment]::SetEnvironmentVariable('AZURE_DEVOPS_ORG', '${devOpsOrg}', 'Machine');\n          [System.Environment]::SetEnvironmentVariable('AZURE_DEVOPS_PROJECT', '${devOpsProject}', 'Machine');\n          [System.Environment]::SetEnvironmentVariable('APPLICATIONINSIGHTS_CONNECTION_STRING', '${applicationInsightsConnectionString}', 'Machine');\n\n          Write-Host 'Dependencies installed successfully';\n        \"\n      "
+                  "commandToExecute": "        powershell.exe -ExecutionPolicy Bypass -Command \"\n          # Install Chocolatey\n          Set-ExecutionPolicy Bypass -Scope Process -Force;\n          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;\n          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'));\n\n          # Install Node.js LTS\n          choco install nodejs-lts -y;\n\n          # Install .NET 8.0 SDK\n          choco install dotnet-sdk -y;\n\n          # Install NSSM (for running services)\n          choco install nssm -y;\n\n          # Refresh environment variables\n          refreshenv;\n\n          # Install Azure DevOps MCP Server globally\n          npm install -g @azure-devops/mcp;\n\n          # Create application directories\n          New-Item -ItemType Directory -Path 'C:\\\\Preppie' -Force;\n          New-Item -ItemType Directory -Path 'C:\\\\Preppie\\\\bot' -Force;\n          New-Item -ItemType Directory -Path 'C:\\\\Preppie\\\\mcp' -Force;\n          New-Item -ItemType Directory -Path 'C:\\\\Preppie\\\\logs' -Force;\n\n          # Set environment variables\n          [System.Environment]::SetEnvironmentVariable('AZURE_DEVOPS_ORG', '${devOpsOrg}', 'Machine');\n          [System.Environment]::SetEnvironmentVariable('AZURE_DEVOPS_PROJECT', '${devOpsProject}', 'Machine');\n          [System.Environment]::SetEnvironmentVariable('APPLICATIONINSIGHTS_CONNECTION_STRING', '${applicationInsightsConnectionString}', 'Machine');\n\n          Write-Host 'Dependencies installed successfully';\n        \"\n      "
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName')))]"
+                "[resourceId('Microsoft.Compute/virtualMachines', format('preppie-vm-{0}', parameters('environmentName')))]"
               ]
             },
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('keyVaultName'))]",
-              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName'))), 'Key Vault Secrets User')]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.Compute/virtualMachines', format('preppie-vm-{0}', parameters('environmentName'))), 'Key Vault Secrets User')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]",
-                "principalId": "[reference(resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName'))), '2023-09-01', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.Compute/virtualMachines', format('preppie-vm-{0}', parameters('environmentName'))), '2023-09-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName')))]"
+                "[resourceId('Microsoft.Compute/virtualMachines', format('preppie-vm-{0}', parameters('environmentName')))]"
               ]
             }
           ],
           "outputs": {
             "vmName": {
               "type": "string",
-              "value": "[format('pennie-vm-{0}', parameters('environmentName'))]"
+              "value": "[format('preppie-vm-{0}', parameters('environmentName'))]"
             },
             "vmId": {
               "type": "string",
-              "value": "[resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName')))]"
+              "value": "[resourceId('Microsoft.Compute/virtualMachines', format('preppie-vm-{0}', parameters('environmentName')))]"
             },
             "vmPublicIP": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('pennie-pip-{0}', parameters('environmentName'))), '2023-05-01').ipAddress]"
+              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('preppie-pip-{0}', parameters('environmentName'))), '2023-05-01').ipAddress]"
             },
             "vmPrivateIP": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', format('pennie-nic-{0}', parameters('environmentName'))), '2023-05-01').ipConfigurations[0].properties.privateIPAddress]"
+              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', format('preppie-nic-{0}', parameters('environmentName'))), '2023-05-01').ipConfigurations[0].properties.privateIPAddress]"
             },
             "vmFQDN": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('pennie-pip-{0}', parameters('environmentName'))), '2023-05-01').dnsSettings.fqdn]"
+              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('preppie-pip-{0}', parameters('environmentName'))), '2023-05-01').dnsSettings.fqdn]"
             },
             "vmPrincipalId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Compute/virtualMachines', format('pennie-vm-{0}', parameters('environmentName'))), '2023-09-01', 'full').identity.principalId]"
+              "value": "[reference(resourceId('Microsoft.Compute/virtualMachines', format('preppie-vm-{0}', parameters('environmentName'))), '2023-09-01', 'full').identity.principalId]"
             }
           }
         }
