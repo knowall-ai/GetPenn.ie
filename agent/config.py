@@ -24,3 +24,10 @@ INSTRUCTIONS_PATH = os.environ.get(
 
 # AAD scope for the Foundry data plane.
 TOKEN_SCOPE = os.environ.get("PREPPIE_TOKEN_SCOPE", "https://cognitiveservices.azure.com/.default")
+
+# Teams Incoming Webhook / Power Automate Workflows URL to post the meeting reply-back into.
+# Empty (the default) means Teams posting is skipped entirely - no credentials required.
+TEAMS_WEBHOOK_URL = os.environ.get("PREPPIE_TEAMS_WEBHOOK_URL", "")
+
+# Optional link to the Azure DevOps board, added as an "Open board" action on the reply-back card.
+BOARD_URL = os.environ.get("PREPPIE_BOARD_URL", "")

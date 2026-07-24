@@ -12,6 +12,7 @@ from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AzureOpenAI
 
 from . import config
+from .reply_back import WebhookSender, post_reply_back
 from .spine import Backend, read_transcript, run_spine
 
 
@@ -36,6 +37,17 @@ def main(argv: list[str]) -> int:
     print(result["reply_back"])
     print(f"\n[summary] created {len(result['created'])} work items in '{config.PROJECT}' "
           f"over {result['turns']} turns.")
+
+    if config.TEAMS_WEBHOOK_URL.strip():
+        post = post_reply_back(result, WebhookSender(config.TEAMS_WEBHOOK_URL),
+                               board_url=config.BOARD_URL or None)
+        if post["sent"]:
+            print(f"[teams] reply-back posted to Teams (status {post['status']}).")
+        else:
+            print(f"[teams] failed to post reply-back to Teams: {post['error']}")
+    else:
+        print("[teams] skipped posting to Teams (no PREPPIE_TEAMS_WEBHOOK_URL configured).")
+
     return 0
 
 
