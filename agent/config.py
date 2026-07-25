@@ -24,3 +24,10 @@ INSTRUCTIONS_PATH = os.environ.get(
 
 # AAD scope for the Foundry data plane.
 TOKEN_SCOPE = os.environ.get("PREPPIE_TOKEN_SCOPE", "https://cognitiveservices.azure.com/.default")
+
+# Microsoft Graph app-only auth (client-credentials), for fetching a Teams meeting transcript
+# directly from a join URL instead of a local .vtt file - see agent/transcript_fetch.py.
+GRAPH_TENANT_ID = os.environ.get("PREPPIE_GRAPH_TENANT_ID", "")
+GRAPH_CLIENT_ID = os.environ.get("PREPPIE_GRAPH_CLIENT_ID", "")
+GRAPH_CLIENT_SECRET = os.environ.get("PREPPIE_GRAPH_CLIENT_SECRET", "")
+GRAPH_ORGANIZER_USER_ID = os.environ.get("PREPPIE_GRAPH_ORGANIZER_USER_ID", "")
