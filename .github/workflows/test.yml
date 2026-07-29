@@ -97,6 +97,34 @@ jobs:
           flags: unittests
           name: codecov-umbrella
 
+  python-tests:
+    name: Python Agent Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run agent unit tests
+        # Self-activating: the agent/ package and its tests arrive with the
+        # Foundry-spine PR. Until then this job is a no-op so it stays green on
+        # main; once the tests are present it runs the real pytest suite.
+        run: |
+          if ls agent/tests/test_*.py >/dev/null 2>&1; then
+            echo "Agent tests found — installing deps and running pytest."
+            python -m pip install --upgrade pip
+            [ -f requirements.txt ] && pip install -r requirements.txt
+            pip install pytest
+            pytest agent/tests/ -q
+          else
+            echo "No agent tests present yet (they land with the spine PR); skipping."
+          fi
+
   validate-bicep:
     name: Validate Bicep Templates
     runs-on: ubuntu-latest
@@ -154,28 +182,44 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [lint, build-bot, unit-tests, validate-bicep]
+    needs: [lint, build-bot, unit-tests, python-tests, validate-bicep]
     if: always()
 
     steps:
+      - name: Write results to job summary
+        # $GITHUB_STEP_SUMMARY is always writable, including on PRs from forks,
+        # so results are visible in the run UI regardless of token scope.
+        run: |
+          {
+            echo "## Test Results"
+            echo ""
+            echo "| Job | Result |"
+            echo "| --- | ------ |"
+            echo "| Lint | ${{ needs.lint.result }} |"
+            echo "| Build | ${{ needs.build-bot.result }} |"
+            echo "| Unit Tests (.NET) | ${{ needs.unit-tests.result }} |"
+            echo "| Python Agent Tests | ${{ needs.python-tests.result }} |"
+            echo "| Bicep Validation | ${{ needs.validate-bicep.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check test results
         run: |
           # Check if any required job failed
           LINT="${{ needs.lint.result }}"
           BUILD="${{ needs.build-bot.result }}"
           TESTS="${{ needs.unit-tests.result }}"
+          PYTESTS="${{ needs.python-tests.result }}"
           BICEP="${{ needs.validate-bicep.result }}"
 
-          # Bicep validation is optional - treat skipped as success
-          if [[ "$BICEP" == "skipped" ]]; then
-            echo "ℹ️ Bicep validation skipped (Azure credentials not configured)"
-            BICEP="success"
-          fi
+          # Optional jobs - treat skipped as success
+          [[ "$BICEP" == "skipped" ]] && BICEP="success"
+          [[ "$PYTESTS" == "skipped" ]] && PYTESTS="success"
 
           # Fail if any job failed
           if [[ "$LINT" == "failure" ]] || \
              [[ "$BUILD" == "failure" ]] || \
              [[ "$TESTS" == "failure" ]] || \
+             [[ "$PYTESTS" == "failure" ]] || \
              [[ "$BICEP" == "failure" ]]; then
             echo "❌ Tests failed"
             exit 1
@@ -184,7 +228,14 @@ jobs:
           fi
 
       - name: Comment PR
-        if: github.event_name == 'pull_request'
+        # Only same-repo PRs get a write-scoped token; a fork PR's token is
+        # read-only, so posting a comment would 403 ("Resource not accessible
+        # by integration") and fail the job. Skip it for forks — the job
+        # summary above already carries the results for everyone.
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
@@ -193,7 +244,8 @@ jobs:
 
             - Lint: ${{ needs.lint.result }}
             - Build: ${{ needs.build-bot.result }}
-            - Unit Tests: ${{ needs.unit-tests.result }}
+            - Unit Tests (.NET): ${{ needs.unit-tests.result }}
+            - Python Agent Tests: ${{ needs.python-tests.result }}
             - Bicep Validation: ${{ needs.validate-bicep.result }}
             `;
 
