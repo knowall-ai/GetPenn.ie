@@ -1,0 +1,40 @@
+WEBVTT
+
+00:00:01.000 --> 00:00:08.200
+<v Priya Sharma>Okay, thanks for jumping on. The main thing I want to lock down today is the customer self-service portal for Q3. It's a big one — I'd call it our flagship initiative for the quarter.
+
+00:00:08.500 --> 00:00:15.000
+<v Daniel Okoro>Agreed. So at a high level the portal is the umbrella, and under it we've got at least the account management piece and the billing view. Those feel like two separate features to me.
+
+00:00:15.400 --> 00:00:24.800
+<v Priya Sharma>Right. For account management, the concrete thing customers keep asking for is: as a signed-in user I want to update my own contact details without raising a support ticket. That's a clear user story.
+
+00:00:25.100 --> 00:00:31.600
+<v Daniel Okoro>Makes sense. Given a logged-in user, when they change their email, then we send a confirmation link before it takes effect — otherwise we'll get account takeover complaints.
+
+00:00:32.000 --> 00:00:40.300
+<v Priya Sharma>Good, add that as the acceptance criteria. Now, separate thing — we already have a bug in the current portal. The session times out after about two minutes and dumps people back to login. It's been reported by three enterprise customers.
+
+00:00:40.700 --> 00:00:47.100
+<v Daniel Okoro>Yeah I've seen that one. It's the token refresh not firing. That's definitely a bug, not new work — we should log it and prioritise it high.
+
+00:00:47.500 --> 00:00:56.900
+<v Priya Sharma>One risk I want on the record: the billing view depends on the third-party invoicing API, and their rate limits are pretty aggressive. If we design the dashboard to call it live per page load, we could get throttled in production.
+
+00:00:57.300 --> 00:01:04.200
+<v Daniel Okoro>That's a real risk. We might need a caching layer. Actually — would it be worth caching invoices for, say, fifteen minutes? That'd cut the calls dramatically.
+
+00:01:04.600 --> 00:01:12.500
+<v Priya Sharma>That's a nice enhancement on top of the billing feature — let's capture it as an improvement rather than baking it into the core story for now.
+
+00:01:12.900 --> 00:01:21.400
+<v Daniel Okoro>One thing I'm genuinely unsure about: when we say "customers can manage their account", does that include deleting the account entirely? Because GDPR erasure is a whole separate workflow with legal sign-off.
+
+00:01:21.800 --> 00:01:29.000
+<v Priya Sharma>Good question — I don't have the answer. Let's flag that as an open question for legal before we scope the deletion flow. Don't guess at it.
+
+00:01:29.400 --> 00:01:36.700
+<v Daniel Okoro>Perfect. And a small task on my side — I'll set up the feature branch and the CI pipeline for the portal repo so we're ready to build. Nothing fancy, just the plumbing.
+
+00:01:37.000 --> 00:01:42.300
+<v Priya Sharma>Great. I think that's a solid backlog. Let's get it written up properly and we'll review it at standup tomorrow.
