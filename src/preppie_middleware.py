@@ -1,5 +1,5 @@
 """
-Pennie Middleware - Handles function calls from Azure OpenAI Assistant
+Preppie Middleware - Handles function calls from Azure OpenAI Assistant
 and proxies them to the Azure Functions backend
 """
 
@@ -54,10 +54,10 @@ def handle_function_call(function_name: str, arguments: dict) -> dict:
 # Create app instance
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-@app.route(route="pennie_function_handler", methods=["POST"])
-def pennie_function_handler(req: func.HttpRequest) -> func.HttpResponse:
+@app.route(route="preppie_function_handler", methods=["POST"])
+def preppie_function_handler(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Handle function call requests from Pennie
+    Handle function call requests from Preppie
     
     Expected payload:
     {
@@ -65,7 +65,7 @@ def pennie_function_handler(req: func.HttpRequest) -> func.HttpResponse:
         "arguments": {}
     }
     """
-    logger.info("Received function call request from Pennie")
+    logger.info("Received function call request from Preppie")
     
     try:
         req_body = req.get_json()

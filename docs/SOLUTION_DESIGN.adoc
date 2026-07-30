@@ -1,27 +1,27 @@
 
-= Solution Design: Pennie the Prepper
+= Solution Design: Preppie the Prepper
 
 
 == Overview
-Pennie is a Microsoft Teams-friendly AI agent that joins meetings as a real-time participant, listens to conversations using speech-to-text transcription with speaker diarization, and converts conversation into structured Azure DevOps backlog items. She is built with Azure AI Foundry, Graph Communications API, Azure Speech Services, and deploys via GitHub Actions. The entire solution is fully defined as code.
+Preppie is a Microsoft Teams-friendly AI agent that joins meetings as a real-time participant, listens to conversations using speech-to-text transcription with speaker diarization, and converts conversation into structured Azure DevOps backlog items. She is built with Azure AI Foundry, Graph Communications API, Azure Speech Services, and deploys via GitHub Actions. The entire solution is fully defined as code.
 
 
 == Architecture
 
 **Current Implementation** (November 2025):
 * Azure Functions Backend (Python 3.11 on Linux) - 9 HTTP endpoints for Azure DevOps
-* AI Foundry Agent (Pennie) in East US 2 with GPT-4o
-* Function calling pattern - application code handles Pennie's function calls
-* Teams Media Bot (C# .NET 8) - **Deployed** on Windows VM (pennie-vm-prod)
+* AI Foundry Agent (Preppie) in East US 2 with GPT-4o
+* Function calling pattern - application code handles Preppie's function calls
+* Teams Media Bot (C# .NET 8) - **Deployed** on Windows VM (preppie-vm-prod)
 * Calling endpoints (/api/calling, /api/calling/media) - **Deployed** for Graph Communications
 * Azure Speech Services integration - **Implemented** (ConversationTranscriber with diarization)
 
 [mermaid]
 ----
 flowchart TD
-    TeamsMeeting[Microsoft Teams Meeting<br/>Audio/Video Streams] -->|Bot joins meeting| MediaBot[Teams Media Bot<br/>Windows Server VM<br/>pennie-vm-prod<br/>DEPLOYED]
+    TeamsMeeting[Microsoft Teams Meeting<br/>Audio/Video Streams] -->|Bot joins meeting| MediaBot[Teams Media Bot<br/>Windows Server VM<br/>preppie-vm-prod<br/>DEPLOYED]
     MediaBot -->|Audio via ConversationTranscriber| SpeechServices[Azure Speech Services<br/>ConversationTranscriber API<br/>Real-time Diarization<br/>IMPLEMENTED]
-    SpeechServices -->|Transcribed Text<br/>Speaker Attribution| FoundryAgent[Pennie - Azure AI Foundry Agent<br/>GPT-4o + T-Minus-15 Logic<br/>DEPLOYED: East US 2]
+    SpeechServices -->|Transcribed Text<br/>Speaker Attribution| FoundryAgent[Preppie - Azure AI Foundry Agent<br/>GPT-4o + T-Minus-15 Logic<br/>DEPLOYED: East US 2]
     FoundryAgent -->|Clarifying Questions<br/>Work Item Links| TeamsChat[Teams Meeting Chat<br/>meetingChat scope<br/>IMPLEMENTED]
     FoundryAgent -.->|Optional: Text-to-Speech| Avatar[Azure AI Avatar<br/>Optional Visual Presence<br/>FUTURE PHASE]
     Avatar -.->|Audio/Video Stream| MediaBot
@@ -39,7 +39,7 @@ NOTE: Solid lines = Currently deployed/implemented. Dashed lines = Future phase 
 === 1. Teams Media Bot (Application-Hosted Media) - **DEPLOYED**
 **Technology**: C# .NET 8 with Microsoft Graph Communications SDK
 
-**Hosting**: Windows Server VM (`pennie-vm-prod`) in Azure UK South
+**Hosting**: Windows Server VM (`preppie-vm-prod`) in Azure UK South
 
 **Implementation Status** (November 2025):
 
@@ -94,7 +94,7 @@ To capture live audio from Teams meetings, the bot must implement the Real-time 
                              │
                              ▼ UDP Port 20000+ (RTP Packets)
 ┌─────────────────────────────────────────────────────────────────┐
-│               Windows Server VM (pennie-vm-prod)                 │
+│               Windows Server VM (preppie-vm-prod)                 │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │       Microsoft.Skype.Bots.Media (Native DLLs)           │   │
@@ -195,7 +195,7 @@ To capture live audio from Teams meetings, the bot must implement the Real-time 
 * Join Microsoft Teams meetings as a bot participant
 * Receive real-time audio streams (RTP packets at 50 frames/second, 20ms each)
 * Send audio streams to Azure Speech Services for transcription
-* Optional: Send audio/video back to meeting (Pennie can speak and appear visually)
+* Optional: Send audio/video back to meeting (Preppie can speak and appear visually)
 * Handle bot lifecycle (join, leave, meeting events)
 * Manage meeting chat interactions
 
@@ -249,7 +249,7 @@ Start-Process -FilePath vc_redist.x64.exe -ArgumentList "/install", "/quiet", "/
 * Requires clear audio quality for accurate diarization
 
 
-=== 3. Azure AI Foundry Agent (Pennie's Intelligence)
+=== 3. Azure AI Foundry Agent (Preppie's Intelligence)
 **Model**: GPT-4o (temperature: 0.1 for consistent structured output)
 
 **Region**: East US 2 (AI Foundry Agents feature availability)
@@ -299,7 +299,7 @@ Start-Process -FilePath vc_redist.x64.exe -ArgumentList "/install", "/quiet", "/
 
 * `read_projects` (GET /api/read_projects) - List all client projects in KnowAll organization
 ** Returns: Project ID, name, description, state, visibility
-** Use case: Pennie discovers available client projects dynamically
+** Use case: Preppie discovers available client projects dynamically
 
 * `read_teams` (POST /api/read_teams) - List teams in a specific project
 ** Parameters: `project` (project name or ID)
@@ -324,7 +324,7 @@ Start-Process -FilePath vc_redist.x64.exe -ArgumentList "/install", "/quiet", "/
 * `read_work_item_types` (POST /api/read_work_item_types) - Get available work item types
 ** Parameters: `project`
 ** Returns: Array of work item types with name, description, icon, color
-** Use case: Pennie discovers what types are configured (Epic, Feature, User Story, Bug, etc.)
+** Use case: Preppie discovers what types are configured (Epic, Feature, User Story, Bug, etc.)
 
 * `search_work_items` (POST /api/search_work_items) - WIQL-based advanced search
 ** Parameters: `project`, `workItemType` (optional), `state` (optional), `assignedTo` (optional), `tags` (optional), `titleContains` (optional), `top` (default 50)
@@ -334,13 +334,13 @@ Start-Process -FilePath vc_redist.x64.exe -ArgumentList "/install", "/quiet", "/
 * `create_work_item` (POST /api/create_work_item) - Create new work items
 ** Parameters: `project`, `workItemType` (Epic/Feature/User Story/Question), `title`, `description`, `acceptanceCriteria`, etc.
 ** Returns: Created work item ID and URL
-** Use case: Pennie creates backlog items from meeting transcripts
+** Use case: Preppie creates backlog items from meeting transcripts
 
 * `read_link_types` (GET /api/read_link_types) - Get available link types
 ** Parameters: None required
 ** Returns: Array of link types with name, display name, description, direction, category
 ** Link categories: hierarchy (Parent/Child), dependency (Predecessor/Successor), related, other (Duplicate)
-** Use case: Pennie discovers what link types are available
+** Use case: Preppie discovers what link types are available
 
 * `link_work_items` (POST /api/link_work_items) - Create flexible work item links
 ** Parameters: `project`, `sourceId`, `targetIds` (array), `linkType` (optional, defaults to Hierarchy-Forward), `comment` (optional)
@@ -385,7 +385,7 @@ Start-Process -FilePath vc_redist.x64.exe -ArgumentList "/install", "/quiet", "/
 
 **Capabilities**:
 
-* Animated avatar that represents Pennie visually
+* Animated avatar that represents Preppie visually
 * Text-to-speech for verbal clarifying questions
 * Gestures and expressions for engagement
 * Makes bot feel more like a team member
@@ -395,7 +395,7 @@ Start-Process -FilePath vc_redist.x64.exe -ArgumentList "/install", "/quiet", "/
 
 == System Prompt & Behavioral Guidelines
 
-Pennie's prompt is defined in `agent-config.json` and instructs her to:
+Preppie's prompt is defined in `agent-config.json` and instructs her to:
 
 * Act as a skilled business analyst
 * Listen passively to meeting conversation (audio transcription)
@@ -451,7 +451,7 @@ MeetingTranscriber Output:
 ├─ Speaker: Sarah Johnson (Developer)
 │  ├─ Timestamp: 10:23:42
 │  └─ Text: "Should we support OAuth 2.0 and SAML?"
-└─ Speaker: Pennie (via chat or speech)
+└─ Speaker: Preppie (via chat or speech)
    ├─ Timestamp: 10:23:50
    └─ Text: "Created Epic #500: Customer Portal [link]. Question #501: Which SSO protocols? OAuth, SAML, or both?"
 ----
@@ -469,17 +469,17 @@ MeetingTranscriber Output:
 **Currently Deployed Resources**:
 
 **East US 2 Region**:
-* Azure OpenAI Assistant (Pennie) - `asst_6Xp8voe3wn4BnIRBqM9CPl5Y`
+* Azure OpenAI Assistant (Preppie) - `asst_6Xp8voe3wn4BnIRBqM9CPl5Y`
   ** Uses OpenAI resource-level assistant (not AI Foundry project agent) for `Azure.AI.OpenAI.Assistants` SDK compatibility
 * Azure OpenAI Service (GPT-4o deployment - model version 2024-08-06)
 
 **UK South Region**:
 * Resource Group (TMinus15Agents)
-* Windows Server VM (`pennie-vm-prod`) - D2s_v3, hosts Teams Media Bot
+* Windows Server VM (`preppie-vm-prod`) - D2s_v3, hosts Teams Media Bot
 * Azure Functions App (pennie-backend-prod) - Python 3.11 on Linux
 * Azure Storage Account (logs, metrics, deployment artifacts)
 * Application Insights (monitoring)
-* Key Vault (secrets management - pennie-keyvault-prod)
+* Key Vault (secrets management - preppie-keyvault-prod)
 * Azure Speech Services (SpeechTranscriptionService integration)
 
 **Implemented but Pending Full Integration**:
@@ -493,7 +493,7 @@ MeetingTranscriber Output:
 
 * `infra/main.bicep` - Main orchestration
 * `infra/deploy-function-app.bicep` - Azure Functions App (deployed)
-* `infra/modules/windows-vm.bicep` - Windows Server VM (deployed as pennie-vm-prod)
+* `infra/modules/windows-vm.bicep` - Windows Server VM (deployed as preppie-vm-prod)
 * `infra/modules/ai-services.bicep` - AI Foundry + Speech + OpenAI (deployed)
 * `infra/modules/monitoring.bicep` - Application Insights + Storage (deployed)
 
@@ -504,7 +504,7 @@ MeetingTranscriber Output:
 
 **Current Deployment** (Manual):
 1. Deploy Azure Functions Backend via `func azure functionapp publish pennie-backend-prod --python`
-2. Deploy Pennie AI Foundry Agent via `./scripts/deploy-agent.sh`
+2. Deploy Preppie AI Foundry Agent via `./scripts/deploy-agent.sh`
 
 **Future Automated Deployment Steps**:
 
@@ -538,12 +538,12 @@ MeetingTranscriber Output:
 
 === Resource Account for Meeting Invites
 
-**Purpose**: Allow users to invite Pennie to meetings like a regular colleague by adding `pennie@knowall.ai` as an attendee.
+**Purpose**: Allow users to invite Preppie to meetings like a regular colleague by adding `preppie@knowall.ai` as an attendee.
 
 **How It Works**:
 
 1. Create a Microsoft 365 Resource Account linked to the bot's App ID
-2. Users invite `pennie@knowall.ai` when scheduling meetings
+2. Users invite `preppie@knowall.ai` when scheduling meetings
 3. Bot monitors the resource account's calendar via Graph API
 4. When meetings start, bot automatically joins
 
@@ -551,8 +551,8 @@ MeetingTranscriber Output:
 
 [source,bash]
 ----
-# Create resource account for Pennie
-./scripts/setup-resource-account.sh pennie@knowall.ai
+# Create resource account for Preppie
+./scripts/setup-resource-account.sh preppie@knowall.ai
 ----
 
 **Manual Setup (M365 Admin Center)**:
@@ -561,8 +561,8 @@ MeetingTranscriber Output:
 2. Navigate to **Teams & Groups** → **Resource accounts**
 3. Click **Add**
 4. Configure:
-** Display name: `Pennie the Prepper`
-** Username: `pennie` (domain: `knowall.ai`)
+** Display name: `Preppie the Prepper`
+** Username: `preppie` (domain: `knowall.ai`)
 ** Resource account type: Auto attendant
 5. Assign **Microsoft Teams Phone Resource Account** license (free)
 6. Link to Bot App ID: `9707c142-2583-4e56-9983-4d913338afb0`
@@ -578,7 +578,7 @@ MeetingTranscriber Output:
 ----
 {
   "ResourceAccount": {
-    "Email": "pennie@knowall.ai",
+    "Email": "preppie@knowall.ai",
     "UserId": "<object-id-from-m365-admin>"
   }
 }
@@ -587,8 +587,8 @@ MeetingTranscriber Output:
 **User Experience**:
 
 * Schedule meeting in Outlook/Teams
-* Add `pennie@knowall.ai` as attendee
-* Pennie joins automatically when meeting starts
+* Add `preppie@knowall.ai` as attendee
+* Preppie joins automatically when meeting starts
 * No manual steps required during the meeting
 
 
@@ -600,7 +600,7 @@ MeetingTranscriber Output:
 **Regional Deployment Strategy**:
 
 **Current Multi-Region Deployment**:
-* **East US 2**: AI Foundry Agent (Pennie with GPT-4o) - Agents feature availability
+* **East US 2**: AI Foundry Agent (Preppie with GPT-4o) - Agents feature availability
 * **UK South**: Azure Functions Backend, Storage, Application Insights - DevOps proximity
 
 **Future Single-Region Architecture** (when all components deployed):
@@ -748,7 +748,7 @@ MeetingTranscriber Output:
 * Post-meeting summary emails with backlog links
 * Sentiment analysis during meetings (detect blockers, concerns)
 * Integration with Microsoft Planner for task tracking
-* Voice commands: "Pennie, create an epic for..."
+* Voice commands: "Preppie, create an epic for..."
 
 
 === Phase 3: Machine Learning

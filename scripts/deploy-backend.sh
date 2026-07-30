@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Pennie Backend Deployment Script
+# Preppie Backend Deployment Script
 # Deploys Azure Functions backend for handling Azure DevOps work item creation
 
 set -e
 
-echo "🚀 Deploying Pennie Backend to Azure Functions"
+echo "🚀 Deploying Preppie Backend to Azure Functions"
 
 # Load environment variables
 if [ -f .env ]; then
@@ -21,7 +21,7 @@ fi
 
 RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-TMinus15Agents}"
 LOCATION="${AZURE_LOCATION:-uksouth}"
-FUNCTION_APP_NAME="pennie-backend"
+FUNCTION_APP_NAME="preppie-backend"
 ENVIRONMENT_NAME="${AZURE_ENV_NAME:-prod}"
 
 echo "📋 Deployment Configuration:"
@@ -108,14 +108,14 @@ cp .env .env.backup
 
 # Add/update function URLs in .env
 {
-    grep -v "PENNIE_BACKEND_" .env.backup || true
+    grep -v "PREPPIE_BACKEND_" .env.backup || true
     echo ""
-    echo "# Pennie Backend Function URLs"
-    echo "PENNIE_BACKEND_URL=$FUNCTION_APP_URL"
-    echo "PENNIE_BACKEND_WIT_CREATE_URL=$WIT_CREATE_URL"
-    echo "PENNIE_BACKEND_WIT_ADD_CHILD_URL=$WIT_ADD_CHILD_URL"
+    echo "# Preppie Backend Function URLs"
+    echo "PREPPIE_BACKEND_URL=$FUNCTION_APP_URL"
+    echo "PREPPIE_BACKEND_WIT_CREATE_URL=$WIT_CREATE_URL"
+    echo "PREPPIE_BACKEND_WIT_ADD_CHILD_URL=$WIT_ADD_CHILD_URL"
     if [ ! -z "$FUNCTION_KEY" ]; then
-        echo "PENNIE_BACKEND_FUNCTION_KEY=$FUNCTION_KEY"
+        echo "PREPPIE_BACKEND_FUNCTION_KEY=$FUNCTION_KEY"
     fi
 } > .env
 
@@ -139,7 +139,7 @@ fi
 # Summary
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🎉 Pennie Backend Deployed Successfully!"
+echo "🎉 Preppie Backend Deployed Successfully!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "📍 Function Endpoints:"
@@ -153,7 +153,7 @@ if [ ! -z "$FUNCTION_KEY" ]; then
 fi
 echo "📝 Next Steps:"
 echo "   1. Test the endpoints with curl or Postman"
-echo "   2. Update Pennie agent configuration with these URLs"
+echo "   2. Update Preppie agent configuration with these URLs"
 echo "   3. Test end-to-end with a sample meeting transcript"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

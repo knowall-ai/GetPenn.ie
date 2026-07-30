@@ -1,11 +1,11 @@
-# Pennie Backend - Azure Functions Service
+# Preppie Backend - Azure Functions Service
 
-This directory contains the Azure Functions backend service that handles function calls from Pennie the Prepper AI agent and creates Azure DevOps work items.
+This directory contains the Azure Functions backend service that handles function calls from Preppie the Prepper AI agent and creates Azure DevOps work items.
 
 ## Architecture
 
 ```
-Pennie (Azure AI Foundry Agent)
+Preppie (Azure AI Foundry Agent)
     ↓ Function Call
 Azure Functions Backend (this service)
     ↓ REST API
@@ -79,7 +79,7 @@ Health check endpoint.
 ```json
 {
   "status": "healthy",
-  "service": "Pennie Backend"
+  "service": "Preppie Backend"
 }
 ```
 

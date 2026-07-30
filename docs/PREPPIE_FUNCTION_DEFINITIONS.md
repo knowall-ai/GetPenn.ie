@@ -1,6 +1,6 @@
-# Pennie Function Definitions for Azure AI Foundry
+# Preppie Function Definitions for Azure AI Foundry
 
-This document contains the function definitions to add to Pennie in Azure AI Foundry Agents playground.
+This document contains the function definitions to add to Preppie in Azure AI Foundry Agents playground.
 
 **Backend URL**: `https://pennie-backend-prod.azurewebsites.net`
 
@@ -10,7 +10,7 @@ This document contains the function definitions to add to Pennie in Azure AI Fou
 
 ## How to Add Functions in AI Foundry
 
-1. Go to your Pennie agent in AI Foundry
+1. Go to your Preppie agent in AI Foundry
 2. Click **"+ Add"** under Actions (4)
 3. Choose **"Add action"** → **"Function"**
 4. Copy-paste the function definition below
@@ -329,7 +329,7 @@ paths:
       operationId: read_link_types
       summary: Get available link types
       description: |
-        Returns all link types Pennie can use to connect work items:
+        Returns all link types Preppie can use to connect work items:
         - Hierarchy (Parent/Child)
         - Dependency (Predecessor/Successor)
         - Related
@@ -620,7 +620,7 @@ After adding functions, test with:
 What DevOps projects do we have?
 ```
 
-Pennie should call `read_projects()`, you click Submit, and she'll show all 26 KnowAll projects!
+Preppie should call `read_projects()`, you click Submit, and she'll show all 26 KnowAll projects!
 
 ---
 

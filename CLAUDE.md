@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Pennie the Prepper is an AI-powered business analyst that joins Microsoft Teams meetings as a real-time participant, listens to live audio with speaker diarization, and creates structured backlog items in Azure DevOps using the T-Minus-15 methodology. The entire solution is defined as code for secure, reproducible deployments.
+Preppie the Prepper is an AI-powered business analyst that joins Microsoft Teams meetings as a real-time participant, listens to live audio with speaker diarization, and creates structured backlog items in Azure DevOps using the T-Minus-15 methodology. The entire solution is defined as code for secure, reproducible deployments.
 
 ## Final Architecture (October 2025)
 
@@ -19,14 +19,14 @@ Pennie the Prepper is an AI-powered business analyst that joins Microsoft Teams 
    - Real-time speech-to-text transcription
    - Outputs: Speaker name + timestamp + text
 
-3. **Azure OpenAI Assistant** (Pennie) - **OpenAI Resource Level**
+3. **Azure OpenAI Assistant** (Preppie) - **OpenAI Resource Level**
    - Deployed via scripts/deploy-agent.sh
    - **Assistant ID**: `asst_6Xp8voe3wn4BnIRBqM9CPl5Y` (East US 2)
    - **OpenAI Resource API**: `https://benw-mgan4638-eastus2.openai.azure.com/openai/assistants`
    - **API Version**: `2024-05-01-preview` (for Azure.AI.OpenAI.Assistants SDK compatibility)
    - **Azure CLI Authentication**: `--resource https://cognitiveservices.azure.com`
    - GPT-4o (model version 2024-08-06) with T-Minus-15 logic (temperature: 0.1)
-   - **OpenAI Assistants function calling pattern** - Pennie calls functions, application code must handle them
+   - **OpenAI Assistants function calling pattern** - Preppie calls functions, application code must handle them
    - **IMPORTANT**: Uses OpenAI resource-level assistant (NOT AI Foundry project agent) for SDK compatibility
    - Functions defined: All 9 backend functions (read_projects, read_teams, read_work_item, read_work_items, read_work_item_types, read_link_types, search_work_items, create_work_item, link_work_items)
    - **Note**: AI Foundry project agents use different API path and are NOT visible to Azure.AI.OpenAI.Assistants SDK
@@ -41,13 +41,13 @@ Pennie the Prepper is an AI-powered business analyst that joins Microsoft Teams 
 
 5. **Function Call Handler** (Teams Bot or middleware - REQUIRED)
    - **Architecture Pattern**: OpenAI Assistants don't make HTTP requests directly
-   - When Pennie calls a function (e.g., read_projects):
+   - When Preppie calls a function (e.g., read_projects):
      1. Azure OpenAI returns "requires_action" status
      2. YOUR code must intercept this function call
      3. Call the Azure Functions backend (https://pennie-backend-prod.azurewebsites.net/api/read_projects)
-     4. Submit the result back to Pennie via the Runs API
-     5. Pennie then processes the result and responds
-   - This handler is what makes Pennie's function calls work
+     4. Submit the result back to Preppie via the Runs API
+     5. Preppie then processes the result and responds
+   - This handler is what makes Preppie's function calls work
 
 ### Key Design Decisions
 - **Real-time Audio**: Graph Communications Media SDK (Windows-only requirement)
@@ -84,7 +84,7 @@ The core agent is defined in [agent-config.json](agent-config.json):
 - MCP server tool connections (Azure DevOps work items)
 - Integration settings (Teams, Speech Services, DevOps)
 
-When modifying Pennie's behavior:
+When modifying Preppie's behavior:
 - Update `instructions` in `agent-config.json` to change requirement capture logic
 - Keep temperature very low (0.1) for consistent, structured output
 - Never hallucinate - always use MCP tools to verify existing work items
@@ -92,7 +92,7 @@ When modifying Pennie's behavior:
 
 ## MCP Server Integration
 
-Pennie uses Microsoft's official Azure DevOps MCP Server for work item operations:
+Preppie uses Microsoft's official Azure DevOps MCP Server for work item operations:
 
 **Available Tools**:
 - `wit_create_work_item` - Create Epics, Features, Stories, Questions
@@ -117,7 +117,7 @@ Pennie uses Microsoft's official Azure DevOps MCP Server for work item operation
 
 ### Deployment Scripts
 
-**Pennie Agent Deployment**:
+**Preppie Agent Deployment**:
 ```bash
 ./scripts/deploy-agent.sh
 ```
@@ -131,7 +131,7 @@ Pennie uses Microsoft's official Azure DevOps MCP Server for work item operation
 az deployment group create \
   --resource-group TMinus15Agents \
   --template-file infra/deploy-function-app.bicep \
-  --parameters functionAppName="pennie-backend" location="uksouth" environmentName="prod"
+  --parameters functionAppName="preppie-backend" location="uksouth" environmentName="prod"
 ```
 - Deploys Linux Function App (Python 3.11)
 - **CRITICAL**: Must be Linux - Python Azure Functions don't work properly on Windows
@@ -155,7 +155,7 @@ File: `.github/workflows/deploy.yml`
 **Automated Deployment**:
 1. Deploy Bicep infrastructure (AI services, storage, monitoring)
 2. Deploy Azure Functions backend (Linux Function App)
-3. Deploy Pennie agent via deploy-agent.sh
+3. Deploy Preppie agent via deploy-agent.sh
 4. Deploy Teams Bot with function call handler (future)
 5. Run health checks and integration tests
 
@@ -186,7 +186,7 @@ Values already configured in `.env`:
 
 ```
 /
-├── agent-config.json          # Pennie AI agent configuration (MCP tools, instructions)
+├── agent-config.json          # Preppie AI agent configuration (MCP tools, instructions)
 ├── .env / .env.example        # Environment variables
 ├── /docs/
 │   ├── REQUIREMENTS.adoc      # T-Minus-15 requirements (Epic > Features > Stories)
@@ -221,7 +221,7 @@ Values already configured in `.env`:
 https://{resource-name}.services.ai.azure.com/api/projects/{project-name}/assistants/{assistant-id}?api-version=2025-05-15-preview
 ```
 
-**For Pennie**:
+**For Preppie**:
 - Resource: benw-mgan4638-eastus2
 - Project: benw-mgan4638-eastus2_project
 - Assistant: asst_QP4Q94razJnAaC16jjiuDfih
@@ -265,20 +265,20 @@ az rest --url "https://benw-mgan4638-eastus2.services.ai.azure.com/api/projects/
 
 ## Critical Troubleshooting
 
-### Pennie Calls Functions But Gets Empty Output
+### Preppie Calls Functions But Gets Empty Output
 
-**Symptom**: In Azure AI Foundry playground, Pennie calls `read_projects()` but the output is empty (`output: ""`).
+**Symptom**: In Azure AI Foundry playground, Preppie calls `read_projects()` but the output is empty (`output: ""`).
 
-**Root Cause**: OpenAI Assistants use function calling pattern, not HTTP tools. When Pennie calls a function:
+**Root Cause**: OpenAI Assistants use function calling pattern, not HTTP tools. When Preppie calls a function:
 1. Azure OpenAI returns `requires_action` status with function call details
 2. **Your application code must**:
    - Receive this function call
    - Call the Azure Functions backend (https://pennie-backend-prod.azurewebsites.net/api/read_projects)
    - Get the response (26 projects)
-   - Submit the result back to Pennie via the Runs API
-3. Only then can Pennie process the result and respond
+   - Submit the result back to Preppie via the Runs API
+3. Only then can Preppie process the result and respond
 
-**The Missing Piece**: A function call handler (Teams Bot or middleware) that intercepts Pennie's function calls and proxies them to the backend.
+**The Missing Piece**: A function call handler (Teams Bot or middleware) that intercepts Preppie's function calls and proxies them to the backend.
 
 **Verification**:
 ```bash
@@ -286,13 +286,13 @@ az rest --url "https://benw-mgan4638-eastus2.services.ai.azure.com/api/projects/
 curl https://pennie-backend-prod.azurewebsites.net/api/read_projects
 # Returns: {"success": true, "count": 26, "projects": [...]}
 
-# But Pennie gets empty output because there's no handler connecting her to the backend
+# But Preppie gets empty output because there's no handler connecting her to the backend
 ```
 
 **Solution**: Deploy the Teams Bot which includes the function call handler that:
-- Monitors Pennie's runs for `requires_action` status
+- Monitors Preppie's runs for `requires_action` status
 - Calls the appropriate backend endpoint
-- Submits results back to Pennie
+- Submits results back to Preppie
 
 ### Python Azure Functions Must Be on Linux
 
@@ -313,7 +313,7 @@ properties: {
 
 ## Development Workflow
 
-### Adding New Features to Pennie
+### Adding New Features to Preppie
 1. Update `agent-config.json` instructions if behavior changes needed
 2. Redeploy via `./scripts/deploy-agent.sh`
 3. Update function definitions in agent-config.json
@@ -348,7 +348,7 @@ npx @azure-devops/mcp ${AZURE_DEVOPS_ORG} --test
 ## Future Enhancements
 
 ### Phase 2
-- Text-to-speech (Pennie speaks clarifying questions)
+- Text-to-speech (Preppie speaks clarifying questions)
 - Azure AI Avatar (visual presence in meetings)
 - Post-meeting summary emails
 

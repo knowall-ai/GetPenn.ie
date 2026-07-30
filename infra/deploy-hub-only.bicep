@@ -6,7 +6,7 @@ param aiHubName string = 'knowall-ai-foundry-hub'
 param aiProjectName string = 'T-Minus-15-Agents'
 param tags object = {
   Environment: 'prod'
-  Project: 'Pennie'
+  Project: 'Preppie'
   ManagedBy: 'Bicep'
 }
 
@@ -24,7 +24,7 @@ resource aiHub 'Microsoft.MachineLearningServices/workspaces@2024-04-01' = {
   }
   properties: {
     friendlyName: aiHubName
-    description: 'AI Foundry Hub for Pennie the Prepper'
+    description: 'AI Foundry Hub for Preppie the Prepper'
     publicNetworkAccess: 'Enabled'
     v1LegacyMode: false
   }
@@ -32,7 +32,7 @@ resource aiHub 'Microsoft.MachineLearningServices/workspaces@2024-04-01' = {
 
 // Azure AI Foundry Project (connected to hub)
 resource aiProject 'Microsoft.MachineLearningServices/workspaces@2024-04-01' = {
-  name: 'pennie-project-prod'
+  name: 'preppie-project-prod'
   location: location
   tags: tags
   identity: {
@@ -44,7 +44,7 @@ resource aiProject 'Microsoft.MachineLearningServices/workspaces@2024-04-01' = {
   }
   properties: {
     friendlyName: aiProjectName
-    description: 'AI Foundry Project for Pennie Agent'
+    description: 'AI Foundry Project for Preppie Agent'
     hubResourceId: aiHub.id
     publicNetworkAccess: 'Enabled'
   }
