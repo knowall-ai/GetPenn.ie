@@ -12,6 +12,12 @@ on:
 
 jobs:
   claude-review:
+    # Only run for same-repo PRs. PRs from forks don't receive repo secrets or
+    # an OIDC token by design, so this job can't authenticate and would fail with
+    # "Could not fetch an OIDC token". Skipping (rather than failing) keeps fork
+    # PRs green; a maintainer can review those from a same-repo branch.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
     # Optional: Filter by PR author
     # if: |
     #   github.event.pull_request.user.login == 'external-contributor' ||
