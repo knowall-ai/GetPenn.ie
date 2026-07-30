@@ -1,6 +1,7 @@
 """Unit tests for the Preppie spine. No network: the backend and the LLM client are injected."""
 import json
 import os
+import socket
 import types
 
 from agent.spine import parse_vtt, read_transcript, Backend, run_spine
@@ -234,3 +235,102 @@ def test_run_spine_records_events():
                 ([], "ok")]
     run_spine("t", "i", _FakeClient(scripted), _FakeBackend(), "m", on_event=events.append)
     assert any("create Task" in e for e in events)
+
+
+# ---------- run-loop robustness: a tool that raises must not abort the run ----------
+def test_run_spine_continues_when_dispatch_raises():
+    """A raised exception from dispatch must not kill the run: the call_id still gets a failed
+    output (or the next Responses API call is invalid), and the run reaches its final reply."""
+    class _RaisingBackend:
+        def dispatch(self, name, args):
+            raise RuntimeError("boom")
+
+    scripted = [
+        ([_fcall("create_work_item", {"type": "Task", "title": "T", "description": "d"}, "c1")], ""),
+        ([], "done despite the error"),
+    ]
+    client = _FakeClient(scripted)
+    result = run_spine("t", "i", client, _RaisingBackend(), "m")
+
+    assert result["reply_back"] == "done despite the error"
+    assert result["created"] == []  # nothing recorded as created
+    fed_back = client.calls[1]["input"]
+    assert fed_back[0]["call_id"] == "c1"
+    out = json.loads(fed_back[0]["output"])
+    assert out["success"] is False and "raised" in out["error"]
+
+
+def test_run_spine_survives_missing_result_keys():
+    """A create reported as success but missing work_item_type/id/title must not KeyError the run."""
+    class _ThinBackend:
+        def dispatch(self, name, args):
+            return {"success": True}  # no work_item_type / work_item_id / title
+
+    scripted = [
+        ([_fcall("create_work_item", {"type": "Task", "title": "T", "description": "d"}, "c1")], ""),
+        ([], "ok"),
+    ]
+    result = run_spine("t", "i", _FakeClient(scripted), _ThinBackend(), "m")
+    assert result["reply_back"] == "ok"
+    assert len(result["created"]) == 1  # still counted (success is true), just no crash
+
+
+# ---------- _request robustness: non-JSON body and read timeout ----------
+def test_backend_non_json_body_fails_cleanly():
+    """A 2xx with a non-JSON body must return a failure dict, not raise out of dispatch."""
+    class _BadResp:
+        def read(self):
+            return b"<html>not json</html>"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    out = Backend("https://b", "P", opener=lambda req, timeout=None: _BadResp()).dispatch("read_projects", {})
+    assert out["success"] is False and "non-JSON" in out["error"]
+
+
+def test_backend_retries_read_timeout(monkeypatch):
+    """A socket.timeout (mid-body read timeout, not a URLError) is transient and must be retried."""
+    monkeypatch.setattr("agent.spine.time.sleep", lambda *_: None)
+    n = {"calls": 0}
+
+    def flaky(req, timeout=None):
+        n["calls"] += 1
+        if n["calls"] < 2:
+            raise socket.timeout("read timed out")
+        return _FakeResp({"success": True, "count": 0})
+
+    out = Backend("https://b", "P", opener=flaky).dispatch("search_work_items", {})
+    assert out["success"] is True and n["calls"] == 2
+
+
+# ---------- compiled instructions must not reference tools the runtime agent lacks ----------
+def test_compiled_instructions_have_no_authoring_tool_refs():
+    """The deployed agent has ONLY the four backend function tools - no Claude-Code authoring tools
+    (AskUserQuestion, the Task subagent). Those methodology references must be stripped from the
+    committed instructions, or the agent wastes turns trying to call tools it doesn't have. Guards
+    against a new phrasing leaking in on the next regeneration."""
+    import agent.config as config
+    txt = open(config.INSTRUCTIONS_PATH, encoding="utf-8").read()
+    assert "AskUserQuestion" not in txt
+    assert "sub-agent via `Task`" not in txt
+    assert "subagent via `Task`" not in txt
+
+
+def test_neutralize_interactive_tools_rewrites_all_known_forms():
+    """Unit-level cover for the compile-time rewriter, independent of the SKILL.md source text."""
+    from agent.build_instructions import neutralize_interactive_tools
+    src = (
+        "If unsure, use `AskUserQuestion` here. Ask before acting (`AskUserQuestion`). "
+        "Read the notes — or delegate a sub-agent via `Task` — to capture context. "
+        "For a long transcript, **delegate a sub-agent via `Task`** to read it and draft it."
+    )
+    out = neutralize_interactive_tools(src)
+    assert "AskUserQuestion" not in out
+    assert "`Task`" not in out
+    assert "sub-agent" not in out
+    assert "read it carefully" in out
+    assert "**Question** work item" in out

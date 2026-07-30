@@ -49,7 +49,7 @@ and you follow the T-Minus-15 methodology below (these rules are compiled from t
 6. End with a reply-back roll-up table mapping each thing raised -> what you logged (see format).
 
 ## Runtime contract (this deployment)
-- Target project is **"Preppie"** in Azure DevOps org `ayush866`. Confirm with `read_projects`
+- Target project is **"{{PROJECT}}"** in Azure DevOps org `{{ORG}}`. Confirm with `read_projects`
   if unsure; do not assume any other project.
 - You act ONLY through the provided tools. Never fabricate work item IDs or URLs - use what the
   `create_work_item` tool returns.
@@ -86,6 +86,35 @@ hygiene) and any items you skipped as duplicates.
 """
 
 
+def neutralize_interactive_tools(text: str) -> str:
+    """Rewrite references to Claude-Code authoring tools out of the compiled instructions.
+
+    The methodology skills are written for a human-in-the-loop Claude Code session and mention tools
+    like `AskUserQuestion` / the `Task` subagent tool. The deployed runtime agent has NO such tools -
+    only the four backend function tools - so those references just make it waste turns trying to
+    call something that isn't there. Rewrite them into the runtime-appropriate behaviour: when unsure,
+    log a Question work item and surface it in the reply-back for humans to resolve. Applied at
+    compile time so regenerating the instructions can't reintroduce them.
+    """
+    # --- AskUserQuestion: the agent can't ask a human mid-run; it logs a Question instead. ---
+    # Sentence-level rewrites for the known phrasings, so the result still reads naturally.
+    text = re.sub(r"use\s+`AskUserQuestion`",
+                  "log it as a **Question** work item (and flag it in the reply-back)", text)
+    text = re.sub(r"\(`AskUserQuestion`\)",
+                  "(log it as a **Question** work item and flag it in the reply-back)", text)
+    # Catch-all for any remaining mention (bare or back-ticked).
+    text = text.replace("`AskUserQuestion`", "a **Question** work item")
+    text = text.replace("AskUserQuestion", "a Question work item")
+
+    # --- Task subagent: the methodology says to delegate transcript-reading to a `Task` subagent,
+    # but the runtime agent already has the full transcript in its prompt and no subagent tool, so
+    # rewrite those to "read it yourself". Order: specific phrasings first, then a catch-all. ---
+    text = re.sub(r"\s*[—-]\s*or delegate a sub-agent via `Task`\s*[—-]\s*", " ", text)
+    text = re.sub(r"\*\*delegate a sub-agent via `Task`\*\* to read it", "read it carefully", text)
+    text = re.sub(r"delegate a sub-agent via `Task`", "read the source material yourself", text)
+    return text
+
+
 def compile_instructions() -> str:
     parts = [HEADER, "\n---\n\n# Methodology (compiled from the T-Minus-15 skills)\n"]
     parts.append(section("workitems", "Safety rules (before you log anything)"))
@@ -95,7 +124,7 @@ def compile_instructions() -> str:
     parts.append(section("workitems", "Title hygiene (all types)"))
     parts.append(section("workitems", "Writing the description"))
     parts.append(section("workitems", "Reply-back convention (important)"))
-    return "\n\n".join(p.strip() for p in parts)
+    return neutralize_interactive_tools("\n\n".join(p.strip() for p in parts))
 
 
 if __name__ == "__main__":

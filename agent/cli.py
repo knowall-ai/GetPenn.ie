@@ -23,6 +23,9 @@ def main(argv: list[str]) -> int:
     transcript = read_transcript(argv[1])
     with open(config.INSTRUCTIONS_PATH, encoding="utf-8") as f:
         instructions = f.read()
+    # Fill the deployment placeholders from config so what the model is told always matches the
+    # project the Backend is scope-locked to - PREPPIE_PROJECT/PREPPIE_ORG drive both.
+    instructions = instructions.replace("{{PROJECT}}", config.PROJECT).replace("{{ORG}}", config.ORG)
 
     token_provider = get_bearer_token_provider(DefaultAzureCredential(), config.TOKEN_SCOPE)
     client = AzureOpenAI(azure_endpoint=config.FOUNDRY_OPENAI_ENDPOINT,

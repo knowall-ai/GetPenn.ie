@@ -10,6 +10,7 @@ network access (see tests/test_spine.py).
 from __future__ import annotations
 
 import json
+import socket
 import time
 import urllib.request
 import urllib.error
@@ -59,17 +60,24 @@ class Backend:
                 headers={"Content-Type": "application/json"})
             try:
                 with self._opener(req, timeout=45) as r:
-                    return json.loads(r.read().decode())
+                    raw = r.read().decode()
+                return json.loads(raw)
             except urllib.error.HTTPError as e:
                 if e.code >= 500 and attempt < self._attempts - 1:
                     time.sleep(1.5 * (attempt + 1))
                     continue
                 return {"success": False, "error": f"HTTP {e.code}: {e.read().decode()[:300]}"}
-            except urllib.error.URLError as e:
+            except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
+                # URLError covers connection failures; socket.timeout / TimeoutError covers a mid-body
+                # read timeout on r.read(), which is NOT wrapped in a URLError - both are transient, so
+                # retry rather than let the exception unwind and abort the whole run.
                 if attempt < self._attempts - 1:
                     time.sleep(1.5 * (attempt + 1))
                     continue
                 return {"success": False, "error": f"connection error after {self._attempts} tries: {e}"}
+            except (json.JSONDecodeError, ValueError) as e:
+                # A 2xx with a non-JSON body won't get better on retry - fail this call cleanly.
+                return {"success": False, "error": f"backend returned a non-JSON body: {e}"}
         return {"success": False, "error": "no request attempts made (attempts must be >= 1)"}
 
     def dispatch(self, name: str, args: dict) -> dict:
@@ -139,8 +147,13 @@ def run_spine(transcript: str, instructions: str, client, backend: Backend, mode
     Returns {created: [...backend results...], reply_back: str, turns: int}.
     """
     def emit(msg: str) -> None:
+        # A logging callback must never be able to derail the run (or, inside the dispatch
+        # try/except below, cause an already-created item to be reported back as failed).
         if on_event:
-            on_event(msg)
+            try:
+                on_event(msg)
+            except Exception:
+                pass
 
     resp = client.responses.create(
         model=model, instructions=instructions,
@@ -168,16 +181,25 @@ def run_spine(transcript: str, instructions: str, client, backend: Backend, mode
                 outputs.append({"type": "function_call_output", "call_id": c.call_id,
                                  "output": json.dumps(result)})
                 continue
-            result = backend.dispatch(c.name, args)
-            if c.name == "create_work_item" and result.get("success"):
-                created.append(result)
-                emit(f"create {result['work_item_type']} #{result['work_item_id']}: {result['title']}")
-            elif c.name == "create_work_item":
-                emit(f"CREATE FAILED: {result.get('error')}")
-            elif c.name == "search_work_items":
-                emit(f"dedupe '{args.get('titleContains', '')}' -> {result.get('count', '?')} match(es)")
-            elif c.name == "link_work_items":
-                emit(f"link parent {args.get('sourceId')} -> {args.get('targetIds')}")
+            try:
+                result = backend.dispatch(c.name, args)
+                if c.name == "create_work_item" and result.get("success"):
+                    created.append(result)
+                    emit(f"create {result.get('work_item_type', '?')} #{result.get('work_item_id', '?')}: "
+                         f"{result.get('title', '')}")
+                elif c.name == "create_work_item":
+                    emit(f"CREATE FAILED: {result.get('error')}")
+                elif c.name == "search_work_items":
+                    emit(f"dedupe '{args.get('titleContains', '')}' -> {result.get('count', '?')} match(es)")
+                elif c.name == "link_work_items":
+                    emit(f"link parent {args.get('sourceId')} -> {args.get('targetIds')}")
+            except Exception as e:
+                # Dispatch (or the result handling) must never take the whole run down: any raised
+                # exception here would leave this call_id unserviced, which also makes the NEXT
+                # Responses API call invalid. Report it back as a failed call and keep going - the
+                # same contract the malformed-arguments branch above upholds.
+                result = {"success": False, "error": f"tool {c.name} raised: {type(e).__name__}: {e}"}
+                emit(f"TOOL ERROR {c.name}: {type(e).__name__}: {e}")
             outputs.append({"type": "function_call_output", "call_id": c.call_id, "output": json.dumps(result)})
         resp = client.responses.create(
             model=model, instructions=instructions,
