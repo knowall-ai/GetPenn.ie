@@ -117,10 +117,12 @@ jobs:
         run: |
           if ls agent/tests/test_*.py >/dev/null 2>&1; then
             echo "Agent tests found — installing deps and running pytest."
+            # Use `python -m pip`/`python -m pytest` throughout so installs and
+            # execution always target the interpreter actions/setup-python configured.
             python -m pip install --upgrade pip
-            [ -f requirements.txt ] && pip install -r requirements.txt
-            pip install pytest
-            pytest agent/tests/ -q
+            [ -f requirements.txt ] && python -m pip install -r requirements.txt
+            python -m pip install pytest
+            python -m pytest agent/tests/ -q
           else
             echo "No agent tests present yet (they land with the spine PR); skipping."
           fi
@@ -204,7 +206,6 @@ jobs:
 
       - name: Check test results
         run: |
-          # Check if any required job failed
           LINT="${{ needs.lint.result }}"
           BUILD="${{ needs.build-bot.result }}"
           TESTS="${{ needs.unit-tests.result }}"
@@ -215,12 +216,20 @@ jobs:
           [[ "$BICEP" == "skipped" ]] && BICEP="success"
           [[ "$PYTESTS" == "skipped" ]] && PYTESTS="success"
 
-          # Fail if any job failed
-          if [[ "$LINT" == "failure" ]] || \
-             [[ "$BUILD" == "failure" ]] || \
-             [[ "$TESTS" == "failure" ]] || \
-             [[ "$PYTESTS" == "failure" ]] || \
-             [[ "$BICEP" == "failure" ]]; then
+          # Require an explicit 'success' for every required job. Checking only
+          # for 'failure' would let other non-success results (notably
+          # 'cancelled' from a manual cancel, runner loss, or concurrency) slip
+          # through as a pass, so gate on != success instead.
+          FAILED=0
+          for job in "lint=$LINT" "build=$BUILD" "unit-tests=$TESTS" \
+                     "python-tests=$PYTESTS" "bicep=$BICEP"; do
+            if [[ "${job#*=}" != "success" ]]; then
+              echo "❌ ${job%%=*} did not succeed (result: ${job#*=})"
+              FAILED=1
+            fi
+          done
+
+          if [[ "$FAILED" == "1" ]]; then
             echo "❌ Tests failed"
             exit 1
           else
