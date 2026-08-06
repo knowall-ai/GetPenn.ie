@@ -13,11 +13,11 @@
 #   1. Teams Admin Center: https://admin.teams.microsoft.com
 #      > Teams apps > Manage apps > Upload new app
 #   2. Or Teams client: Apps > Manage your apps > Upload a custom app
-#   3. Select: bot/teams-manifest/pennie-app-v1.1.0.zip
+#   3. Select: bot/teams-manifest/pennie-app-prod-v1.6.0.zip
 #
 # Subsequent updates (automated):
-#   ./scripts/deploy-teams-app.sh              # Update existing app
-#   ./scripts/deploy-teams-app.sh --create     # Create package then update
+#   ./scripts/deploy-teams-app.sh --env prod            # Update prod app
+#   ./scripts/deploy-teams-app.sh --env test --create   # Create test package then update
 #
 # Why can't we automate first-time upload?
 #   - Microsoft Graph API restricts NEW app publishing via application credentials
@@ -36,14 +36,23 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Default environment
+ENVIRONMENT="prod"
+
 show_help() {
     echo "Deploy Teams App Package to Organization Catalog"
     echo ""
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
+    echo "  --env ENV   Environment to deploy (prod or test). Default: prod"
     echo "  --create    Create the app package before deploying"
     echo "  --help      Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0 --env prod --create    # Build and deploy production package"
+    echo "  $0 --env test --create    # Build and deploy test package"
+    echo "  $0 --env prod             # Deploy existing prod package"
     echo ""
     echo -e "${YELLOW}IMPORTANT: First-time deployment requires manual upload.${NC}"
     echo "This script can only UPDATE existing apps in the catalog."
@@ -57,15 +66,35 @@ show_help() {
 }
 
 create_package() {
-    echo -e "${YELLOW}Creating Teams app package...${NC}"
+    echo -e "${YELLOW}Creating Teams app package for $ENVIRONMENT environment...${NC}"
 
-    # Get version from manifest
-    VERSION=$(jq -r '.version' "$MANIFEST_DIR/manifest.json")
-    PACKAGE_NAME="pennie-app-v${VERSION}.zip"
+    # Check environment-specific manifest exists
+    ENV_MANIFEST="$MANIFEST_DIR/manifest.${ENVIRONMENT}.json"
+    if [ ! -f "$ENV_MANIFEST" ]; then
+        echo -e "${RED}ERROR: Manifest not found: $ENV_MANIFEST${NC}"
+        echo "Available manifests:"
+        ls -la "$MANIFEST_DIR"/manifest.*.json 2>/dev/null || echo "  None found"
+        exit 1
+    fi
+
+    # Get version from environment-specific manifest
+    VERSION=$(jq -r '.version' "$ENV_MANIFEST")
+    PACKAGE_NAME="pennie-app-${ENVIRONMENT}-v${VERSION}.zip"
 
     cd "$MANIFEST_DIR"
+
+    # Clean up any existing package and temp manifest
     rm -f "$PACKAGE_NAME"
+    rm -f manifest.json
+
+    # Copy environment manifest to manifest.json (Teams requires this exact filename)
+    cp "$ENV_MANIFEST" manifest.json
+
+    # Create the zip package
     zip "$PACKAGE_NAME" manifest.json color.png outline.png
+
+    # Clean up temporary manifest.json
+    rm -f manifest.json
 
     echo -e "${GREEN}Created: $MANIFEST_DIR/$PACKAGE_NAME${NC}"
     cd - > /dev/null
@@ -73,41 +102,69 @@ create_package() {
 
 # Parse arguments
 CREATE_PACKAGE=false
-for arg in "$@"; do
-    case $arg in
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --env)
+            ENVIRONMENT="$2"
+            if [[ "$ENVIRONMENT" != "prod" && "$ENVIRONMENT" != "test" ]]; then
+                echo -e "${RED}ERROR: Invalid environment '$ENVIRONMENT'. Must be 'prod' or 'test'${NC}"
+                exit 1
+            fi
+            shift 2
+            ;;
         --create)
             CREATE_PACKAGE=true
+            shift
             ;;
         --help|-h)
             show_help
             exit 0
             ;;
+        *)
+            echo -e "${RED}ERROR: Unknown option '$1'${NC}"
+            show_help
+            exit 1
+            ;;
     esac
 done
+
+echo "Environment: $ENVIRONMENT"
 
 # Create package if requested
 if [ "$CREATE_PACKAGE" = true ]; then
     create_package
 fi
 
-# Find the latest app package
-APP_PACKAGE=$(ls -t "$MANIFEST_DIR"/pennie-app-v*.zip 2>/dev/null | head -1)
+# Environment-specific manifest
+ENV_MANIFEST="$MANIFEST_DIR/manifest.${ENVIRONMENT}.json"
 
-if [ -z "$APP_PACKAGE" ]; then
-    echo -e "${RED}ERROR: No Teams app package found in $MANIFEST_DIR${NC}"
-    echo ""
-    echo "Create one with:"
-    echo "  $0 --create"
-    echo ""
-    echo "Or manually:"
-    echo "  cd $MANIFEST_DIR"
-    echo "  zip pennie-app-v1.1.0.zip manifest.json color.png outline.png"
+if [ ! -f "$ENV_MANIFEST" ]; then
+    echo -e "${RED}ERROR: Manifest not found: $ENV_MANIFEST${NC}"
+    echo "Available manifests:"
+    ls -la "$MANIFEST_DIR"/manifest.*.json 2>/dev/null || echo "  None found"
     exit 1
 fi
 
-# Get App ID from manifest
-APP_ID=$(jq -r '.id' "$MANIFEST_DIR/manifest.json")
-APP_VERSION=$(jq -r '.version' "$MANIFEST_DIR/manifest.json")
+# Find the latest app package for this environment
+APP_PACKAGE=$(ls -t "$MANIFEST_DIR"/pennie-app-${ENVIRONMENT}-v*.zip 2>/dev/null | head -1)
+
+if [ -z "$APP_PACKAGE" ]; then
+    echo -e "${RED}ERROR: No Teams app package found for $ENVIRONMENT environment${NC}"
+    echo ""
+    echo "Create one with:"
+    echo "  $0 --env $ENVIRONMENT --create"
+    echo ""
+    echo "Or manually:"
+    echo "  cd $MANIFEST_DIR"
+    echo "  cp manifest.${ENVIRONMENT}.json manifest.json"
+    echo "  zip pennie-app-${ENVIRONMENT}-v1.6.0.zip manifest.json color.png outline.png"
+    echo "  rm manifest.json"
+    exit 1
+fi
+
+# Get App ID from environment-specific manifest
+APP_ID=$(jq -r '.id' "$ENV_MANIFEST")
+APP_VERSION=$(jq -r '.version' "$ENV_MANIFEST")
 
 echo "=== Deploy Teams App Package ==="
 echo "Package: $APP_PACKAGE"
@@ -115,16 +172,15 @@ echo "App ID:  $APP_ID"
 echo "Version: $APP_VERSION"
 echo ""
 
-# Get access token for Microsoft Graph using bot credentials
-KEY_VAULT_NAME="${AZURE_KEY_VAULT_NAME:-"pennie-kv-mmdxqm3w7kjwm"}"
-echo "Getting bot credentials from Key Vault ($KEY_VAULT_NAME)..."
-BOT_APP_ID=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name "MicrosoftAppId" --query value -o tsv 2>/dev/null)
-BOT_APP_SECRET=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name "MicrosoftAppPassword" --query value -o tsv 2>/dev/null)
+# Get bot credentials from environment variables (set via GitHub Secrets)
+BOT_APP_ID="${TEAMS_APP_ID:-}"
+BOT_APP_SECRET="${TEAMS_APP_PASSWORD:-}"
 TENANT_ID=$(az account show --query tenantId -o tsv 2>/dev/null)
 
 if [ -z "$BOT_APP_ID" ] || [ -z "$BOT_APP_SECRET" ]; then
-    echo -e "${RED}ERROR: Failed to get bot credentials from Key Vault${NC}"
-    echo "Make sure you're logged in: az login"
+    echo -e "${RED}ERROR: Missing bot credentials${NC}"
+    echo "Set TEAMS_APP_ID and TEAMS_APP_PASSWORD environment variables"
+    echo "These are stored in GitHub Secrets"
     exit 1
 fi
 
@@ -224,10 +280,13 @@ else
     exit 1
 fi
 
+# Get app name from manifest for display
+APP_NAME=$(jq -r '.name.short' "$ENV_MANIFEST")
+
 echo ""
-echo -e "${GREEN}=== Deployment Complete ===${NC}"
+echo -e "${GREEN}=== Deployment Complete ($ENVIRONMENT) ===${NC}"
 echo ""
 echo "Next steps:"
-echo "  1. Find 'Pennie the Prepper' in Teams app store"
+echo "  1. Find '$APP_NAME' in Teams app store"
 echo "  2. Add to a chat or meeting"
 echo "  3. For meetings, invite before or during the meeting"

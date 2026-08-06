@@ -7,7 +7,7 @@
 
 This guide provides step-by-step instructions for deploying Pennie the Prepper to your Azure environment. The deployment process is largely automated through scripts and Bicep templates, with a few manual steps for security approvals.
 
-**Current Status** (November 2025): Infrastructure (Phase 1) ✅ complete. Teams bot integration (Phase 2) ✅ deployed with Key Vault integration.
+**Current Status** (December 2025): All infrastructure deployed. Teams bot running. Secrets managed via GitHub Secrets.
 
 == Architecture Overview
 
@@ -27,11 +27,11 @@ This guide provides step-by-step instructions for deploying Pennie the Prepper t
 
 |Windows Server VM
 |✅ Deployed
-|Hosts Teams Media Bot (future phase)
+|Hosts Teams Media Bot with Graph Communications SDK
 
-|Key Vault
-|✅ Deployed
-|Secure storage for bot credentials
+|GitHub Secrets
+|✅ Configured
+|Secure storage for bot credentials and deployment secrets
 
 |Application Insights
 |✅ Deployed
@@ -39,7 +39,7 @@ This guide provides step-by-step instructions for deploying Pennie the Prepper t
 
 |Teams Media Bot
 |✅ Deployed
-|C# bot with Graph SDK, Key Vault integration for credentials
+|C# bot with Graph SDK for real-time audio capture
 
 |Function Call Handler
 |✅ Implemented
@@ -119,9 +119,6 @@ AZURE_LOCATION=uksouth
 # Azure DevOps
 AZURE_DEVOPS_ORG=your-org-name
 AZURE_DEVOPS_PAT=your-personal-access-token
-
-# Key Vault (bot loads credentials at runtime)
-AZURE_KEY_VAULT_NAME=pennie-kv-xxxxxx
 
 # AI Foundry (configured in Step 4)
 AZURE_AI_FOUNDRY_PROJECT=
@@ -637,57 +634,58 @@ Deploy the bot from your local machine using the automated script:
 
 **What This Does**:
 
-1. Loads configuration from `.env` (only needs `AZURE_KEY_VAULT_NAME`)
-2. Builds bot locally with .NET SDK
-3. Publishes for Windows (`win-x64`, self-contained)
-4. Injects Key Vault name into `appsettings.json`
-5. Creates deployment package (ZIP ~65MB)
-6. Uploads to Azure Blob Storage
-7. Generates SAS URL (1-hour expiry)
-8. Deploys to VM via `az vm run-command invoke`:
+1. Builds bot locally with .NET SDK
+2. Publishes for Windows (`win-x64`, self-contained)
+3. Creates deployment package (ZIP ~65MB)
+4. Uploads to Azure Blob Storage
+5. Generates SAS URL (1-hour expiry)
+6. Deploys to VM via `az vm run-command invoke`:
    - Stops PennieBot service
-   - **Backs up appsettings.json** (preserves VM configuration)
-   - Downloads and extracts new version
-   - **Restores appsettings.json from backup**
+   - Downloads and extracts new version (uses fresh template from repo)
+   - **Configures appsettings.json** via `configure-bot-settings.ps1` with credentials from GitHub Secrets
+   - Sets up SSL certificate via Let's Encrypt
    - Starts PennieBot service
-9. Verifies health endpoint
+7. Verifies health endpoint
 
-=== Configuration Preservation During Deployment
+=== Configuration via GitHub Secrets
 
-**CRITICAL**: The deployment process preserves `appsettings.json` on the VM.
+All configuration is managed through **GitHub Secrets** in environment-specific settings (test/prod).
 
-The VM's `appsettings.json` contains environment-specific configuration that must not be overwritten:
+**Required GitHub Secrets** (per environment):
 
-[source,json]
-----
-{
-  "MicrosoftAppId": "<your-bot-app-id>",
-  "MicrosoftAppTenantId": "<your-tenant-id>",
-  "MicrosoftAppType": "SingleTenant",
-  "AZURE_KEY_VAULT_NAME": "<your-key-vault-name>"
-}
-----
+[cols="1,2"]
+|===
+|Secret |Description
 
-**Why This Matters**:
+|`TEAMS_APP_ID`
+|Microsoft App ID for Teams bot
 
-* The deployed package contains default/template values, not production configuration
-* Without backup/restore, deployment would break the bot's authentication
-* Secrets (MicrosoftAppPassword) remain in Key Vault - only non-secrets in appsettings.json
+|`TEAMS_APP_PASSWORD`
+|Microsoft App Password for Teams bot
 
-**Both deployment methods preserve the configuration**:
+|`AZURE_OPENAI_ENDPOINT`
+|Azure OpenAI endpoint URL (e.g., `https://your-openai.openai.azure.com`)
 
-1. **GitHub Actions** (`.github/workflows/deploy.yml`): Backs up before extract, restores after
-2. **Local script** (`scripts/deploy-bot-to-vm.ps1`): Backs up before build, restores after
+|`AZURE_OPENAI_ASSISTANT_ID`
+|Azure OpenAI Assistant ID for Pennie AI
 
-**Key Vault Integration**:
+|`AZURE_CREDENTIALS`
+|Service principal credentials for Azure CLI
 
-The bot loads credentials from Key Vault at runtime using managed identity:
+|`LE_EMAIL`
+|Email address for Let's Encrypt certificate renewal
+|===
 
-* `MicrosoftAppId` - Bot Framework App ID
-* `MicrosoftAppPassword` - Bot Framework App Password
-* `AZURE-FUNCTIONS-BACKEND-URL` - Backend API URL (optional)
+**How Configuration Works**:
 
-**No credentials are stored in** `.env` **or** `appsettings.json` **- only the Key Vault name**.
+1. GitHub Actions reads secrets from the target environment (test or prod)
+2. Secrets are Base64-encoded and passed securely to the VM via `az vm run-command`
+3. `configure-bot-settings.ps1` decodes and writes values to `appsettings.json`
+4. Bot service is restarted to apply new configuration
+
+**All configuration keys use underscores** (e.g., `AZURE_OPENAI_ENDPOINT`, not dashes).
+
+**No Key Vault or backup/restore is required** - configuration is freshly applied on each deployment.
 
 **Duration**: ~2-3 minutes
 
@@ -874,6 +872,171 @@ Get-Content C:\Pennie\logs\bot-stdout.log -Tail 100
 
 **Tracked in GitHub Issue**: #4 (Complete Teams Bot Integration) - **✅ Complete**
 
+== First-Time Environment Setup
+
+When deploying to a **new environment** (test, prod), certain steps must be completed manually before the CI/CD workflow can deploy successfully. These steps cannot be automated due to security requirements.
+
+=== Why Manual Setup is Required
+
+[cols="1,2,2"]
+|===
+|Step |Why Manual? |Security Concern
+
+|Azure AD App Registration
+|Requires `Application.ReadWrite.All` permission
+|Giving CI/CD this permission is acceptable
+
+|**Admin Consent**
+|Requires Global Admin or Privileged Role Admin
+|**Never give CI/CD these permissions** - too powerful
+
+|Teams Manifest Upload
+|Requires Teams Administrator or `AppCatalog.ReadWrite.All` with admin consent
+|High-privilege operation that should be audited
+|===
+
+=== Per-Environment Setup Checklist
+
+For each new environment (e.g., `test`), complete these one-time steps:
+
+==== 1. Create Azure AD App Registration
+
+Run the automated script:
+
+[source,bash]
+----
+# For test environment
+./scripts/setup-bot-app-registration.sh --env test
+
+# For production
+./scripts/setup-bot-app-registration.sh --env prod
+----
+
+This creates:
+
+* App registration with appropriate name (e.g., "Pennie the Prepper (Test)")
+* Graph API permissions (not yet consented)
+* Client secret (2-year expiry)
+* Optionally stores credentials in GitHub Secrets
+
+==== 2. Grant Admin Consent (REQUIRES ADMIN)
+
+This step **cannot be automated** without giving CI/CD Global Admin permissions.
+
+**Azure Portal Method** (Recommended):
+
+1. Go to: https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/<APP_ID>
+2. Click "Grant admin consent for [Your Organization]"
+3. Confirm the consent prompt
+
+**Azure CLI Method** (Requires admin permissions):
+
+[source,bash]
+----
+az ad app permission admin-consent --id <APP_ID>
+----
+
+==== 3. Create Teams App Manifest
+
+For test environment, create a separate manifest:
+
+[source,bash]
+----
+# Copy production manifest
+cp bot/teams-manifest/manifest.json bot/teams-manifest/manifest.test.json
+
+# Edit manifest.test.json:
+# - id: Generate new UUID (uuidgen)
+# - name.short: "Pennie the Prepper (Test)"
+# - name.full: "Pennie the Prepper - AI Business Analyst (Test)"
+# - accentColor: "#9C27B0" (purple for test)
+# - bots[0].botId: <TEST_APP_ID from step 1>
+
+# Create app package
+cd bot/teams-manifest
+zip pennie-app-test.zip manifest.test.json color.png outline.png
+----
+
+==== 4. Upload Teams App to Organization
+
+**Option 1 - Teams Admin Center** (first-time):
+
+1. Go to: https://admin.teams.microsoft.com
+2. Navigate to: Teams apps → Manage apps
+3. Click: Upload new app
+4. Select: `pennie-app-test.zip`
+5. Approve for your organization
+
+**Option 2 - Script** (if you have permissions):
+
+[source,bash]
+----
+./scripts/deploy-teams-app.sh --env test --create
+----
+
+==== 4a. Make App Visible to Users
+
+After uploading, the app is in the catalog but users must **add** it to use it.
+
+**Where Users Find Custom Apps**:
+
+1. In Teams, go to **Apps** (left sidebar)
+2. Look for **"Built for your org"** section
+3. Find "Pennie the Prepper" and click **Add**
+
+NOTE: Custom apps do NOT appear in regular Teams search. Users must look in "Built for your org".
+
+**Pre-Install for All Users (Optional)**:
+
+To automatically install the app for everyone (so they don't need to manually add it):
+
+1. **Teams Admin Center** → **Teams apps** → **Setup policies**
+2. Edit **Global (Org-wide default)** or create a new policy
+3. Under **Installed apps**, click **Add apps**
+4. Search for "Pennie the Prepper" and add it
+5. Optionally **pin** it to make it visible in users' sidebar
+
+[cols="1,2"]
+|===
+|Action |Who it affects
+
+|Upload to Admin Center
+|Makes app **available** in org catalog
+
+|User clicks "Add"
+|Installs app **for that user only**
+
+|Admin pins via Setup Policy
+|Pre-installs for **everyone** in policy
+|===
+
+==== 5. Configure GitHub Environment Secrets
+
+Set these secrets in GitHub for the environment:
+
+[source,bash]
+----
+gh secret set TEAMS_APP_ID --env test --body "<app-id-from-step-1>"
+gh secret set TEAMS_APP_PASSWORD --env test --body "<client-secret-from-step-1>"
+gh secret set AZURE_RESOURCE_GROUP --env test --body "TMinus15Agents-Test"
+gh secret set AZURE_STORAGE_ACCOUNT --env test --body "<storage-account-name>"
+----
+
+==== 6. Enable Deployments
+
+Set the environment variable to enable CI/CD deployments:
+
+1. Go to: GitHub Repository → Settings → Environments → test
+2. Add variable: `AZURE_DEPLOYMENT_ENABLED` = `true`
+
+=== After First-Time Setup
+
+Once the above steps are complete, the CI/CD workflow (`deploy.yml`) handles all subsequent deployments automatically:
+
+* Infrastructure updates via Bicep
+* Bot code deployments to VM
+* Configuration via GitHub Secrets (no backup/restore needed)
+
 == Step 6: Verification
 
 === Infrastructure Checklist
@@ -955,11 +1118,11 @@ Expected secrets:
 
 === Current Completion Status
 
-* **Phase 1 Infrastructure**: 100% complete
-* **Backend API**: 100% deployed and tested
-* **Agent Configuration**: 100% deployed
-* **Bot Integration**: 100% deployed with Key Vault integration
-* **Overall MVP**: 100% complete
+* **Infrastructure**: ✅ Deployed (Windows VM, Azure Functions, Application Insights)
+* **Backend API**: ✅ Deployed and tested (9 HTTP endpoints)
+* **Agent Configuration**: ✅ Deployed (Pennie in East US 2)
+* **Bot Integration**: ✅ Deployed (Teams Media Bot with Graph SDK)
+* **Secrets Management**: ✅ Configured (GitHub Secrets)
 
 === Recent Deployments
 
@@ -1082,32 +1245,35 @@ Wait 10 seconds for role propagation, then retry.
 
 === Secrets Management
 
-The project uses a layered secrets management approach:
+The project uses GitHub Secrets for secrets management:
 
 [cols="1,2,2"]
 |===
 |Location |Purpose |Contents
 
-|Azure Key Vault
-|Production runtime secrets
-|`MicrosoftAppId`, `MicrosoftAppPassword`, `AZURE-FUNCTIONS-BACKEND-URL`
+|GitHub Secrets (Repository)
+|Shared across environments
+|`AZURE_CREDENTIALS`, `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`
 
-|`.env` file
-|Local configuration (non-secrets)
-|`AZURE_KEY_VAULT_NAME`, `AZURE_RESOURCE_GROUP`, region settings
+|GitHub Secrets (Environment: prod)
+|Production-specific
+|`TEAMS_APP_ID`, `TEAMS_APP_PASSWORD`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_ASSISTANT_ID`, `AZURE_RESOURCE_GROUP`, `AZURE_STORAGE_ACCOUNT`
 
-|GitHub Secrets
-|CI/CD pipelines
-|Azure credentials, subscription IDs (future)
+|GitHub Secrets (Environment: test)
+|Test-specific
+|`TEAMS_APP_ID`, `TEAMS_APP_PASSWORD`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_ASSISTANT_ID`, `AZURE_RESOURCE_GROUP`, `AZURE_STORAGE_ACCOUNT`
+
+|`appsettings.json` (on VM)
+|Runtime configuration
+|Written by `configure-bot-settings.ps1` from GitHub Secrets during deployment
 |===
 
 **Key Principles**:
 
-* Bot credentials **never** stored in `.env` or `appsettings.json`
-* Bot loads secrets from Key Vault at startup using managed identity
-* Managed identity authenticates to Key Vault (no API keys needed)
+* All credentials managed via GitHub Secrets (per environment)
+* Configuration written to VM during deployment via `configure-bot-settings.ps1`
 * **Never commit secrets to Git**
-* `.env` file excluded from source control (`.gitignore`)
+* `appsettings.json` is freshly configured on each deployment (no backup/restore needed)
 
 === Network Security
 
@@ -1119,11 +1285,113 @@ The project uses a layered secrets management approach:
 === Access Control
 
 * RBAC enforced on all Azure resources
-* Key Vault access via managed identity
 * Admin consent required for Graph API permissions
 * Azure DevOps PAT with minimal scopes
 
-== Appendix A: Automated Deployment Scripts
+=== GitHub Actions RBAC Requirements
+
+The GitHub Actions service principal (`github-actions-pennie`) requires specific Azure RBAC roles for CI/CD deployments.
+
+**Prerequisites:**
+
+Resource groups must be created manually before deployment (one-time setup per environment):
+
+[source,bash]
+----
+# Create resource group for test environment
+az group create --name TMinus15Agents-Test --location uksouth
+
+# Create resource group for production
+az group create --name TMinus15Agents --location uksouth
+----
+
+**Per Resource Group Roles:**
+
+Each environment's resource group (e.g., `TMinus15Agents-Test`, `TMinus15Agents`) requires:
+
+[source,bash]
+----
+# 1. Contributor role - to deploy infrastructure and manage resources
+az role assignment create \
+  --assignee "<service-principal-app-id>" \
+  --role "Contributor" \
+  --scope "/subscriptions/<subscription-id>/resourceGroups/<resource-group-name>"
+
+# 2. Storage Blob Data Contributor - to upload deployment packages
+az role assignment create \
+  --assignee "<service-principal-app-id>" \
+  --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/<subscription-id>/resourceGroups/<resource-group-name>/providers/Microsoft.Storage/storageAccounts/<storage-account-name>"
+----
+
+**Example for Test Environment:**
+
+[source,bash]
+----
+# Get subscription ID
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+SP_APP_ID="3c841dbd-21b0-4493-8ac3-112924744601"  # github-actions-pennie
+
+# Contributor on resource group
+az role assignment create \
+  --assignee "$SP_APP_ID" \
+  --role "Contributor" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/TMinus15Agents-Test"
+
+# Storage Blob Data Contributor on storage account
+az role assignment create \
+  --assignee "$SP_APP_ID" \
+  --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/TMinus15Agents-Test/providers/Microsoft.Storage/storageAccounts/pennietest294b6c75"
+----
+
+NOTE: Role assignments can take up to 5 minutes to propagate. If the workflow fails with permission errors immediately after granting roles, wait a few minutes and retry.
+
+== Appendix A: Deployment Scripts
+
+=== Overview
+
+The project includes several deployment scripts. The GitHub Actions workflow handles automated CI/CD deployment, while manual scripts provide backup options for local development and emergency fixes.
+
+[cols="2,1,3"]
+|===
+|Script |Used by CI/CD? |Purpose
+
+|`deploy-bot-to-vm.ps1`
+|✅ Yes
+|Runs ON the VM to restart the bot service after deployment
+
+|`deploy-bot.sh`
+|❌ No
+|Manual deployment from your Linux/Mac PC
+
+|`deploy-bot-remote.sh`
+|❌ No
+|Manual deployment from your PC to VM via Azure CLI
+
+|`deploy-teams-app.sh`
+|❌ No
+|Manual Teams app package upload to organization catalog
+
+|`setup-bot-app-registration.sh`
+|❌ No
+|One-time setup: Creates Azure AD app registration for bot
+
+|`deploy-agent.sh`
+|❌ No
+|Deploys Pennie AI Foundry agent with function calling
+
+|`deploy-backend.sh`
+|❌ No
+|Deploys Azure Functions backend for Azure DevOps integration
+|===
+
+**When to use manual scripts:**
+
+* Deploying without waiting for CI/CD pipeline
+* Emergency fixes when GitHub Actions is unavailable
+* Local development and testing
+* One-time setup tasks (app registration, agent deployment)
 
 === setup-bot-app-registration.sh
 
@@ -1133,19 +1401,41 @@ Located at: `scripts/setup-bot-app-registration.sh`
 
 **What It Does**:
 
-1. Creates app registration
-2. Adds Graph API permissions
-3. Generates client secret
-4. Stores credentials in Key Vault
-5. Updates `.env` file
-6. Provides instructions for manual admin consent
+1. Creates app registration (environment-specific naming)
+2. Adds Graph API permissions (Calls.AccessMedia.All, Calls.JoinGroupCall.All, OnlineMeetings.ReadWrite.All)
+3. Generates client secret (2-year expiry)
+4. Optionally sets GitHub Secrets automatically
+5. Provides instructions for manual admin consent
 
 **Usage**:
 
 [source,bash]
 ----
+# Production app registration
 ./scripts/setup-bot-app-registration.sh
+
+# Test app registration (purple accent, "(Test)" suffix)
+./scripts/setup-bot-app-registration.sh --env test
 ----
+
+**Environment Differences**:
+
+[cols="1,2,2"]
+|===
+|Setting |Production |Test
+
+|App Name
+|Pennie the Prepper Bot
+|Pennie the Prepper (Test)
+
+|Accent Color
+|#9DFF0A (Green)
+|#9C27B0 (Purple)
+
+|Secret Name
+|PennieBot-Prod-Secret
+|PennieBot-Test-Secret
+|===
 
 === deploy-agent.sh
 
@@ -1176,25 +1466,46 @@ Located at: `scripts/deploy-teams-app.sh`
 
 **What It Does**:
 
-1. Creates Teams app package from manifest.json and icons (with `--create` flag)
-2. Gets access token for Microsoft Graph API
-3. Checks if app already exists in catalog
-4. Uploads new app or updates existing app
-5. Provides manual upload instructions on failure
+1. Selects environment-specific manifest (`manifest.prod.json` or `manifest.test.json`)
+2. Creates Teams app package with correct `manifest.json` inside (with `--create` flag)
+3. Gets access token for Microsoft Graph API
+4. Checks if app already exists in catalog
+5. Uploads new app or updates existing app
+6. Provides manual upload instructions on failure
 
 **Usage**:
 
 [source,bash]
 ----
-# Deploy existing package
-./scripts/deploy-teams-app.sh
+# Build and deploy production package
+./scripts/deploy-teams-app.sh --env prod --create
 
-# Create package then deploy
-./scripts/deploy-teams-app.sh --create
+# Build and deploy test package
+./scripts/deploy-teams-app.sh --env test --create
+
+# Deploy existing package (defaults to prod)
+./scripts/deploy-teams-app.sh --env prod
 
 # Show help
 ./scripts/deploy-teams-app.sh --help
 ----
+
+**Environment-Specific Manifests**:
+
+[cols="1,2,2"]
+|===
+|Environment |Manifest File |Package Created
+
+|prod
+|`manifest.prod.json`
+|`pennie-app-prod-v1.6.0.zip`
+
+|test
+|`manifest.test.json`
+|`pennie-app-test-v1.6.0.zip`
+|===
+
+NOTE: Teams requires the manifest to be named exactly `manifest.json` inside the zip. The script handles this automatically by copying the environment-specific manifest.
 
 **Required Permissions**:
 

@@ -2,20 +2,48 @@
 
 param location string
 param environmentName string
-param keyVaultName string
+#disable-next-line no-unused-params // Used in vmExtension commandToExecute string interpolation
 param applicationInsightsConnectionString string
+#disable-next-line no-unused-params // Used in vmExtension commandToExecute string interpolation
 param devOpsOrg string
+#disable-next-line no-unused-params // Used in vmExtension commandToExecute string interpolation
 param devOpsProject string
 param tags object
 
 @description('Admin username for the VM')
 param adminUsername string = 'pennieadmin'
 
+@description('Admin password for the VM - REQUIRED: Must be provided via GitHub Secrets or parameters')
+@secure()
+param adminPassword string
+
+@description('Allowed source IP/CIDR for RDP access. Resolve your dynamic DNS hostname to IP before deployment. Default blocks all RDP.')
+param allowedRdpSourceIP string = ''
+
 @description('VM size for the Windows Server')
 param vmSize string = 'Standard_D2s_v3' // 2 vCPU, 8 GB RAM
 
-@description('Resource ID of an existing Azure OpenAI resource for RBAC (optional, for cross-region deployments)')
-param existingOpenAiResourceId string = ''
+@description('Use Azure Spot VM for cost savings (can be evicted)')
+param useSpotVM bool = false
+
+@description('Spot VM eviction policy: Deallocate (preserve disk) or Delete')
+@allowed(['Deallocate', 'Delete'])
+param spotEvictionPolicy string = 'Deallocate'
+
+@description('Max price for Spot VM (-1 = up to on-demand price)')
+param spotMaxPrice int = -1
+
+@description('Enable auto-shutdown schedule')
+param enableAutoShutdown bool = false
+
+@description('Auto-shutdown time in 24h format (e.g., 1900 for 7pm)')
+param autoShutdownTime string = '1900'
+
+@description('Auto-shutdown timezone')
+param autoShutdownTimezone string = 'GMT Standard Time'
+
+// NOTE: If you need to grant VM access to an existing Azure OpenAI resource, use Azure CLI after deployment:
+// az role assignment create --assignee <vm-principal-id> --role "Cognitive Services OpenAI Contributor" --scope <openai-resource-id>
 
 // Virtual Network
 resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
@@ -43,12 +71,13 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
 }
 
 // Network Security Group
+// RDP rule is only created if allowedRdpSourceIP is provided (security best practice)
 resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
   name: 'pennie-nsg-${environmentName}'
   location: location
   tags: tags
   properties: {
-    securityRules: [
+    securityRules: concat([
       {
         name: 'AllowHTTPS'
         properties: {
@@ -63,6 +92,21 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
         }
       }
       {
+        name: 'AllowHTTP'
+        properties: {
+          priority: 110
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '80'
+          sourceAddressPrefix: '*'
+          destinationAddressPrefix: '*'
+          description: 'Required for ACME HTTP-01 challenge (SSL certificate)'
+        }
+      }
+    ], !empty(allowedRdpSourceIP) ? [
+      {
         name: 'AllowRDP'
         properties: {
           priority: 200
@@ -71,11 +115,11 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
           protocol: 'Tcp'
           sourcePortRange: '*'
           destinationPortRange: '3389'
-          sourceAddressPrefix: '*' // Restrict to your IP in production
+          sourceAddressPrefix: allowedRdpSourceIP
           destinationAddressPrefix: '*'
         }
       }
-    ]
+    ] : [])
   }
 }
 
@@ -125,7 +169,7 @@ resource nic 'Microsoft.Network/networkInterfaces@2023-05-01' = {
 resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
   name: 'pennie-vm-${environmentName}'
   location: location
-  tags: tags
+  tags: union(tags, useSpotVM ? { SpotVM: 'true' } : {})
   identity: {
     type: 'SystemAssigned'
   }
@@ -133,10 +177,16 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
     hardwareProfile: {
       vmSize: vmSize
     }
+    // Spot VM configuration (60-80% cost savings, can be evicted)
+    priority: useSpotVM ? 'Spot' : 'Regular'
+    evictionPolicy: useSpotVM ? spotEvictionPolicy : null
+    billingProfile: useSpotVM ? {
+      maxPrice: spotMaxPrice
+    } : null
     osProfile: {
       computerName: 'pennie-${environmentName}'
       adminUsername: adminUsername
-      adminPassword: 'P@ssw0rd!${uniqueString(resourceGroup().id)}' // Change in production via Key Vault
+      adminPassword: adminPassword
       windowsConfiguration: {
         enableAutomaticUpdates: true
         provisionVMAgent: true
@@ -175,6 +225,25 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
       bootDiagnostics: {
         enabled: true
       }
+    }
+  }
+}
+
+// Auto-shutdown schedule (saves costs by stopping VM outside business hours)
+resource autoShutdownSchedule 'Microsoft.DevTestLab/schedules@2018-09-15' = if (enableAutoShutdown) {
+  name: 'shutdown-computevm-${vm.name}'
+  location: location
+  tags: tags
+  properties: {
+    status: 'Enabled'
+    taskType: 'ComputeVmShutdownTask'
+    dailyRecurrence: {
+      time: autoShutdownTime
+    }
+    timeZoneId: autoShutdownTimezone
+    targetResourceId: vm.id
+    notificationSettings: {
+      status: 'Disabled'
     }
   }
 }
@@ -233,38 +302,13 @@ resource vmExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09-01' =
   }
 }
 
-// Grant VM Managed Identity access to Key Vault
-resource keyVaultReference 'Microsoft.KeyVault/vaults@2023-02-01' existing = {
-  name: keyVaultName
-}
-
-resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: keyVaultReference
-  name: guid(keyVaultReference.id, vm.id, 'Key Vault Secrets User')
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
-    principalId: vm.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
 // Grant VM Managed Identity access to Azure OpenAI (if existing resource provided)
-// Role: Cognitive Services OpenAI Contributor (a]001dd7-823b-4bf9-a81c-774440b5d111)
-// Required for the bot to call Azure OpenAI APIs using managed identity
-resource openAiReference 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = if (!empty(existingOpenAiResourceId)) {
-  name: last(split(existingOpenAiResourceId, '/'))
-  scope: resourceGroup(split(existingOpenAiResourceId, '/')[2], split(existingOpenAiResourceId, '/')[4])
-}
-
-resource openAiRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(existingOpenAiResourceId)) {
-  scope: openAiReference
-  name: guid(existingOpenAiResourceId, vm.id, 'Cognitive Services OpenAI Contributor')
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a001dd7-823b-4bf9-a81c-774440b5d111') // Cognitive Services OpenAI Contributor
-    principalId: vm.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
+// NOTE: Cross-scope role assignment for OpenAI must be done via Azure CLI after deployment:
+// az role assignment create \
+//   --assignee <vm-principal-id> \
+//   --role "Cognitive Services OpenAI Contributor" \
+//   --scope <openai-resource-id>
+// This is because Bicep doesn't support cross-resource-group role assignments in the same deployment.
 
 // Outputs
 output vmName string = vm.name
@@ -273,3 +317,5 @@ output vmPublicIP string = publicIP.properties.ipAddress
 output vmPrivateIP string = nic.properties.ipConfigurations[0].properties.privateIPAddress
 output vmFQDN string = publicIP.properties.dnsSettings.fqdn
 output vmPrincipalId string = vm.identity.principalId
+output isSpotVM bool = useSpotVM
+output autoShutdownEnabled bool = enableAutoShutdown

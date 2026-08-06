@@ -1,17 +1,16 @@
 // Main Bicep orchestration for Pennie the Prepper
-// Deploys all infrastructure in single Azure region
-
-targetScope = 'subscription'
+// Deploys all infrastructure to an existing resource group
+//
+// Prerequisites:
+//   - Resource group must be created manually before deployment
+//   - See docs/DEPLOYMENT.adoc for setup instructions
 
 // Parameters
 @description('Name of the environment (dev, test, prod)')
 param environmentName string = 'prod'
 
 @description('Primary Azure region for all resources')
-param location string = 'uksouth'
-
-@description('Name of the resource group')
-param resourceGroupName string = 'TMinus15Agents'
+param location string = resourceGroup().location
 
 @description('Name of the Azure AI Foundry Hub (existing or new)')
 param aiHubName string
@@ -25,9 +24,21 @@ param devOpsOrg string
 @description('Azure DevOps project name')
 param devOpsProject string
 
-@description('Teams bot app ID (from Azure AD app registration)')
+@description('Deploy AI services (OpenAI, Speech, AI Foundry). Set to false for test environments that share prod AI services.')
+param deployAiServices bool = true
+
+@description('Deploy Windows VM for Teams Bot. Set to true to create the VM.')
+param deployVM bool = true
+
+@description('Use Azure Spot VM for cost savings (60-80% cheaper, can be evicted by Azure)')
+param useSpotVM bool = false
+
+@description('Admin password for VM - provide via GitHub Secrets')
 @secure()
-param teamsAppId string
+param vmAdminPassword string = ''
+
+@description('Allowed source IP for RDP access (resolve dynamic DNS to IP before deployment)')
+param allowedRdpSourceIP string = ''
 
 @description('Tags to apply to all resources')
 param tags object = {
@@ -37,16 +48,8 @@ param tags object = {
   CostCenter: 'AI-Agents'
 }
 
-// Resource Group
-resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
-  name: resourceGroupName
-  location: location
-  tags: tags
-}
-
 // Module: Monitoring (Application Insights, Log Analytics, Storage)
 module monitoring './modules/monitoring.bicep' = {
-  scope: rg
   name: 'monitoring-deployment'
   params: {
     location: location
@@ -55,21 +58,9 @@ module monitoring './modules/monitoring.bicep' = {
   }
 }
 
-// Module: Key Vault (Secrets management)
-module keyVault './modules/key-vault.bicep' = {
-  scope: rg
-  name: 'keyvault-deployment'
-  params: {
-    location: location
-    environmentName: environmentName
-    tags: tags
-    teamsAppId: teamsAppId
-  }
-}
-
 // Module: AI Services (AI Foundry, Speech Services, OpenAI)
-module aiServices './modules/ai-services.bicep' = {
-  scope: rg
+// Optional: Test environments can share production AI services
+module aiServices './modules/ai-services.bicep' = if (deployAiServices) {
   name: 'ai-services-deployment'
   params: {
     location: location
@@ -81,31 +72,40 @@ module aiServices './modules/ai-services.bicep' = {
 }
 
 // Module: Windows VM (Teams Media Bot + Node.js MCP Server)
-module windowsVM './modules/windows-vm.bicep' = {
-  scope: rg
+// Optional: Can be disabled for environments that don't need a VM
+module windowsVM './modules/windows-vm.bicep' = if (deployVM && !empty(vmAdminPassword)) {
   name: 'windows-vm-deployment'
   params: {
     location: location
     environmentName: environmentName
-    keyVaultName: keyVault.outputs.keyVaultName
     applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
     devOpsOrg: devOpsOrg
     devOpsProject: devOpsProject
+    useSpotVM: useSpotVM
+    adminPassword: vmAdminPassword
+    allowedRdpSourceIP: allowedRdpSourceIP
     tags: tags
   }
 }
 
 // Outputs
-output resourceGroupName string = rg.name
+output resourceGroupName string = resourceGroup().name
 output location string = location
-output keyVaultName string = keyVault.outputs.keyVaultName
 output applicationInsightsName string = monitoring.outputs.applicationInsightsName
 output applicationInsightsConnectionString string = monitoring.outputs.applicationInsightsConnectionString
 output storageAccountName string = monitoring.outputs.storageAccountName
-output aiHubName string = aiServices.outputs.aiHubName
-output aiProjectName string = aiServices.outputs.aiProjectName
-output speechServiceEndpoint string = aiServices.outputs.speechServiceEndpoint
-output openAiEndpoint string = aiServices.outputs.openAiEndpoint
-output vmName string = windowsVM.outputs.vmName
-output vmPublicIP string = windowsVM.outputs.vmPublicIP
-output vmPrivateIP string = windowsVM.outputs.vmPrivateIP
+#disable-next-line BCP318 // Condition matches module deployment condition
+output aiHubName string = deployAiServices ? aiServices.outputs.aiHubName : 'not-deployed'
+#disable-next-line BCP318 // Condition matches module deployment condition
+output aiProjectName string = deployAiServices ? aiServices.outputs.aiProjectName : 'not-deployed'
+#disable-next-line BCP318 // Condition matches module deployment condition
+output speechServiceEndpoint string = deployAiServices ? aiServices.outputs.speechServiceEndpoint : 'not-deployed'
+#disable-next-line BCP318 // Condition matches module deployment condition
+output openAiEndpoint string = deployAiServices ? aiServices.outputs.openAiEndpoint : 'not-deployed'
+// Note: VM outputs depend on deployVM flag, not exposing vmAdminPassword value
+#disable-next-line BCP318 outputs-should-not-contain-secrets // Condition check, not exposing secret
+output vmName string = (deployVM && !empty(vmAdminPassword)) ? windowsVM.outputs.vmName : 'not-deployed'
+#disable-next-line BCP318 outputs-should-not-contain-secrets // Condition check, not exposing secret
+output vmPublicIP string = (deployVM && !empty(vmAdminPassword)) ? windowsVM.outputs.vmPublicIP : 'not-deployed'
+#disable-next-line BCP318 outputs-should-not-contain-secrets // Condition check, not exposing secret
+output vmPrivateIP string = (deployVM && !empty(vmAdminPassword)) ? windowsVM.outputs.vmPrivateIP : 'not-deployed'

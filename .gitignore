@@ -4,6 +4,10 @@
 .env.*.local
 *.env
 
+# Local development config (contains secrets)
+appsettings.local.json
+bot/appsettings.local.json
+
 # Azure and Keys
 *.pfx
 *.p12
@@ -118,3 +122,4 @@ ApplicationInsights.config
 bot/*.zip
 bot/publish-*/
 bot/teams-manifest/*.zip
+src/*.zip

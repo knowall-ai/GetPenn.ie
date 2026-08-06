@@ -1,14 +1,21 @@
 name: Deploy Pennie to Azure
 
+# Deployment triggers:
+# - Push to main -> Deploy to test environment
+# - Tag v*.*.* -> Deploy to production
+# - Manual workflow_dispatch -> Choose environment
+
 on:
   push:
     branches: [main]
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       environment:
         description: 'Environment to deploy to'
         required: true
-        default: 'prod'
+        default: 'test'
         type: choice
         options:
           - test
@@ -23,12 +30,56 @@ env:
   NODE_VERSION: '20.x'
 
 jobs:
+  # Determine which environment to deploy to based on trigger
+  set-environment:
+    name: Set Environment
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'test') || (startsWith(github.ref, 'refs/tags/v') && 'prod') || 'test' }}
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      is_production: ${{ steps.set-env.outputs.is_production }}
+      deployment_enabled: ${{ steps.set-env.outputs.deployment_enabled }}
+      resource_group: ${{ steps.set-env.outputs.resource_group }}
+    steps:
+      - name: Determine environment
+        id: set-env
+        run: |
+          # Manual dispatch uses input
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENV="${{ github.event.inputs.environment }}"
+            echo "environment=$ENV" >> $GITHUB_OUTPUT
+            if [[ "$ENV" == "prod" ]]; then
+              echo "is_production=true" >> $GITHUB_OUTPUT
+              echo "resource_group=TMinus15Agents" >> $GITHUB_OUTPUT
+            else
+              echo "is_production=false" >> $GITHUB_OUTPUT
+              echo "resource_group=TMinus15Agents-${ENV^}" >> $GITHUB_OUTPUT
+            fi
+          # Tags starting with v deploy to production
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "is_production=true" >> $GITHUB_OUTPUT
+            echo "resource_group=TMinus15Agents" >> $GITHUB_OUTPUT
+          # Push to main deploys to test (when test VM exists)
+          else
+            echo "environment=test" >> $GITHUB_OUTPUT
+            echo "is_production=false" >> $GITHUB_OUTPUT
+            echo "resource_group=TMinus15Agents-Test" >> $GITHUB_OUTPUT
+          fi
+
+          # Output deployment enabled flag (from environment variable)
+          echo "deployment_enabled=${{ vars.AZURE_DEPLOYMENT_ENABLED }}" >> $GITHUB_OUTPUT
+
+          echo "Trigger: ${{ github.event_name }}, Ref: ${{ github.ref }}"
+          cat $GITHUB_OUTPUT
+
   deploy-infrastructure:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'prod' }}
-    # Skip infrastructure deployment - VM already exists
-    if: false
+    needs: [set-environment]
+    environment: ${{ needs.set-environment.outputs.environment }}
+    # Only deploy infrastructure when explicitly enabled per environment
+    if: ${{ needs.set-environment.outputs.deployment_enabled == 'true' }}
 
     steps:
       - name: Checkout code
@@ -39,17 +90,38 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Resolve RDP source IP from dynamic DNS
+        id: resolve-dns
+        run: |
+          # Resolve dynamic DNS hostname to IP for RDP access restriction
+          # Uses ADMIN_DDNS_HOSTNAME secret (e.g., bank.knowall.ai)
+          DDNS_HOSTNAME="${{ secrets.ADMIN_DDNS_HOSTNAME }}"
+          if [ -n "$DDNS_HOSTNAME" ]; then
+            echo "Resolving $DDNS_HOSTNAME..."
+            RESOLVED_IP=$(dig +short "$DDNS_HOSTNAME" | head -1)
+            if [ -n "$RESOLVED_IP" ]; then
+              echo "Resolved to: $RESOLVED_IP"
+              echo "rdp_source_ip=$RESOLVED_IP" >> $GITHUB_OUTPUT
+            else
+              echo "::warning::Could not resolve $DDNS_HOSTNAME - RDP will be disabled"
+              echo "rdp_source_ip=" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No ADMIN_DDNS_HOSTNAME configured - RDP will be disabled"
+            echo "rdp_source_ip=" >> $GITHUB_OUTPUT
+          fi
+
       - name: Deploy Bicep templates
         uses: azure/arm-deploy@v2
         with:
           subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          scope: subscription
-          region: uksouth
+          resourceGroupName: ${{ needs.set-environment.outputs.resource_group }}
           template: ./infra/main.bicep
           parameters: >
-            @./infra/main.parameters.${{ github.event.inputs.environment || 'prod' }}.json
-            environmentName=${{ github.event.inputs.environment || 'prod' }}
-            teamsAppId=${{ secrets.TEAMS_APP_ID }}
+            @./infra/main.parameters.${{ needs.set-environment.outputs.environment }}.json
+            environmentName=${{ needs.set-environment.outputs.environment }}
+            vmAdminPassword=${{ secrets.VM_ADMIN_PASSWORD }}
+            allowedRdpSourceIP=${{ steps.resolve-dns.outputs.rdp_source_ip }}
           failOnStdErr: false
 
       - name: Get deployment outputs
@@ -57,6 +129,114 @@ jobs:
         run: |
           echo "Getting deployment outputs..."
           # Extract outputs from deployment (VM IP, Key Vault name, etc.)
+
+      - name: Grant VM access to Azure OpenAI
+        run: |
+          # VM's managed identity needs "Cognitive Services OpenAI User" role to call Azure OpenAI
+          ENV="${{ needs.set-environment.outputs.environment }}"
+          RG="${{ needs.set-environment.outputs.resource_group }}"
+
+          # Get VM's managed identity principal ID
+          VM_PRINCIPAL_ID=$(az vm show \
+            --resource-group "$RG" \
+            --name "pennie-vm-${ENV}" \
+            --query "identity.principalId" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VM_PRINCIPAL_ID" ]; then
+            echo "::warning::Could not get VM principal ID - Azure OpenAI access may need manual setup"
+            exit 0
+          fi
+
+          echo "VM Principal ID: $VM_PRINCIPAL_ID"
+
+          # Azure OpenAI resource is in TMinus15Agents resource group (shared by all environments)
+          OPENAI_RESOURCE_ID="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/tminus15agents/providers/Microsoft.CognitiveServices/accounts/benw-mgan4638-eastus2"
+
+          # Check if role assignment already exists
+          EXISTING=$(az role assignment list \
+            --assignee "$VM_PRINCIPAL_ID" \
+            --role "Cognitive Services OpenAI User" \
+            --scope "$OPENAI_RESOURCE_ID" \
+            --query "[].id" -o tsv 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ]; then
+            echo "Role assignment already exists"
+          else
+            echo "Creating role assignment..."
+            az role assignment create \
+              --assignee "$VM_PRINCIPAL_ID" \
+              --role "Cognitive Services OpenAI User" \
+              --scope "$OPENAI_RESOURCE_ID" \
+              2>/dev/null || echo "::warning::Failed to create role assignment - may need manual setup"
+            echo "Role assignment created"
+          fi
+
+      - name: Ensure Azure Bot registration exists
+        run: |
+          # Azure Bot Service registration is required for Teams messaging
+          # This creates the bot registration if it doesn't exist
+          ENV="${{ needs.set-environment.outputs.environment }}"
+          RG="${{ needs.set-environment.outputs.resource_group }}"
+          APP_ID="${{ secrets.TEAMS_APP_ID }}"
+
+          if [ "$ENV" = "prod" ]; then
+            BOT_NAME="pennie-bot"
+            BOT_DISPLAY="Pennie the Prepper"
+          else
+            BOT_NAME="pennie-bot-${ENV}"
+            BOT_DISPLAY="Pennie the Prepper (${ENV})"
+          fi
+
+          # Get VM FQDN for messaging endpoint
+          VM_FQDN=$(az network public-ip show \
+            --resource-group "$RG" \
+            --name "pennie-pip-${ENV}" \
+            --query "dnsSettings.fqdn" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VM_FQDN" ]; then
+            echo "::warning::Could not get VM FQDN - bot registration may need manual endpoint update"
+            VM_FQDN="pennie-${ENV}.uksouth.cloudapp.azure.com"
+          fi
+
+          ENDPOINT="https://${VM_FQDN}/api/messages"
+          echo "Bot endpoint: $ENDPOINT"
+
+          # Check if bot registration exists
+          EXISTING=$(az resource list \
+            --resource-type "Microsoft.BotService/botServices" \
+            --query "[?name=='$BOT_NAME'].name" -o tsv 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ]; then
+            echo "Bot registration '$BOT_NAME' already exists"
+            # Update endpoint if it changed
+            az bot update \
+              --resource-group "$RG" \
+              --name "$BOT_NAME" \
+              --endpoint "$ENDPOINT" \
+              2>/dev/null || echo "::warning::Could not update bot endpoint"
+          else
+            echo "Creating bot registration '$BOT_NAME'..."
+            # Azure Bot registration with SingleTenant app type
+            # Note: MultiTenant is deprecated, use SingleTenant with tenant ID
+            az bot create \
+              --resource-group "$RG" \
+              --name "$BOT_NAME" \
+              --app-type SingleTenant \
+              --tenant-id "${{ secrets.AZURE_TENANT_ID }}" \
+              --appid "$APP_ID" \
+              --endpoint "$ENDPOINT" \
+              --display-name "$BOT_DISPLAY" \
+              --description "Pennie the Prepper - AI Business Analyst for Teams"
+
+            # Enable Teams channel
+            echo "Enabling Teams channel..."
+            az bot msteams create \
+              --resource-group "$RG" \
+              --name "$BOT_NAME" \
+              2>/dev/null || echo "::warning::Teams channel may already exist"
+
+            echo "✅ Bot registration '$BOT_NAME' created with Teams channel"
+          fi
 
   build-bot:
     name: Build Teams Bot
@@ -89,10 +269,10 @@ jobs:
   deploy-bot:
     name: Deploy Bot to VM
     runs-on: windows-latest
-    needs: [build-bot]
-    environment: ${{ github.event.inputs.environment || 'prod' }}
+    needs: [set-environment, build-bot]
+    environment: ${{ needs.set-environment.outputs.environment }}
     # Deploy to existing VM (infrastructure deployment optional)
-    if: ${{ vars.AZURE_DEPLOYMENT_ENABLED == 'true' }}
+    if: ${{ needs.set-environment.outputs.deployment_enabled == 'true' }}
 
     steps:
       - name: Checkout code
@@ -111,8 +291,12 @@ jobs:
 
       - name: Create deployment package
         run: |
+          # Include deployment and configuration scripts in the package
+          Copy-Item ./scripts/deploy-bot-to-vm.ps1 ./publish/
+          Copy-Item ./scripts/configure-bot-settings.ps1 ./publish/
+          Copy-Item ./scripts/configure-ssl.ps1 ./publish/
           Compress-Archive -Path ./publish/* -DestinationPath ./pennie-bot.zip
-          Write-Host "Created deployment package: pennie-bot.zip"
+          Write-Host "Created deployment package: pennie-bot.zip (includes deploy, config, and SSL scripts)"
 
       - name: Upload to Azure Storage
         run: |
@@ -154,106 +338,259 @@ jobs:
 
       - name: Deploy to Windows VM
         run: |
-          $vmName = "pennie-vm-${{ github.event.inputs.environment || 'prod' }}"
-          $rgName = "${{ secrets.AZURE_RESOURCE_GROUP }}"
-          $keyVaultName = "${{ secrets.AZURE_KEY_VAULT_NAME }}"
+          # Mask all secrets to prevent accidental exposure in logs (fixes #73)
+          # Note: GitHub auto-masks values referenced as ${{ secrets.X }}, but
+          # values decoded from Base64 or passed to scripts need explicit masking
+          $teamsAppId = "${{ secrets.TEAMS_APP_ID }}"
+          $teamsAppPassword = "${{ secrets.TEAMS_APP_PASSWORD }}"
+          $azureOpenAiEndpoint = "${{ secrets.AZURE_OPENAI_ENDPOINT }}"
+          $azureOpenAiAssistantId = "${{ secrets.AZURE_OPENAI_ASSISTANT_ID }}"
+          $leEmail = "${{ secrets.LE_EMAIL }}"
 
-          # Download and extract package on VM, preserving appsettings.json
-          $uploadScript = @'
-          param([string]$PackageUrl)
+          # Add masks for all sensitive values
+          Write-Output "::add-mask::$teamsAppId"
+          Write-Output "::add-mask::$teamsAppPassword"
+          if ($azureOpenAiEndpoint) { Write-Output "::add-mask::$azureOpenAiEndpoint" }
+          if ($azureOpenAiAssistantId) { Write-Output "::add-mask::$azureOpenAiAssistantId" }
+          if ($leEmail) { Write-Output "::add-mask::$leEmail" }
 
-          $TempDir = "C:\Temp"
-          $PackagePath = "$TempDir\pennie-bot.zip"
-          $ExtractPath = "C:\Pennie\bot"
-          $AppSettingsPath = "$ExtractPath\appsettings.json"
-          $AppSettingsBackup = "$TempDir\appsettings.json.backup"
+          $vmName = "pennie-vm-${{ github.event.inputs.environment || 'test' }}"
+          $rgName = "${{ needs.set-environment.outputs.resource_group }}"
+          $packageUrl = $env:PACKAGE_URL
 
-          New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
-          New-Item -ItemType Directory -Path $ExtractPath -Force | Out-Null
+          Write-Host "Deploying to VM: $vmName in RG: $rgName"
+          Write-Host "Package URL length: $($packageUrl.Length) chars"
 
-          # CRITICAL: Backup appsettings.json before deployment
-          # This file contains VM-specific configuration (AppId, TenantId, KeyVault name)
-          if (Test-Path $AppSettingsPath) {
-              Write-Host "Backing up existing appsettings.json..."
-              Copy-Item -Path $AppSettingsPath -Destination $AppSettingsBackup -Force
-          }
+          # Encode URL as Base64 to safely pass through (URL contains special chars)
+          $urlBytes = [System.Text.Encoding]::UTF8.GetBytes($packageUrl)
+          $urlBase64 = [Convert]::ToBase64String($urlBytes)
+          Write-Host "URL encoded to Base64 ($($urlBase64.Length) chars)"
 
-          Write-Host "Downloading deployment package..."
-          Invoke-WebRequest -Uri $PackageUrl -OutFile $PackagePath
-
-          Write-Host "Extracting to $ExtractPath..."
-          Expand-Archive -Path $PackagePath -DestinationPath $ExtractPath -Force
-
-          # CRITICAL: Restore appsettings.json after deployment
-          # The deployed package contains template values, not production configuration
-          if (Test-Path $AppSettingsBackup) {
-              Write-Host "Restoring appsettings.json from backup..."
-              Copy-Item -Path $AppSettingsBackup -Destination $AppSettingsPath -Force
-              Remove-Item -Path $AppSettingsBackup -Force
-              Write-Host "appsettings.json restored successfully"
-          } else {
-              Write-Host "WARNING: No appsettings.json backup found - manual configuration required"
-          }
-
-          Write-Host "Upload complete"
-          '@
-
+          # Step 1: Write Base64 URL to a file on the VM
+          Write-Host "Step 1: Writing Base64 URL to VM file..."
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts $uploadScript `
-            --parameters "PackageUrl=$env:PACKAGE_URL"
+            --scripts "New-Item -ItemType Directory -Path 'C:\Temp' -Force | Out-Null; Set-Content -Path 'C:\Temp\package-url.txt' -Value '$urlBase64' -Force; Write-Host 'URL file created'"
 
-          # Run deployment script
-          $deployScript = Get-Content ./scripts/deploy-bot-to-vm.ps1 -Raw
-
+          # Step 2: Decode URL and download package
+          Write-Host "Step 2: Downloading package on VM..."
           az vm run-command invoke `
             --resource-group $rgName `
             --name $vmName `
             --command-id RunPowerShellScript `
-            --scripts $deployScript `
-            --parameters "KeyVaultName=$keyVaultName"
+            --scripts "`$b64 = (Get-Content 'C:\Temp\package-url.txt' -Raw).Trim(); `$url = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(`$b64)); [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri `$url -OutFile 'C:\Temp\pennie-bot.zip' -UseBasicParsing; Write-Host ('Downloaded: ' + (Get-Item 'C:\Temp\pennie-bot.zip').Length + ' bytes')"
+
+          # Step 3: Extract package (uses fresh appsettings.json from repo)
+          # Note: Backup/restore removed - all config now comes from GitHub Secrets via configure-bot-settings.ps1
+          Write-Host "Step 3: Extracting package..."
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts "New-Item -ItemType Directory -Path 'C:\Pennie\bot' -Force | Out-Null; Expand-Archive -Path 'C:\Temp\pennie-bot.zip' -DestinationPath 'C:\Pennie\bot' -Force; Write-Host 'Extracted files:'; Get-ChildItem 'C:\Pennie\bot' | ForEach-Object { Write-Host `$_.Name }"
+
+          # Step 4: Run the service deployment script (stop service, copy files, start service)
+          Write-Host "Step 4: Running service deployment..."
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts "& 'C:\Pennie\bot\deploy-bot-to-vm.ps1'"
+
+          # Step 5: Setup SSL certificate using Let's Encrypt
+          # Requires LE_EMAIL secret to be configured
+          Write-Host "Step 5: Setting up Let's Encrypt SSL certificate..."
+
+          # Get VM FQDN (needed for certificate)
+          $vmFqdn = az network public-ip show --resource-group $rgName --name "pennie-pip-${{ github.event.inputs.environment || 'test' }}" --query "dnsSettings.fqdn" -o tsv
+          if (-not $vmFqdn) {
+            Write-Error "Could not get VM FQDN - required for SSL certificate"
+            exit 1
+          }
+          Write-Host "VM FQDN: $vmFqdn"
+
+          # Verify LE_EMAIL secret is configured
+          $leEmail = "${{ secrets.LE_EMAIL }}"
+          if (-not $leEmail) {
+            Write-Error "LE_EMAIL secret not configured. Required for Let's Encrypt certificate."
+            exit 1
+          }
+
+          # Run the SSL configuration script on the VM
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts "& 'C:\Pennie\bot\configure-ssl.ps1' -Fqdn '$vmFqdn' -Email '$leEmail'"
+
+          # Step 6: Configure bot credentials and URLs from GitHub Secrets
+          Write-Host "Step 6: Configuring bot credentials..."
+          # (vmFqdn already set in step 5)
+
+          # Use environment-specific backend URL (test uses test backend, prod uses prod)
+          $env = "${{ github.event.inputs.environment || 'test' }}"
+          $backendUrl = "https://pennie-backend-$env.azurewebsites.net"
+          Write-Host "Backend URL: $backendUrl"
+
+          # Debug: Show lengths of original secrets BEFORE encoding
+          Write-Host "DEBUG - Original secret lengths (before Base64):"
+          Write-Host "  TEAMS_APP_ID: $($teamsAppId.Length) chars"
+          Write-Host "  TEAMS_APP_PASSWORD: $($teamsAppPassword.Length) chars"
+          Write-Host "  AZURE_OPENAI_ENDPOINT: $($azureOpenAiEndpoint.Length) chars"
+          Write-Host "  AZURE_OPENAI_ASSISTANT_ID: $($azureOpenAiAssistantId.Length) chars"
+
+          # Fail early if required secrets are missing
+          if ($teamsAppId.Length -eq 0) {
+            Write-Error "TEAMS_APP_ID secret is empty. Check environment secrets."
+          }
+
+          # Encode ALL credentials as Base64 to avoid escaping issues in remote script
+          # Note: Variables $teamsAppId, etc. are already defined and masked at start of step
+          $teamsAppIdB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($teamsAppId))
+          $teamsAppPasswordB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($teamsAppPassword))
+          $openAiEndpointB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($azureOpenAiEndpoint))
+          $openAiAssistantIdB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($azureOpenAiAssistantId))
+
+          Write-Host "Encoded values (Base64 lengths):"
+          Write-Host "  Teams App ID: $($teamsAppIdB64.Length) chars"
+          Write-Host "  Teams Password: $($teamsAppPasswordB64.Length) chars"
+          Write-Host "  OpenAI Endpoint: $($openAiEndpointB64.Length) chars"
+          Write-Host "  OpenAI Assistant ID: $($openAiAssistantIdB64.Length) chars"
+
+          # Run the configure script on the VM with ALL values Base64-encoded
+          # Values are embedded directly in the script (--parameters flag doesn't work reliably)
+          # NOTE: Avoid curly braces in inline scripts - they get corrupted by az vm run-command
+          # NOTE: Use $() subexpression syntax to force variable expansion in multiline strings
+          $configScript = "Write-Host 'Decoding Base64 values...'; " + `
+            "`$appId = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$($teamsAppIdB64)')); " + `
+            "`$password = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$($teamsAppPasswordB64)')); " + `
+            "`$openAiEndpoint = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$($openAiEndpointB64)')); " + `
+            "`$openAiAssistantId = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$($openAiAssistantIdB64)')); " + `
+            "Write-Host ('Decoded - Teams App ID: ' + `$appId.Length + ' chars'); " + `
+            "Write-Host ('Decoded - OpenAI Endpoint: ' + `$openAiEndpoint.Length + ' chars'); " + `
+            "Write-Host ('Decoded - OpenAI Assistant ID: ' + `$openAiAssistantId.Length + ' chars'); " + `
+            "& 'C:\Pennie\bot\configure-bot-settings.ps1' " + `
+            "-ConfigPath 'C:\Pennie\bot\appsettings.json' " + `
+            "-TeamsAppId `$appId " + `
+            "-TeamsAppPassword `$password " + `
+            "-VmFqdn '$($vmFqdn)' " + `
+            "-BackendUrl '$($backendUrl)' " + `
+            "-AzureOpenAiEndpoint `$openAiEndpoint " + `
+            "-AzureOpenAiAssistantId `$openAiAssistantId; " + `
+            "Write-Host 'Configuration script completed'"
+
+          Write-Host "Config script length: $($configScript.Length) chars"
+          $configResult = az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts $configScript
+
+          # Show full config result for debugging
+          Write-Host "Config result:"
+          Write-Host $configResult
+
+          # Step 6b: Verify configuration was applied
+          # NOTE: Avoid curly braces in inline scripts - they get corrupted by az vm run-command
+          Write-Host "Verifying OpenAI configuration..."
+          $verifyResult = az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts "`$config = Get-Content 'C:\Pennie\bot\appsettings.json' -Raw | ConvertFrom-Json; `
+              `$endpoint = `$config.'AZURE_OPENAI_ENDPOINT'; `
+              `$assistantId = `$config.'AZURE_OPENAI_ASSISTANT_ID'; `
+              Write-Host ('AZURE_OPENAI_ENDPOINT length: ' + `$endpoint.Length + ' chars'); `
+              Write-Host ('AZURE_OPENAI_ASSISTANT_ID length: ' + `$assistantId.Length + ' chars'); `
+              `$isEmpty = [string]::IsNullOrEmpty(`$endpoint) -or [string]::IsNullOrEmpty(`$assistantId); `
+              Write-Host ('Settings configured: ' + (-not `$isEmpty))"
+          Write-Host "Verify result:"
+          Write-Host $verifyResult
+
+          # Step 7: Restart service to apply new configuration
+          Write-Host "Step 7: Restarting service..."
+          az vm run-command invoke `
+            --resource-group $rgName `
+            --name $vmName `
+            --command-id RunPowerShellScript `
+            --scripts "Restart-Service PennieBot; Start-Sleep -Seconds 5; Get-Service PennieBot | Format-Table Name, Status"
 
           Write-Host "✅ Bot deployed successfully to $vmName"
 
   run-smoke-tests:
     name: Run Smoke Tests
     runs-on: ubuntu-latest
-    needs: [deploy-bot]
-    environment: ${{ github.event.inputs.environment || 'prod' }}
-    if: ${{ vars.AZURE_DEPLOYMENT_ENABLED == 'true' && (needs.deploy-bot.result == 'success' || needs.deploy-bot.result == 'skipped') }}
+    needs: [set-environment, deploy-bot]
+    environment: ${{ needs.set-environment.outputs.environment }}
+    if: ${{ needs.set-environment.outputs.deployment_enabled == 'true' && (needs.deploy-bot.result == 'success' || needs.deploy-bot.result == 'skipped') }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Azure Login
+        uses: azure/login@v2
         with:
-          python-version: '3.10'
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Install dependencies
+      - name: Run endpoint connectivity tests
         run: |
-          pip install pytest requests
+          ENV="${{ needs.set-environment.outputs.environment }}"
+          echo "Running smoke tests for $ENV environment..."
 
-      - name: Run smoke tests
+          # Make test script executable and run it
+          chmod +x ./tests/bot-endpoint-test.sh
+          ./tests/bot-endpoint-test.sh "$ENV"
+
+      - name: Verify bot responds to health check
         run: |
-          # TODO: Implement smoke tests
-          # pytest tests/smoke/ --env=${{ github.event.inputs.environment || 'prod' }}
-          echo "Smoke tests would run here"
+          ENV="${{ needs.set-environment.outputs.environment }}"
+          RG="${{ needs.set-environment.outputs.resource_group }}"
+
+          # Get bot FQDN
+          VM_FQDN=$(az network public-ip show \
+            --resource-group "$RG" \
+            --name "pennie-pip-${ENV}" \
+            --query "dnsSettings.fqdn" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VM_FQDN" ]; then
+            echo "::warning::Could not get VM FQDN"
+            exit 0
+          fi
+
+          # Wait for bot to be ready (up to 60 seconds)
+          echo "Waiting for bot health endpoint..."
+          for i in {1..12}; do
+            HEALTH=$(curl -s -k "https://${VM_FQDN}/health" 2>/dev/null || echo "")
+            if [ "$HEALTH" = "Healthy" ]; then
+              echo "✅ Bot health check passed"
+              exit 0
+            fi
+            echo "Attempt $i/12: Bot not ready yet..."
+            sleep 5
+          done
+
+          echo "::error::Bot health check failed after 60 seconds"
+          exit 1
 
       - name: Notify on failure
         if: failure()
         run: |
-          echo "Deployment smoke tests failed! Rolling back..."
-          # TODO: Implement rollback logic
+          echo "::error::Deployment smoke tests failed!"
+          echo ""
+          echo "Troubleshooting steps:"
+          echo "  1. Check bot logs: ./scripts/bot-logs.sh ${{ needs.set-environment.outputs.environment }}"
+          echo "  2. Restart service: ./scripts/bot-restart.sh ${{ needs.set-environment.outputs.environment }}"
+          echo "  3. Run endpoint tests: ./tests/bot-endpoint-test.sh ${{ needs.set-environment.outputs.environment }}"
+          # Note: Rollback would require storing previous deployment artifact
 
   notify-deployment:
     name: Notify Deployment Status
     runs-on: ubuntu-latest
-    needs: [run-smoke-tests]
-    if: ${{ vars.AZURE_DEPLOYMENT_ENABLED == 'true' && always() }}
+    needs: [set-environment, run-smoke-tests]
+    if: ${{ needs.set-environment.outputs.deployment_enabled == 'true' && always() }}
 
     steps:
       - name: Send notification

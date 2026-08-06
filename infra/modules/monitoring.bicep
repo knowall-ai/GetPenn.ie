@@ -35,8 +35,9 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 // Storage Account (for logs, diagnostics, backups)
+// Name must be 3-24 chars, lowercase alphanumeric only
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
-  name: 'penniestorage${environmentName}${uniqueString(resourceGroup().id)}'
+  name: take('penniestorage${uniqueString(resourceGroup().id)}', 24)
   location: location
   tags: tags
   sku: {

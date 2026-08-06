@@ -113,9 +113,9 @@ public class MeetingController : ControllerBase
                     HttpContext.RequestAborted);
                 transcriptionEnabled = true;
             }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("AZURE-SPEECH-KEY"))
+            catch (InvalidOperationException ex) when (ex.Message.Contains("AZURE_SPEECH_KEY"))
             {
-                _logger.LogWarning("Transcription disabled: AZURE-SPEECH-KEY not configured. Meeting will join without transcription.");
+                _logger.LogWarning("Transcription disabled: AZURE_SPEECH_KEY not configured. Meeting will join without transcription.");
             }
             catch (Exception ex)
             {
@@ -242,9 +242,9 @@ public class MeetingController : ControllerBase
                     HttpContext.RequestAborted);
                 transcriptionEnabled = true;
             }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("AZURE-SPEECH-KEY"))
+            catch (InvalidOperationException ex) when (ex.Message.Contains("AZURE_SPEECH_KEY"))
             {
-                _logger.LogWarning("Transcription disabled: AZURE-SPEECH-KEY not configured. Meeting will join without transcription.");
+                _logger.LogWarning("Transcription disabled: AZURE_SPEECH_KEY not configured. Meeting will join without transcription.");
             }
             catch (Exception ex)
             {

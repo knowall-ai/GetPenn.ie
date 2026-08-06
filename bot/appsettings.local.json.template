@@ -1,0 +1,40 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "Microsoft.AspNetCore": "Information",
+      "Microsoft.Bot": "Debug"
+    }
+  },
+
+  "// LOCAL DEV": "Copy this file to appsettings.local.json and fill in values",
+
+  "// Bot Registration": "Create a bot registration in Azure Portal",
+  "MicrosoftAppId": "",
+  "MicrosoftAppPassword": "",
+
+  "// Teams App": "Same as bot registration for single-tenant apps",
+  "TeamsAppId": "",
+  "TeamsAppPassword": "",
+  "AzureTenantId": "",
+
+  "// Dev Tunnel": "Run 'devtunnel host -p 3978 --allow-anonymous' and use the URL",
+  "BotBaseUrl": "https://YOUR-TUNNEL-ID.euw.devtunnels.ms",
+
+  "// Media Platform": "Disabled for local dev - audio capture requires Windows Server",
+  "MediaPlatform": {
+    "UseApplicationHostedMedia": false
+  },
+
+  "// Speech Services": "Get key from Azure Portal > Speech Services > Keys",
+  "AZURE_SPEECH_KEY": "",
+  "AZURE_LOCATION": "uksouth",
+  "SpeechRecognitionLanguage": "en-GB",
+
+  "// Pennie Agent": "Get from AI Foundry or scripts/deploy-agent.sh output",
+  "AZURE_OPENAI_ENDPOINT": "https://YOUR-RESOURCE.openai.azure.com",
+  "AZURE_OPENAI_ASSISTANT_ID": "asst_YOUR_ASSISTANT_ID",
+
+  "// Backend": "Use prod backend or run locally with 'func start' in backend/",
+  "AZURE_FUNCTIONS_BACKEND_URL": "https://pennie-backend-prod.azurewebsites.net"
+}

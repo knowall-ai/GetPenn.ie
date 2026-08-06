@@ -38,49 +38,58 @@ try {
             Start-Sleep -Seconds 3
         }
         Write-Host "  Removing existing service"
-        nssm remove $ServiceName confirm
+        # Use sc.exe as nssm might not be installed yet
+        sc.exe delete $ServiceName 2>&1 | Out-Null
     }
 } catch {
     Write-Host "  No existing service found (this is OK for first deployment)" -ForegroundColor Yellow
 }
 
-# Step 2: Build the bot application
+# Step 2: Check if bot is pre-built or needs building
 Write-Host ""
-Write-Host "Step 2: Building bot application..." -ForegroundColor Cyan
+Write-Host "Step 2: Preparing bot application..." -ForegroundColor Cyan
+
+$botExePath = Join-Path $BotDirectory "PennieBot.exe"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $botProjectPath = Join-Path $repoRoot "bot\PennieBot.csproj"
 
-if (-not (Test-Path $botProjectPath)) {
-    Write-Host "ERROR: Bot project not found at $botProjectPath" -ForegroundColor Red
+# If PennieBot.exe already exists and source code doesn't exist, skip build (pre-built deployment)
+if ((Test-Path $botExePath) -and (-not (Test-Path $botProjectPath))) {
+    Write-Host "  Pre-built deployment detected - skipping build step" -ForegroundColor Green
+    Write-Host "  Bot executable found at: $botExePath" -ForegroundColor Green
+} elseif (Test-Path $botProjectPath) {
+    # Build from source
+    Write-Host "  Building from source..."
+
+    # CRITICAL: Backup appsettings.json before build
+    $appSettingsPath = Join-Path $BotDirectory "appsettings.json"
+    $appSettingsBackup = Join-Path $env:TEMP "appsettings.json.backup"
+    if (Test-Path $appSettingsPath) {
+        Write-Host "  Backing up existing appsettings.json..."
+        Copy-Item -Path $appSettingsPath -Destination $appSettingsBackup -Force
+    }
+
+    Write-Host "  Building project: $botProjectPath"
+    & dotnet build $botProjectPath --configuration $BuildConfiguration --output $BotDirectory
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Build failed" -ForegroundColor Red
+        exit 1
+    }
+
+    # CRITICAL: Restore appsettings.json after build
+    if (Test-Path $appSettingsBackup) {
+        Write-Host "  Restoring appsettings.json from backup..."
+        Copy-Item -Path $appSettingsBackup -Destination $appSettingsPath -Force
+        Remove-Item -Path $appSettingsBackup -Force
+    }
+    Write-Host "  Build successful" -ForegroundColor Green
+} else {
+    Write-Host "ERROR: Neither pre-built bot nor source code found" -ForegroundColor Red
+    Write-Host "  Expected executable: $botExePath" -ForegroundColor Red
+    Write-Host "  Or project file: $botProjectPath" -ForegroundColor Red
     exit 1
 }
-
-# CRITICAL: Backup appsettings.json before build
-# This file contains VM-specific configuration that should not be overwritten
-$appSettingsPath = Join-Path $BotDirectory "appsettings.json"
-$appSettingsBackup = Join-Path $env:TEMP "appsettings.json.backup"
-if (Test-Path $appSettingsPath) {
-    Write-Host "  Backing up existing appsettings.json..."
-    Copy-Item -Path $appSettingsPath -Destination $appSettingsBackup -Force
-}
-
-Write-Host "  Building project: $botProjectPath"
-& dotnet build $botProjectPath --configuration $BuildConfiguration --output $BotDirectory
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Build failed" -ForegroundColor Red
-    exit 1
-}
-
-# CRITICAL: Restore appsettings.json after build
-# The build may have overwritten it with the project's default appsettings.json
-if (Test-Path $appSettingsBackup) {
-    Write-Host "  Restoring appsettings.json from backup..."
-    Copy-Item -Path $appSettingsBackup -Destination $appSettingsPath -Force
-    Remove-Item -Path $appSettingsBackup -Force
-}
-
-Write-Host "  Build successful" -ForegroundColor Green
 
 # Step 3: Configure appsettings from Key Vault
 Write-Host ""
@@ -102,9 +111,9 @@ if ($KeyVaultName) {
         Write-Host "  Ensure the secret exists and the VM has access to the Key Vault" -ForegroundColor Red
     }
 
-    $speechKey = az keyvault secret show --vault-name $KeyVaultName --name "AZURE-SPEECH-KEY" --query value -o tsv
+    $speechKey = az keyvault secret show --vault-name $KeyVaultName --name "AZURE_SPEECH_KEY" --query value -o tsv
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "WARNING: AZURE-SPEECH-KEY not found in Key Vault (speech features may not work)" -ForegroundColor Yellow
+        Write-Host "WARNING: AZURE_SPEECH_KEY not found in Key Vault (speech features may not work)" -ForegroundColor Yellow
     }
 
     if (-not $teamsAppId -or -not $teamsAppPassword) {
@@ -136,9 +145,78 @@ if ($KeyVaultName) {
     Write-Host "  Ensure all required environment variables are set on the VM" -ForegroundColor Yellow
 }
 
-# Step 4: Install bot as Windows Service using NSSM
+# Step 4: Install NSSM if not present, then install bot as Windows Service
 Write-Host ""
 Write-Host "Step 4: Installing bot as Windows Service..." -ForegroundColor Cyan
+
+# Check for NSSM in multiple locations (Chocolatey installs to different paths)
+$nssmExe = $null
+$nssmLocations = @(
+    "C:\ProgramData\chocolatey\bin\nssm.exe",
+    "C:\ProgramData\chocolatey\lib\nssm\tools\nssm.exe",
+    "C:\Tools\nssm\nssm.exe"
+)
+
+foreach ($location in $nssmLocations) {
+    if (Test-Path $location) {
+        $nssmExe = $location
+        Write-Host "  Found NSSM at: $location" -ForegroundColor Green
+        break
+    }
+}
+
+# Also check PATH if not found in known locations
+if (-not $nssmExe) {
+    $nssmCmd = Get-Command nssm -ErrorAction SilentlyContinue
+    if ($nssmCmd) {
+        $nssmExe = $nssmCmd.Source
+        Write-Host "  Found NSSM in PATH: $nssmExe" -ForegroundColor Green
+    }
+}
+
+if (-not $nssmExe) {
+    Write-Host "  NSSM not found - installing..." -ForegroundColor Yellow
+
+    # Use GitHub mirror instead of nssm.cc which can be unreliable
+    $nssmZipUrl = "https://github.com/win-acme/win-acme/releases/download/v2.2.4.1500/nssm-2.24.zip"
+    $nssmZipPath = Join-Path $env:TEMP "nssm.zip"
+    $nssmExtractPath = Join-Path $env:TEMP "nssm"
+    $nssmInstallPath = "C:\Tools\nssm"
+
+    # Download NSSM
+    Write-Host "  Downloading NSSM from GitHub..."
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    try {
+        Invoke-WebRequest -Uri $nssmZipUrl -OutFile $nssmZipPath -UseBasicParsing
+    } catch {
+        # Fallback to nssm.cc if GitHub fails
+        Write-Host "  GitHub download failed, trying nssm.cc..." -ForegroundColor Yellow
+        $nssmZipUrl = "https://nssm.cc/release/nssm-2.24.zip"
+        Invoke-WebRequest -Uri $nssmZipUrl -OutFile $nssmZipPath -UseBasicParsing
+    }
+
+    # Extract
+    Write-Host "  Extracting NSSM..."
+    Expand-Archive -Path $nssmZipPath -DestinationPath $nssmExtractPath -Force
+
+    # Copy to install location
+    New-Item -ItemType Directory -Path $nssmInstallPath -Force | Out-Null
+    Copy-Item -Path "$nssmExtractPath\nssm-2.24\win64\nssm.exe" -Destination $nssmInstallPath -Force
+
+    $nssmExe = "$nssmInstallPath\nssm.exe"
+
+    # Verify installation
+    if (Test-Path $nssmExe) {
+        Write-Host "  NSSM installed successfully to $nssmInstallPath" -ForegroundColor Green
+    } else {
+        Write-Host "ERROR: NSSM installation failed" -ForegroundColor Red
+        exit 1
+    }
+
+    # Cleanup
+    Remove-Item -Path $nssmZipPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $nssmExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 $botExePath = Join-Path $BotDirectory "PennieBot.exe"
 if (-not (Test-Path $botExePath)) {
@@ -147,19 +225,28 @@ if (-not (Test-Path $botExePath)) {
 }
 
 Write-Host "  Installing service: $ServiceName"
-nssm install $ServiceName $botExePath
+& $nssmExe install $ServiceName $botExePath
 
-# Configure service
-nssm set $ServiceName AppDirectory $BotDirectory
-nssm set $ServiceName AppEnvironmentExtra "ASPNETCORE_ENVIRONMENT=Production"
-nssm set $ServiceName DisplayName "Pennie the Prepper Teams Bot"
-nssm set $ServiceName Description "AI-powered Teams bot for Azure DevOps backlog creation"
-nssm set $ServiceName Start SERVICE_AUTO_START
-nssm set $ServiceName AppStdout "C:\Pennie\logs\bot-stdout.log"
-nssm set $ServiceName AppStderr "C:\Pennie\logs\bot-stderr.log"
-nssm set $ServiceName AppRotateFiles 1
-nssm set $ServiceName AppRotateOnline 1
-nssm set $ServiceName AppRotateBytes 10485760  # 10MB
+# Configure service using full path to NSSM
+Write-Host "  Configuring service..."
+& $nssmExe set $ServiceName AppDirectory $BotDirectory
+& $nssmExe set $ServiceName AppEnvironmentExtra "ASPNETCORE_ENVIRONMENT=Production"
+& $nssmExe set $ServiceName DisplayName "Pennie the Prepper Teams Bot"
+& $nssmExe set $ServiceName Description "AI-powered Teams bot for Azure DevOps backlog creation"
+& $nssmExe set $ServiceName Start SERVICE_AUTO_START
+
+# Create logs directory
+$logsDir = "C:\Pennie\logs"
+if (-not (Test-Path $logsDir)) {
+    New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+    Write-Host "  Created logs directory: $logsDir"
+}
+
+& $nssmExe set $ServiceName AppStdout "$logsDir\bot-stdout.log"
+& $nssmExe set $ServiceName AppStderr "$logsDir\bot-stderr.log"
+& $nssmExe set $ServiceName AppRotateFiles 1
+& $nssmExe set $ServiceName AppRotateOnline 1
+& $nssmExe set $ServiceName AppRotateBytes 10485760  # 10MB
 
 Write-Host "  Service installed successfully" -ForegroundColor Green
 

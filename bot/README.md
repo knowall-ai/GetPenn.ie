@@ -48,7 +48,6 @@ Set these in Azure Key Vault or Windows environment variables:
 | `AZURE_SPEECH_KEY` | Azure Speech Services API key |
 | `AZURE_LOCATION` | Azure region (e.g., `uksouth`) |
 | `PENNIE_AGENT_ENDPOINT` | Pennie AI Foundry Agent endpoint URL |
-| `AZURE_KEY_VAULT_NAME` | Azure Key Vault name for secrets |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Application Insights connection string |
 
 ### appsettings.json

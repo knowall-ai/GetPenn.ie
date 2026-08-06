@@ -1,0 +1,103 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.6.0",
+  "id": "0f3c7372-d0f6-4da4-8334-dd03feb521c9",
+  "developer": {
+    "name": "KnowAll Ltd",
+    "websiteUrl": "https://getpenn.ie",
+    "privacyUrl": "https://getpenn.ie/privacy",
+    "termsOfUseUrl": "https://getpenn.ie/terms"
+  },
+  "name": {
+    "short": "Pennie the Prepper (Test)",
+    "full": "Pennie the Prepper - Azure DevOps Assistant (Test)"
+  },
+  "description": {
+    "short": "AI assistant for Azure DevOps backlog management (TEST)",
+    "full": "Pennie the Prepper is an AI-powered assistant that helps you manage Azure DevOps projects. Ask questions like 'What projects do we have in DevOps?' and get instant answers. This is the TEST environment."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#9C27B0",
+  "bots": [
+    {
+      "botId": "131b79ec-a659-4b35-aaf8-92185d97e457",
+      "scopes": [
+        "personal",
+        "team",
+        "groupChat"
+      ],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "supportsCalling": true,
+      "supportsVideo": false,
+      "commandLists": [
+        {
+          "scopes": [
+            "personal",
+            "team",
+            "groupChat"
+          ],
+          "commands": [
+            {
+              "title": "help",
+              "description": "Show available commands"
+            },
+            {
+              "title": "projects",
+              "description": "List Azure DevOps projects"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "configurableTabs": [
+    {
+      "configurationUrl": "https://pennie-test-vgn7kzlubtavo.uksouth.cloudapp.azure.com/config.html",
+      "canUpdateConfiguration": true,
+      "scopes": ["team", "groupChat"],
+      "context": [
+        "meetingChatTab",
+        "meetingDetailsTab",
+        "meetingSidePanel"
+      ]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": [
+    "pennie-test-vgn7kzlubtavo.uksouth.cloudapp.azure.com"
+  ],
+  "webApplicationInfo": {
+    "id": "131b79ec-a659-4b35-aaf8-92185d97e457",
+    "resource": "api://botid-131b79ec-a659-4b35-aaf8-92185d97e457"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "OnlineMeeting.ReadBasic.Chat",
+          "type": "Delegated"
+        },
+        {
+          "name": "OnlineMeetingParticipant.Read.Chat",
+          "type": "Delegated"
+        },
+        {
+          "name": "OnlineMeetingParticipant.ToggleIncomingAudio.Chat",
+          "type": "Delegated"
+        }
+      ]
+    }
+  },
+  "meetingExtensionDefinition": {
+    "scenes": [],
+    "supportsStreaming": false
+  }
+}

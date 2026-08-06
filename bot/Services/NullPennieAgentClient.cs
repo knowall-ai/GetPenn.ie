@@ -11,7 +11,7 @@ public class NullPennieAgentClient : IPennieAgentClient
     public NullPennieAgentClient(ILogger<NullPennieAgentClient> logger)
     {
         _logger = logger;
-        _logger.LogWarning("PennieAgentClient is disabled - AZURE-OPENAI-ENDPOINT not configured");
+        _logger.LogWarning("PennieAgentClient is disabled - AZURE_OPENAI_ENDPOINT not configured");
     }
 
     public Task SendTranscriptAsync(TranscriptionResult result, CancellationToken cancellationToken = default)
